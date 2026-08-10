@@ -3,10 +3,13 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { X, RotateCcw, Loader2, Lock } from "lucide-react";
 import type { RegenerationSkipped } from "@/lib/api-client";
+
+const FIELD_FILL = "bg-secondary/70 hover:bg-secondary focus-visible:bg-secondary transition-colors";
+const INSTRUCTION_MAX_LENGTH = 4000;
 
 interface RegenerateDraftsModalProps {
   /** Eligible drafts split by current state — what will actually be rewritten. */
@@ -39,10 +42,15 @@ function RegenerateDraftsModalInner({
   const total = counts.draft + counts.failed;
 
   const protectedRows = [
-    { n: skipped.certified, label: "Certified", note: "left untouched — regenerate individually if needed" },
-    { n: skipped.sent,      label: "Sent",      note: "already delivered" },
-    { n: skipped.no_draft,  label: "No draft",  note: "nothing to regenerate yet" },
+    { n: skipped.certified, label: "certified" },
+    { n: skipped.sent,      label: "sent" },
+    { n: skipped.no_draft,  label: "no draft" },
   ].filter((r) => r.n > 0);
+
+  const scopeNotes = [
+    isSubset && "only your selected leads",
+    counts.failed > 0 && `${counts.failed} of these previously failed and will be retried from scratch`,
+  ].filter(Boolean) as string[];
 
   return (
     // `data-confirm-dialog-root` + forced `pointer-events-auto`: this portals to
@@ -56,11 +64,10 @@ function RegenerateDraftsModalInner({
 
         <div className="flex items-start justify-between gap-4 px-6 py-4 border-b border-border shrink-0">
           <div className="min-w-0">
-            <p className="eyebrow">Bulk action</p>
-            <h2 className="font-display text-base font-semibold mt-0.5">
+            <h2 className="font-display text-base font-semibold">
               Regenerate <span className="font-mono tabular-nums">{total}</span> draft{total !== 1 ? "s" : ""}
             </h2>
-            <p className="text-xs text-muted-foreground mt-0.5">
+            <p className="text-xs text-muted-foreground mt-2">
               With an instruction, each draft is edited from its current wording. Without one, each gets a fresh AI rewrite. Prior versions stay in history.
             </p>
           </div>
@@ -76,46 +83,44 @@ function RegenerateDraftsModalInner({
           </Button>
         </div>
 
-        <div className="flex-1 overflow-y-auto min-h-0">
-          <div className="px-6 py-4 space-y-2.5">
-            <p className="eyebrow">
-              {isSubset ? "Selected leads" : "Will be regenerated"}
-            </p>
-            {counts.draft > 0 && (
-              <CountRow n={counts.draft} label="Draft" note="rewritten with your instruction" />
-            )}
-            {counts.failed > 0 && (
-              <CountRow n={counts.failed} label="Failed" note="retried from scratch" />
-            )}
-          </div>
-
-          {protectedRows.length > 0 && (
-            <div className="px-6 py-4 border-t border-border bg-secondary/20 space-y-2.5">
-              <p className="eyebrow flex items-center gap-1.5">
-                <Lock className="size-3" /> Protected — not touched
+        {/* Scope summary — only shown when there's nuance beyond the header's total */}
+        {(scopeNotes.length > 0 || protectedRows.length > 0) && (
+          <div className="px-6 py-3 border-b border-border bg-secondary/20 shrink-0 space-y-1">
+            {scopeNotes.length > 0 && (
+              <p className="text-xs text-muted-foreground">
+                {scopeNotes.join(" — ").replace(/^./, (c) => c.toUpperCase())}.
               </p>
-              {protectedRows.map((r) => (
-                <CountRow key={r.label} n={r.n} label={r.label} note={r.note} muted />
-              ))}
-            </div>
-          )}
-
-          <div className="px-6 py-4 border-t border-border space-y-2">
-            <p className="eyebrow">Instruction (optional)</p>
-            <Textarea
-              value={instruction}
-              autoFocus
-              disabled={submitting}
-              rows={4}
-              className="text-sm resize-y"
-              onChange={(e) => setInstruction(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && !submitting) onConfirm(instruction.trim()); }}
-              placeholder="e.g. Make it shorter and less salesy — multi-line instructions are fine"
-            />
-            <p className="text-[11px] text-muted-foreground">
-              Applied to every draft in this run only — the campaign&apos;s saved AI context is unchanged.
-            </p>
+            )}
+            {protectedRows.length > 0 && (
+              <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                <Lock className="size-3 shrink-0" />
+                {protectedRows.map((r) => `${r.n} ${r.label}`).join(", ")} skipped — not touched
+              </p>
+            )}
           </div>
+        )}
+
+        <div className="flex-1 overflow-y-auto min-h-0 px-6 py-4">
+          <div className="flex items-baseline justify-between gap-2">
+            <Label className="text-sm font-medium">Instruction (optional)</Label>
+            <span className={`text-[11px] tabular-nums shrink-0 ${instruction.length > INSTRUCTION_MAX_LENGTH ? "text-destructive" : "text-muted-foreground"}`}>
+              {instruction.length}/{INSTRUCTION_MAX_LENGTH}
+            </span>
+          </div>
+          <Textarea
+            value={instruction}
+            autoFocus
+            disabled={submitting}
+            rows={4}
+            maxLength={INSTRUCTION_MAX_LENGTH}
+            className={`mt-2 text-sm resize-y ${FIELD_FILL}`}
+            onChange={(e) => setInstruction(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && !submitting) onConfirm(instruction.trim()); }}
+            placeholder="e.g. Make it shorter and less salesy — multi-line instructions are fine"
+          />
+          <p className="text-[11px] text-muted-foreground mt-1.5">
+            Applied to every draft in this run only — the campaign&apos;s saved AI context is unchanged.
+          </p>
         </div>
 
         <div className="flex items-center justify-between gap-3 px-6 py-4 border-t border-border shrink-0">
@@ -133,18 +138,6 @@ function RegenerateDraftsModalInner({
           </div>
         </div>
       </div>
-    </div>
-  );
-}
-
-function CountRow({ n, label, note, muted }: { n: number; label: string; note: string; muted?: boolean }) {
-  return (
-    <div className="flex items-baseline gap-3 text-xs">
-      <span className={`font-mono tabular-nums w-8 text-right shrink-0 ${muted ? "text-muted-foreground" : "font-semibold text-foreground"}`}>
-        {n}
-      </span>
-      <span className={`w-20 shrink-0 ${muted ? "text-muted-foreground" : "font-medium text-foreground"}`}>{label}</span>
-      <span className="text-muted-foreground min-w-0">{note}</span>
     </div>
   );
 }

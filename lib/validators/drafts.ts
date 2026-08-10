@@ -35,7 +35,7 @@ export const RegenerateDraftSchema = z.object({
 // here only ever narrow it (see lib/services/regeneration-jobs.ts).
 export const BulkRegenerateSchema = z.object({
   campaign_lead_ids: z.array(dbId).min(1).max(500).optional(),
-  custom_instruction: z.string().max(1000).optional(),
+  custom_instruction: z.string().max(4000).optional(),
   step_number: z.number().int().min(1).default(1),
 });
 
