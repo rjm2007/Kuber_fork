@@ -1475,13 +1475,14 @@ export type UniboxMessage = {
 export async function fetchUniboxThreads(
   token: string,
   params: Record<string, string | undefined> = {},
+  signal?: AbortSignal,
 ): Promise<{ threads: UniboxThreadSummary[]; next_cursor: string | null; counts: { unread_total: number } }> {
   const qs = new URLSearchParams();
   for (const [k, v] of Object.entries(params)) {
     if (v) qs.set(k, v);
   }
   const q = qs.toString();
-  return apiFetch(`/api/v1/unibox/threads${q ? `?${q}` : ""}`, {}, token);
+  return apiFetch(`/api/v1/unibox/threads${q ? `?${q}` : ""}`, { signal }, token);
 }
 
 export async function fetchUniboxThread(token: string, threadId: string, hydrate = false): Promise<{

@@ -599,10 +599,28 @@ export async function getThreads(db: Db, filters: {
     }
   }
 
-  const leadEmails = [...new Set([...all, ...Array.from(threadMap.values()).flat()].map((r) => r.lead_email).filter(Boolean))] as string[];
+  const threadRows = Array.from(threadMap.values()).flat();
+  const leadEmails = [...new Set([...all, ...threadRows].map((r) => r.lead_email).filter(Boolean))] as string[];
   const interestMap = await loadLeadInterestMap(db, leadEmails);
-  const campaignLeadIds = [...new Set(Array.from(threadMap.values()).flat().map((r) => r.campaign_lead_id).filter(Boolean))] as string[];
+  const campaignLeadIds = [...new Set(threadRows.map((r) => r.campaign_lead_id).filter(Boolean))] as string[];
   const statusByCampaignLead = await loadCampaignLeadStatusMap(db, campaignLeadIds);
+
+  // Batched up front (instead of one query per thread inside the loop below) —
+  // with ~100+ threads that N+1 pattern was slow enough to open a wide race
+  // window where an older, unfiltered request could resolve after a newer
+  // filtered one and silently overwrite it (see unibox-client.tsx loadThreads).
+  type LeadLookup = { first_name: string | null; last_name: string | null; title: string | null; email: string };
+  const leadByEmail = new Map<string, LeadLookup>();
+  if (leadEmails.length > 0) {
+    const { data: leadRows } = await db.from("leads").select("first_name, last_name, title, email").in("email", leadEmails);
+    for (const l of leadRows ?? []) leadByEmail.set(l.email as string, l as unknown as LeadLookup);
+  }
+  const campaignIdsForLookup = [...new Set(threadRows.map((r) => r.campaign_id).filter(Boolean))] as string[];
+  const campaignById = new Map<string, { id: string; name: string }>();
+  if (campaignIdsForLookup.length > 0) {
+    const { data: campaignRows } = await db.from("campaigns").select("id, name").in("id", campaignIdsForLookup);
+    for (const c of campaignRows ?? []) campaignById.set(c.id as string, { id: c.id as string, name: c.name as string });
+  }
 
   const summaries: UniboxThreadSummary[] = [];
   const latestUnreadAtByThread = new Map<string, string>();
@@ -616,11 +634,7 @@ export async function getThreads(db: Db, filters: {
     const interest = (latest.campaign_lead_id ? statusByCampaignLead.get(latest.campaign_lead_id) : undefined)
       ?? (leadEmail ? interestMap.get(leadEmail) : undefined);
 
-    let lead: UniboxThreadSummary["lead"] = null;
-    if (leadEmail) {
-      const { data: l } = await db.from("leads").select("first_name, last_name, title, email").eq("email", leadEmail).maybeSingle();
-      if (l) lead = l;
-    }
+    const lead: UniboxThreadSummary["lead"] = (leadEmail && leadByEmail.get(leadEmail)) || null;
 
     if (filters.q?.trim()) {
       const q = filters.q.trim().toLowerCase();
@@ -639,11 +653,7 @@ export async function getThreads(db: Db, filters: {
       latestUnreadAtByThread.set(threadId, String(unreadInbound[unreadInbound.length - 1].timestamp_email));
     }
 
-    let campaign: { id: string; name: string } | null = null;
-    if (latest.campaign_id) {
-      const { data: c } = await db.from("campaigns").select("id, name").eq("id", latest.campaign_id).maybeSingle();
-      if (c) campaign = { id: c.id, name: c.name };
-    }
+    const campaign: { id: string; name: string } | null = (latest.campaign_id && campaignById.get(latest.campaign_id)) || null;
 
     const summary: UniboxThreadSummary = {
       thread_id: threadId,

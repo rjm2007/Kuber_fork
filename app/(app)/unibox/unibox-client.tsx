@@ -78,6 +78,11 @@ export function UniboxClient() {
   const [threadDetail, setThreadDetail] = useState<Awaited<ReturnType<typeof fetchUniboxThread>> | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const readTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Guards against a slower, older request (e.g. the initial unfiltered load)
+  // resolving after a newer filtered one and silently overwriting the list
+  // with stale results — the list would then disagree with the highlighted
+  // filter, making filters look broken.
+  const loadThreadsAbortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -110,7 +115,20 @@ export function UniboxClient() {
 
   const loadThreads = useCallback(async (append = false) => {
     if (!token) return;
+    // Cancel any request still in flight (e.g. from a filter clicked a moment
+    // ago) so its response can never land after — and overwrite — this one.
+    loadThreadsAbortRef.current?.abort();
+    const controller = new AbortController();
+    loadThreadsAbortRef.current = controller;
     setLoading(!append);
+    // Clear the old list right away on a fresh (non-append) load so a filter
+    // change never shows the previous filter's results while the new request
+    // is in flight — it should read as "cleared, then repopulated", not
+    // "stale list that suddenly swaps out".
+    if (!append) {
+      setThreads([]);
+      setCursor(null);
+    }
     try {
       const params: Record<string, string | undefined> = {
         eaccount: eaccount ?? undefined,
@@ -127,14 +145,16 @@ export function UniboxClient() {
         params.interest = interest === "lead" ? "lead" : String(interest);
       }
 
-      const data = await fetchUniboxThreads(token, params);
+      const data = await fetchUniboxThreads(token, params, controller.signal);
+      if (controller.signal.aborted) return;
       setThreads((prev) => (append ? [...prev, ...data.threads] : data.threads));
       setCursor(data.next_cursor);
       if (!append) setUnreadTotal(data.counts.unread_total);
     } catch (e) {
+      if (controller.signal.aborted || (e as Error).name === "AbortError") return;
       toast.error((e as Error).message);
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted) setLoading(false);
     }
   }, [token, campaignIds, eaccount, debouncedSearch, readState, interest, cursor]);
 

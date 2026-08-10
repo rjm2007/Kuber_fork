@@ -2,14 +2,27 @@
 
 import { useState } from "react";
 import { format } from "date-fns";
-import { Loader2, Menu } from "lucide-react";
+import { Menu } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { UniboxThreadSummary } from "@/lib/api-client";
 import type { UniboxInterestFilter, UniboxReadStateFilter } from "@/components/app/unibox/unibox-status-filter";
 import { hasActiveUniboxFilters, UniboxFiltersPanel } from "@/components/app/unibox/unibox-filters";
 import { EmptyState } from "@/components/ui/empty-state";
 import { SearchInput } from "@/components/ui/search-input";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
+
+/** Mirrors the real row's layout so the loading state doesn't jump/reflow once data arrives. */
+function ThreadRowSkeleton() {
+  return (
+    <div className="flex items-center gap-3 px-4 py-3">
+      <Skeleton className="size-1.5 rounded-full shrink-0" />
+      <Skeleton className="h-3.5 w-32 shrink-0" />
+      <Skeleton className="h-3.5 flex-1 min-w-0" />
+      <Skeleton className="h-3 w-10 shrink-0" />
+    </div>
+  );
+}
 
 type Props = {
   threads: UniboxThreadSummary[];
@@ -102,8 +115,10 @@ export function UniboxThreadList({
         </div>
         <div className="flex-1 overflow-y-auto px-6 py-4">
           {loading && threads.length === 0 ? (
-            <div className="rounded-xl border border-border bg-card shadow-sm flex justify-center py-12">
-              <Loader2 className="size-5 animate-spin text-muted-foreground" />
+            <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden divide-y divide-border">
+              {Array.from({ length: 8 }).map((_, i) => (
+                <ThreadRowSkeleton key={i} />
+              ))}
             </div>
           ) : threads.length === 0 ? (
             <EmptyState message="No conversations match your filters." />
