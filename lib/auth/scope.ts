@@ -85,18 +85,17 @@ async function ownsCampaignLead(db: Db, userId: string, campaignLeadId: string):
   return !!data;
 }
 
-/** Unibox visibility boundary for an employee: threads whose campaign_lead's lead is assigned to them (spec §7). Null for managers (see everything). */
-export async function getUniboxScope(
-  db: Db,
-  user: AuthedUser,
-): Promise<{ campaign_lead_ids: string[] } | null> {
-  if (user.role !== "employee") return null;
-  const { data } = await db
-    .from("campaign_leads")
-    .select("id, leads!inner(assigned_to, is_deleted)")
-    .eq("leads.assigned_to", user.id)
-    .eq("leads.is_deleted", false);
-  return { campaign_lead_ids: (data ?? []).map((cl) => cl.id as string) };
+/**
+ * Unibox visibility boundary for an employee: threads whose campaign_lead's lead
+ * is assigned to them (spec §7). Null for managers (see everything).
+ *
+ * Returns the employee's id and lets the Unibox queries join through to it.
+ * This used to materialise every campaign_lead id they own and hand that list
+ * over to be expanded into a URL filter — which broke outright once someone was
+ * assigned enough leads (see UniboxScope in lib/services/unibox.ts).
+ */
+export function getUniboxScope(user: AuthedUser): { assigned_to: string } | null {
+  return user.role === "employee" ? { assigned_to: user.id } : null;
 }
 
 /**

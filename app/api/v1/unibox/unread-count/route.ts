@@ -9,7 +9,7 @@ export async function GET(req: NextRequest) {
   let user: Awaited<ReturnType<typeof requireAuth>>;
   try { user = await requireAuth(req); } catch (r) { return r as Response; }
   const db = dbForUser(user);
-  const scope = (await getUniboxScope(db, user)) ?? undefined;
+  const scope = getUniboxScope(user) ?? undefined;
   const count = await getUnreadCount(db, scope);
   return ok({ unread: count });
 }

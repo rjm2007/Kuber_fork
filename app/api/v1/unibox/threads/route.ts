@@ -30,13 +30,10 @@ export async function GET(req: NextRequest) {
     : undefined;
   const campaign_id: string | undefined = sp.get("campaign_id") ?? undefined;
 
-  const EMPTY_RESULT = { threads: [], next_cursor: null, counts: { unread_total: 0 } };
-
   // Employees see ONLY threads of leads assigned to them (spec §7). The scope
-  // (a campaign_lead_id allow-list) is the security boundary; campaign_id(s)
-  // stay purely user-facing filters intersected on top.
-  const scope = (await getUniboxScope(db, user)) ?? undefined;
-  if (scope && scope.campaign_lead_ids.length === 0) return ok(EMPTY_RESULT);
+  // is the security boundary; campaign_id(s) stay purely user-facing filters
+  // intersected on top.
+  const scope = getUniboxScope(user) ?? undefined;
 
   const tabRaw = sp.get("tab");
   const tab = tabRaw ? (tabRaw as UniboxTab) : undefined;

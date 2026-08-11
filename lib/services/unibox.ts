@@ -494,22 +494,40 @@ function campaignMatches(
  * its campaign_lead's lead is assigned to the employee — campaign access alone
  * is not enough, so a co-worker's threads in a shared campaign stay hidden.
  * Managers pass no scope (see everything).
+ *
+ * This is the employee's user id, NOT the list of campaign_lead ids they own.
+ * It used to be the list, expanded into a `campaign_lead_id.in.(...)` filter —
+ * but that filter travels in the request URL, so it grew by ~37 bytes per
+ * assigned lead. At ~400 leads it blew past the gateway's URL limit and every
+ * Unibox request came back "Bad Request", which the caller silently read as
+ * zero rows: the employee saw an empty inbox under every filter. One employee
+ * with 971 assigned leads hit exactly that. Filtering through the join keeps
+ * the request a constant size no matter how many leads someone owns.
  */
-export type UniboxScope = { campaign_lead_ids: string[] };
+export type UniboxScope = { assigned_to: string };
 
-function scopeMatches(
-  row: { campaign_id?: string | null; campaign_lead_id?: string | null },
-  scope: UniboxScope | undefined,
-): boolean {
-  if (!scope) return true;
-  return !!row.campaign_lead_id && scope.campaign_lead_ids.includes(row.campaign_lead_id);
-}
+/**
+ * Embed that turns the scope into a join filter instead of a URL id-list. The
+ * `!inner` joins also drop messages with no campaign_lead, which the old
+ * id-list excluded too.
+ *
+ * Applied as `.select(scopeSelect(cols, scope))` followed by the two
+ * `.eq("campaign_leads.leads.…")` filters — inlined at each call site rather
+ * than wrapped in a helper, because a generic query-builder wrapper makes
+ * tsc give up with "type instantiation is excessively deep".
+ */
+const SCOPE_EMBED = "campaign_leads!inner(leads!inner(assigned_to, is_deleted))";
 
-/** PostgREST filter value for the scope; null when the scope allows nothing. */
-function scopeOrFilter(scope: UniboxScope): string | null {
-  if (scope.campaign_lead_ids.length === 0) return null;
-  return `campaign_lead_id.in.(${scope.campaign_lead_ids.join(",")})`;
-}
+const scopeSelect = (cols: string, scope: UniboxScope | undefined) =>
+  scope ? `${cols}, ${SCOPE_EMBED}` : cols;
+
+/**
+ * A unibox_emails row as read here. Untyped on purpose: this client carries no
+ * schema generic (rows were already `any` before), and building the select
+ * string conditionally defeats supabase-js's select-string inference.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type UniboxEmailRow = Record<string, any>;
 
 /** Strip characters that would break out of a PostgREST `.or(...ilike...)` filter. */
 function sanitizeSearch(raw: string): string {
@@ -541,14 +559,16 @@ export async function getThreads(db: Db, filters: {
   counts: { unread_total: number };
 }> {
   const limit = filters.limit ?? 30;
-  const EMPTY = { threads: [], next_cursor: null, counts: { unread_total: 0 } };
 
-  let query = db.from("unibox_emails").select("*").not("thread_id", "is", null);
+  let query = db
+    .from("unibox_emails")
+    .select(scopeSelect("*", filters.scope))
+    .not("thread_id", "is", null);
 
   if (filters.scope) {
-    const orFilter = scopeOrFilter(filters.scope);
-    if (!orFilter) return EMPTY;
-    query = query.or(orFilter);
+    query = query
+      .eq("campaign_leads.leads.assigned_to", filters.scope.assigned_to)
+      .eq("campaign_leads.leads.is_deleted", false);
   }
 
   if (filters.campaign_ids && filters.campaign_ids.length > 0) {
@@ -569,8 +589,12 @@ export async function getThreads(db: Db, filters: {
     nameMatchEmails = new Set((nameHits ?? []).map((l) => (l.email as string).toLowerCase()));
   }
 
-  const { data: rows } = await query.order("timestamp_email", { ascending: false }).limit(2000);
-  const all = rows ?? [];
+  const { data: rows, error } = await query.order("timestamp_email", { ascending: false }).limit(2000);
+  // Never swallow this. Reading a failed request as "no rows" is what turned a
+  // rejected over-long URL into a silently empty inbox that looked like the
+  // filters were broken — an error the user can see is far cheaper to diagnose.
+  if (error) throw new Error(`unibox getThreads query failed: ${error.message}`);
+  const all = (rows ?? []) as UniboxEmailRow[];
 
   const threadMap = new Map<string, typeof all>();
   for (const r of all) {
@@ -582,15 +606,22 @@ export async function getThreads(db: Db, filters: {
 
   // Include threads whose lead email matches a name search even if email row didn't match query filter
   if (nameMatchEmails.size > 0) {
-    const { data: extraRows } = await db
+    let extraQuery = db
       .from("unibox_emails")
-      .select("*")
+      .select(scopeSelect("*", filters.scope))
       .not("thread_id", "is", null)
       .in("lead_email", [...nameMatchEmails]);
-    for (const r of extraRows ?? []) {
+
+    if (filters.scope) {
+      extraQuery = extraQuery
+        .eq("campaign_leads.leads.assigned_to", filters.scope.assigned_to)
+        .eq("campaign_leads.leads.is_deleted", false);
+    }
+
+    const { data: extraRows } = await extraQuery;
+    for (const r of (extraRows ?? []) as UniboxEmailRow[]) {
       if (!r.thread_id) continue;
       if (filters.tab && !matchesTab(filters.tab, { is_focused: r.is_focused, is_auto_reply: r.is_auto_reply })) continue;
-      if (!scopeMatches(r, filters.scope)) continue;
       if (!campaignMatches(r.campaign_id, filters)) continue;
       if (filters.eaccount && r.eaccount !== filters.eaccount) continue;
       if (!threadMap.has(r.thread_id)) threadMap.set(r.thread_id, []);
@@ -839,15 +870,18 @@ export async function hydrateThreadIfStale(db: Db, threadId: string): Promise<vo
 export async function getUnreadCount(db: Db, scope?: UniboxScope): Promise<number> {
   let q = db
     .from("unibox_emails")
-    .select("thread_id", { count: "exact", head: true })
+    .select(scopeSelect("thread_id", scope), { count: "exact", head: true })
     .eq("is_unread", true)
     .eq("direction", "received");
+
   if (scope) {
-    const orFilter = scopeOrFilter(scope);
-    if (!orFilter) return 0;
-    q = q.or(orFilter);
+    q = q
+      .eq("campaign_leads.leads.assigned_to", scope.assigned_to)
+      .eq("campaign_leads.leads.is_deleted", false);
   }
-  const { count } = await q;
+
+  const { count, error } = await q;
+  if (error) console.error("[unibox] unread count query failed:", error.message);
   return count ?? 0;
 }
 
