@@ -26,9 +26,11 @@ function ThreadRowSkeleton() {
 
 type Props = {
   threads: UniboxThreadSummary[];
+  threadsTotal: number | null;
   selectedId: string | null;
   search: string;
   loading: boolean;
+  loadingMore?: boolean;
   readState: UniboxReadStateFilter;
   interest: UniboxInterestFilter;
   unreadTotal: number;
@@ -47,7 +49,7 @@ type Props = {
 };
 
 export function UniboxThreadList({
-  threads, selectedId, search, loading, readState, interest, unreadTotal,
+  threads, threadsTotal, selectedId, search, loading, loadingMore, readState, interest, unreadTotal,
   campaignIds, campaigns, eaccount, eaccounts, onCampaigns, onEaccount,
   onReadState, onInterest, onSearch, onSelect, onLoadMore, hasMore,
 }: Props) {
@@ -84,7 +86,11 @@ export function UniboxThreadList({
         <div className="px-6 py-3 border-b border-border shrink-0 bg-background">
           <div className="flex items-center justify-between gap-2 mb-2">
             <p className="eyebrow">
-              {threads.length > 0 ? `${threads.length} thread${threads.length === 1 ? "" : "s"}` : "Conversations"}
+              {threadsTotal !== null
+                ? `${threadsTotal} thread${threadsTotal === 1 ? "" : "s"}`
+                : loading
+                  ? "…"
+                  : "Conversations"}
             </p>
             {unreadTotal > 0 && (
               <p className="font-mono text-[11px] tabular-nums text-primary">{unreadTotal} unread</p>
@@ -168,10 +174,21 @@ export function UniboxThreadList({
               })}
             </div>
           )}
-          {hasMore && (
-            <Button type="button" variant="link" size="sm" onClick={onLoadMore} className="w-full text-xs h-auto py-2.5">
-              Load more
-            </Button>
+          {hasMore && threadsTotal !== null && (
+            <div className="flex justify-center pt-3">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={onLoadMore}
+                disabled={loadingMore}
+                className="h-8 text-xs"
+              >
+                {loadingMore
+                  ? "Loading…"
+                  : `Show more (${threads.length} of ${threadsTotal})`}
+              </Button>
+            </div>
           )}
         </div>
       </div>

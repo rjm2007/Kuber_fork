@@ -556,7 +556,7 @@ export async function getThreads(db: Db, filters: {
 }): Promise<{
   threads: UniboxThreadSummary[];
   next_cursor: string | null;
-  counts: { unread_total: number };
+  counts: { unread_total: number; total: number };
 }> {
   const limit = filters.limit ?? 30;
 
@@ -747,7 +747,7 @@ export async function getThreads(db: Db, filters: {
   const page = visible.slice(start, start + limit);
   const next_cursor = start + limit < visible.length ? page[page.length - 1]?.latest_at ?? null : null;
 
-  return { threads: page, next_cursor, counts: { unread_total } };
+  return { threads: page, next_cursor, counts: { unread_total, total: visible.length } };
 }
 
 export async function getThreadMessages(db: Db, threadId: string): Promise<{

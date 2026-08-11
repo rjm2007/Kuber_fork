@@ -69,10 +69,12 @@ export function UniboxClient() {
   const [interest, setInterest] = useState<UniboxInterestFilter>(() => parseInterestParam(searchParams.get("interest")));
   const [unreadTotal, setUnreadTotal] = useState(0);
   const [threads, setThreads] = useState<UniboxThreadSummary[]>([]);
+  const [threadsTotal, setThreadsTotal] = useState<number | null>(null);
   const [cursor, setCursor] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [view, setView] = useState<"list" | "detail">("list");
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [campaigns, setCampaigns] = useState<Array<{ id: string; name: string }>>([]);
   const [threadDetail, setThreadDetail] = useState<Awaited<ReturnType<typeof fetchUniboxThread>> | null>(null);
@@ -120,7 +122,8 @@ export function UniboxClient() {
     loadThreadsAbortRef.current?.abort();
     const controller = new AbortController();
     loadThreadsAbortRef.current = controller;
-    setLoading(!append);
+    if (append) setLoadingMore(true);
+    else setLoading(true);
     // Clear the old list right away on a fresh (non-append) load so a filter
     // change never shows the previous filter's results while the new request
     // is in flight — it should read as "cleared, then repopulated", not
@@ -128,12 +131,14 @@ export function UniboxClient() {
     if (!append) {
       setThreads([]);
       setCursor(null);
+      setThreadsTotal(null);
     }
     try {
       const params: Record<string, string | undefined> = {
         eaccount: eaccount ?? undefined,
         q: debouncedSearch || undefined,
         cursor: append && cursor ? cursor : undefined,
+        limit: "30",
       };
       if (campaignIds.length > 0) {
         params.campaign_ids = campaignIds.join(",");
@@ -149,12 +154,16 @@ export function UniboxClient() {
       if (controller.signal.aborted) return;
       setThreads((prev) => (append ? [...prev, ...data.threads] : data.threads));
       setCursor(data.next_cursor);
+      setThreadsTotal(data.counts.total);
       if (!append) setUnreadTotal(data.counts.unread_total);
     } catch (e) {
       if (controller.signal.aborted || (e as Error).name === "AbortError") return;
       toast.error((e as Error).message);
     } finally {
-      if (!controller.signal.aborted) setLoading(false);
+      if (!controller.signal.aborted) {
+        setLoading(false);
+        setLoadingMore(false);
+      }
     }
   }, [token, campaignIds, eaccount, debouncedSearch, readState, interest, cursor]);
 
@@ -317,9 +326,11 @@ export function UniboxClient() {
         ) : (
           <UniboxThreadList
             threads={threads}
+            threadsTotal={threadsTotal}
             selectedId={selectedId}
             search={search}
             loading={loading}
+            loadingMore={loadingMore}
             readState={readState}
             interest={interest}
             unreadTotal={unreadTotal}

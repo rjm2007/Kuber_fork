@@ -1476,7 +1476,7 @@ export async function fetchUniboxThreads(
   token: string,
   params: Record<string, string | undefined> = {},
   signal?: AbortSignal,
-): Promise<{ threads: UniboxThreadSummary[]; next_cursor: string | null; counts: { unread_total: number } }> {
+): Promise<{ threads: UniboxThreadSummary[]; next_cursor: string | null; counts: { unread_total: number; total: number } }> {
   const qs = new URLSearchParams();
   for (const [k, v] of Object.entries(params)) {
     if (v) qs.set(k, v);
