@@ -50,20 +50,20 @@ export function CampaignKanban({
           return (
             <div
               key={col.id}
-              className="shrink-0 flex flex-col gap-2"
+              className="shrink-0 flex flex-col gap-2 min-h-0 self-stretch"
               style={{
                 width: `calc((100% - ${(COL_COUNT - 1) * 8}px) / ${COL_COUNT})`,
                 minWidth: "180px",
               }}
             >
-              <div className={cn("swatch-bar overflow-hidden flex items-center gap-1.5 px-2.5 py-2 rounded-lg border bg-card", col.header)}>
+              <div className={cn("swatch-bar overflow-hidden flex items-center gap-1.5 px-2.5 py-2 rounded-lg border bg-card shrink-0", col.header)}>
                 <span className={cn("size-2 rounded-full shrink-0", col.dot)} />
                 <span className="eyebrow truncate text-foreground/80!">{col.label}</span>
                 <span className="ml-auto font-mono text-[10px] font-medium text-muted-foreground bg-secondary rounded-full px-1.5 py-0.5 tabular-nums shrink-0">
                   {colLeads.length}
                 </span>
               </div>
-              <div className="flex flex-col gap-1.5 flex-1 min-h-[120px]">
+              <div className="flex flex-col gap-1.5 flex-1 min-h-0 overflow-y-auto">
                 {colLeads.map((cl) => {
                   const lead = cl.leads;
                   const name = [lead?.first_name, lead?.last_name].filter(Boolean).join(" ") || "Unknown";
@@ -74,7 +74,7 @@ export function CampaignKanban({
                     <div
                       key={cl.id}
                       className={cn(
-                        "rounded-lg border bg-card p-2.5 cursor-pointer transition-colors overflow-hidden",
+                        "shrink-0 rounded-lg border bg-card p-2.5 cursor-pointer transition-colors overflow-hidden",
                         isFailed ? "border-red-500/50" : "border-border",
                         isSelected ? "swatch-bar ring-1 ring-primary/50 bg-primary/5" : "hover:bg-secondary/40",
                       )}
