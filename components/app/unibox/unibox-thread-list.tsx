@@ -82,8 +82,8 @@ export function UniboxThreadList({
         </div>
       </div>
 
-      <div className="flex-1 min-w-0 h-full flex flex-col bg-secondary/20">
-        <div className="px-6 py-3 border-b border-border shrink-0 bg-background">
+      <div className="flex-1 min-w-0 h-full flex flex-col bg-secondary/30">
+        <div className="px-6 py-3 border-b border-border shrink-0">
           <div className="flex items-center justify-between gap-2 mb-2">
             <p className="eyebrow">
               {threadsTotal !== null
@@ -116,6 +116,7 @@ export function UniboxThreadList({
               onChange={onSearch}
               placeholder="Search by lead name…"
               wrapperClassName="flex-1 max-w-xl"
+              className="bg-card"
             />
           </div>
         </div>

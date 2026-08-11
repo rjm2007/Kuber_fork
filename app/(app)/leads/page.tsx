@@ -1018,7 +1018,7 @@ export default function LeadsPage() {
             />
           )}
           <Button
-            variant="outline" size="sm" className="gap-1.5"
+            variant="outline" size="sm" className="gap-1.5 bg-card"
             disabled={loadingLeads}
             onClick={() => {
               if (!session) return;
@@ -1044,13 +1044,14 @@ export default function LeadsPage() {
 
       {/* ── Search + Columns toolbar ── */}
       {(leadsEntityMode === "orgs" || (leadsEntityMode === "individual" && (leadsViewMode === "list" || leadsViewMode === "kanban"))) && (
-        <div className="flex items-center gap-3 px-8 py-3 border-b border-border shrink-0">
+        <div className="flex items-center gap-3 px-8 py-3 border-b border-border shrink-0 bg-secondary/30">
           <SearchInput
             value={searchQuery}
             onChange={setSearchQuery}
             placeholder={leadsEntityMode === "orgs" ? "Search organizations…" : "Search leads or organization…"}
             size="sm"
             wrapperClassName="flex-1 max-w-xs"
+            className="bg-card"
           />
           {leadsEntityMode === "individual" && someChecked && role === "manager" && (
             <Button
@@ -1062,7 +1063,7 @@ export default function LeadsPage() {
           )}
           <div className="ml-auto flex items-center gap-3">
             <Select value={leadsSort} onValueChange={(value) => setLeadsSort(value as LeadsSort)}>
-              <SelectTrigger className="h-8 w-36 gap-2 rounded-md border-border px-3 text-xs shadow-sm">
+              <SelectTrigger className="h-8 w-36 gap-2 rounded-md border-border bg-card px-3 text-xs shadow-sm">
                 <SelectValue placeholder="Sort by" />
               </SelectTrigger>
               <SelectContent align="end" className="min-w-36">
