@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { mapDbCampaign, type DbCampaign } from "@/lib/mappers";
-import { employeeCampaignIds } from "@/lib/auth/scope";
+import { employeeCampaignIds, campaignsEditableByEmployee } from "@/lib/auth/scope";
 import { computeCampaignStats } from "@/lib/campaign-status";
 
 type StatsRow = {
@@ -63,7 +63,10 @@ export async function getCampaigns(db: SupabaseClient, scopedUserId?: string) {
       .order("created_at", { ascending: false });
     if (error) throw new Error(error.message);
     const scoped = await overlayEmployeeStats(db, (data ?? []) as unknown as DbCampaign[], scopedUserId);
-    return scoped.map((c) => mapDbCampaign(c));
+    // Mirrors the REST list route: an employee may edit the shared
+    // Options/Sequences only of campaigns no other employee is part of.
+    const editable = await campaignsEditableByEmployee(db, scopedUserId, ids);
+    return scoped.map((c) => mapDbCampaign({ ...c, can_edit_settings: editable.has(c.id) }));
   }
 
   const { data, error } = await db
@@ -72,7 +75,8 @@ export async function getCampaigns(db: SupabaseClient, scopedUserId?: string) {
     .eq("is_deleted", false)
     .order("created_at", { ascending: false });
   if (error) throw new Error(error.message);
-  return (data ?? []).map((c) => mapDbCampaign(c as unknown as DbCampaign));
+  // No scopedUserId means a manager — they administer every campaign.
+  return (data ?? []).map((c) => mapDbCampaign({ ...(c as unknown as DbCampaign), can_edit_settings: true }));
 }
 
 /** Fetch one campaign. When `scopedUserId` is given (employee), overlay
@@ -87,7 +91,8 @@ export async function getCampaign(db: SupabaseClient, id: string, scopedUserId?:
   if (error) throw new Error(error.message);
   if (scopedUserId) {
     const [scoped] = await overlayEmployeeStats(db, [data as unknown as DbCampaign], scopedUserId);
-    return mapDbCampaign(scoped);
+    const editable = await campaignsEditableByEmployee(db, scopedUserId, [id]);
+    return mapDbCampaign({ ...scoped, can_edit_settings: editable.has(id) });
   }
-  return mapDbCampaign(data as unknown as DbCampaign);
+  return mapDbCampaign({ ...(data as unknown as DbCampaign), can_edit_settings: true });
 }

@@ -1,9 +1,9 @@
 import { NextRequest } from "next/server";
-import { requireManager } from "@/lib/auth/api-auth";
+import { requireAuth } from "@/lib/auth/api-auth";
 import { ok, fail } from "@/lib/api-response";
 import { PatchCampaignSchema } from "@/lib/validators/campaigns";
 import { patchInstantlyCampaignConfig } from "@/lib/services/instantly";
-import { assertCampaignAccess } from "@/lib/auth/scope";
+import { assertCampaignSettingsAccess } from "@/lib/auth/scope";
 import { dbForUser } from "@/lib/supabase/scoped";
 
 // PATCH /api/v1/campaigns/[id]/config
@@ -12,14 +12,17 @@ import { dbForUser } from "@/lib/supabase/scoped";
 // restricted to draft/processing status — schedule settings (daily limit, send
 // window, days) are safe to change on active campaigns.
 //
-// Manager-only: a campaign is a shared container (spec §5) that can hold leads
-// owned by several employees at once. These settings (sender identity, daily
-// limit, sending window, send days) are campaign-wide, not per-lead-owner — if
-// any assignee could edit them, they'd silently change what every other
-// teammate's leads in the same campaign send under. See EDGE_CASES.md §2.10.
+// A campaign is a shared container (spec §5) that can hold leads owned by
+// several employees at once. These settings (sender identity, daily limit,
+// sending window, send days) are campaign-wide, not per-lead-owner, so whoever
+// edits them changes what every lead in the container sends under.
+//
+// Managers may always edit. An employee may edit only a campaign no other
+// employee is part of — there, the only leads affected are their own. See
+// EDGE_CASES.md §2.10.
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  let user: Awaited<ReturnType<typeof requireManager>>;
-  try { user = await requireManager(req); } catch (r) { return r as Response; }
+  let user: Awaited<ReturnType<typeof requireAuth>>;
+  try { user = await requireAuth(req); } catch (r) { return r as Response; }
 
   const { id } = await params;
   const body = await req.json().catch(() => null);
@@ -27,7 +30,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (!parsed.success) return fail(400, "VALIDATION_ERROR", "Invalid request", parsed.error.flatten());
 
   const db = dbForUser(user);
-  try { await assertCampaignAccess(db, user, id); } catch (r) { return r as Response; }
+  try { await assertCampaignSettingsAccess(db, user, id); } catch (r) { return r as Response; }
 
   const { data: existing } = await db.from("campaigns").select("id").eq("id", id).maybeSingle();
   if (!existing) return fail(404, "NOT_FOUND", "Campaign not found");

@@ -45,6 +45,13 @@ export type Campaign = {
   followupDays?: number[];
   createdBy?: string;
   assignedTo?: string | null;
+  /**
+   * Whether this viewer may edit the campaign's shared Options/Sequences.
+   * Decided by the server, never by role alone: a manager always may, and an
+   * employee may only on a campaign no other employee is part of
+   * (EDGE_CASES.md §2.10).
+   */
+  canEditSettings?: boolean;
 };
 
 function DayPill({ day, active, onClick }: { day: string; active: boolean; onClick: () => void }) {

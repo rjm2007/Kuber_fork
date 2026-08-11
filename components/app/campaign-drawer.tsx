@@ -497,10 +497,12 @@ export function CampaignDetail({
 
   const { loadCampaigns, session: appSession, role } = useApp();
   // Options/Sequences are shared campaign-wide settings (spec §5 — a campaign
-  // is a container that can hold leads owned by several employees at once), so
-  // only managers may edit them; an employee editing here would silently change
-  // what every other teammate's leads in the same campaign send under.
-  const isManager = role === "manager";
+  // is a container that can hold leads owned by several employees at once).
+  // Managers may always edit them. An employee may only when they are the sole
+  // employee in this campaign; otherwise editing would silently change what a
+  // teammate's leads send under. The server decides (can_edit_settings) and
+  // re-checks on write — this only mirrors its verdict into the controls.
+  const canEditSettings = role === "manager" || campaign.canEditSettings === true;
 
   const loadComments = useCallback(async (campaignId: string, quiet = false) => {
     if (!appSession?.access_token) return;
@@ -1325,7 +1327,7 @@ export function CampaignDetail({
   }
 
   async function handleSaveSeqDraft() {
-    if (!activeSeqStep || !isManager) return;
+    if (!activeSeqStep || !canEditSettings) return;
     setSeqStepSaving(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -1349,7 +1351,7 @@ export function CampaignDetail({
   }
 
   async function handleRegenerateSeqDraft() {
-    if (!activeSeqStep || !isManager) return;
+    if (!activeSeqStep || !canEditSettings) return;
     setSeqRegenerating(true);
     setSeqRegenOpen(false);
     try {
@@ -2852,7 +2854,7 @@ export function CampaignDetail({
                       ) : null;
                     })()}
                   </div>
-                  {seqHasContent && isManager && (
+                  {seqHasContent && canEditSettings && (
                     <div className="flex items-center gap-2">
                       <Button
                         type="button"
@@ -2892,7 +2894,7 @@ export function CampaignDetail({
                       <Label className="eyebrow">Subject</Label>
                       <Input
                         value={seqSubjectEdit}
-                        disabled={!isManager}
+                        disabled={!canEditSettings}
                         onChange={(e) => setSeqSubjectEdit(e.target.value)}
                         placeholder="No subject (threaded reply)"
                         className="text-sm"
@@ -2903,12 +2905,12 @@ export function CampaignDetail({
                       <RichTextEditor
                         value={seqBodyEdit}
                         onChange={setSeqBodyEdit}
-                        disabled={!isManager}
+                        disabled={!canEditSettings}
                         minHeight={280}
                         showTemplateVars
                       />
                     </div>
-                    {seqRegenOpen && isManager && (
+                    {seqRegenOpen && canEditSettings && (
                       <div className="rounded-lg border border-border bg-secondary/30 p-4 space-y-2">
                         <Input
                           value={seqRegenQuery}
@@ -2934,7 +2936,7 @@ export function CampaignDetail({
                 )}
 
                 <div className="border-t border-border pt-4">
-                  <SharedSettingsNotice readOnly={!isManager} />
+                  <SharedSettingsNotice readOnly={!canEditSettings} />
                 </div>
               </div>
             )}
@@ -2948,7 +2950,7 @@ export function CampaignDetail({
           <EditCampaignForm
             variant="page"
             campaign={campaign}
-            readOnly={!isManager}
+            readOnly={!canEditSettings}
             onSaved={() => {
               if (appSession?.access_token) void loadCampaigns(appSession.access_token);
             }}

@@ -74,6 +74,107 @@ export async function assertCampaignAccess(db: Db, user: AuthedUser, campaignId:
   throw fail(404, "NOT_FOUND", "Campaign not found");
 }
 
+/**
+ * The employees a campaign belongs to: every employee who owns a lead in it,
+ * plus its creator and its assignee when those are employees — a campaign
+ * someone built but has not put leads in yet is still theirs.
+ *
+ * Managers are deliberately NOT counted. They administer every campaign, so
+ * counting them would make every manager-created container permanently
+ * "multi-employee" and lock out the one employee actually working it.
+ *
+ * Batched (a map per campaign id) because the campaigns list needs this for
+ * every row it renders, not one campaign at a time.
+ */
+export async function campaignEmployeeOwners(
+  db: Db,
+  campaignIds: string[],
+): Promise<Map<string, Set<string>>> {
+  const owners = new Map<string, Set<string>>(campaignIds.map((id) => [id, new Set<string>()]));
+  if (campaignIds.length === 0) return owners;
+
+  const [{ data: camps }, { data: cls }] = await Promise.all([
+    db.from("campaigns").select("id, created_by, assigned_to").in("id", campaignIds),
+    db.from("campaign_leads")
+      .select("campaign_id, leads!inner(assigned_to, is_deleted)")
+      .in("campaign_id", campaignIds)
+      .eq("leads.is_deleted", false),
+  ]);
+
+  const add = (campaignId: string | null, userId: string | null) => {
+    if (!campaignId || !userId) return;
+    owners.get(campaignId)?.add(userId);
+  };
+
+  for (const c of camps ?? []) {
+    add(c.id as string, c.created_by as string | null);
+    add(c.id as string, (c as { assigned_to?: string | null }).assigned_to ?? null);
+  }
+  type OwnerRow = { campaign_id: string | null; leads: { assigned_to: string | null } | null };
+  for (const cl of (cls ?? []) as unknown as OwnerRow[]) {
+    add(cl.campaign_id, cl.leads?.assigned_to ?? null);
+  }
+
+  // Keep only the employees among the ids gathered above.
+  const everyone = [...new Set([...owners.values()].flatMap((s) => [...s]))];
+  if (everyone.length === 0) return owners;
+  const { data: employees } = await db
+    .from("profiles").select("id").eq("role", "employee").in("id", everyone);
+  const isEmployee = new Set((employees ?? []).map((p) => p.id as string));
+
+  for (const set of owners.values()) {
+    for (const id of set) if (!isEmployee.has(id)) set.delete(id);
+  }
+  return owners;
+}
+
+/**
+ * Of the given campaigns, the ones whose shared Options/Sequences this employee
+ * may edit: those no OTHER employee is part of (spec §5 — a campaign is a
+ * container). Alone in a campaign, editing only ever changes their own leads'
+ * sending, so there is nobody to surprise. Share it with a teammate and it goes
+ * back to manager-only.
+ */
+export async function campaignsEditableByEmployee(
+  db: Db,
+  userId: string,
+  campaignIds: string[],
+): Promise<Set<string>> {
+  const owners = await campaignEmployeeOwners(db, campaignIds);
+  const editable = new Set<string>();
+  for (const [campaignId, involved] of owners) {
+    if ([...involved].every((id) => id === userId)) editable.add(campaignId);
+  }
+  return editable;
+}
+
+/**
+ * Throws unless the caller may edit campaign-wide settings — Options (sender
+ * identity, daily limit, sending window, send days) and Sequences (step
+ * subject/body). Both propagate live to every Instantly sub-campaign, i.e. to
+ * every lead in the container.
+ *
+ * Managers always may. An employee may only when they are the sole employee in
+ * the campaign — otherwise they'd silently change what a teammate's leads send
+ * under. See EDGE_CASES.md §2.10.
+ */
+export async function assertCampaignSettingsAccess(
+  db: Db,
+  user: AuthedUser,
+  campaignId: string,
+): Promise<void> {
+  await assertCampaignAccess(db, user, campaignId);
+  if (user.role !== "employee") return;
+
+  const editable = await campaignsEditableByEmployee(db, user.id, [campaignId]);
+  if (editable.has(campaignId)) return;
+  throw fail(
+    403,
+    "FORBIDDEN",
+    "This campaign holds another teammate's leads, so only a manager can change its settings.",
+  );
+}
+
 /** True when the underlying lead of a campaign_lead is assigned to this employee. */
 async function ownsCampaignLead(db: Db, userId: string, campaignLeadId: string): Promise<boolean> {
   const { data } = await db

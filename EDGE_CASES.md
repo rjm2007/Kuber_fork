@@ -47,14 +47,29 @@ Whether an employee can approve/reject/edit an initial-outreach draft is gated b
 **Resolved.** Under the container model (§5), a campaign's Options (sender identity,
 daily limit, sending window, send days, follow-up schedule — `PATCH
 /campaigns/[id]/config`) and Sequences (step subject/body — `PUT
-/campaigns/[id]/steps`) are now **manager-only writes** (`requireManager`), since
-these settings are campaign-wide and propagate live to every Instantly
-sub-campaign, i.e. to every teammate's leads in the container, not just the
-editor's own. Employees still have read-only access (GET stays open) so they can
-see what's being sent. The Options and Sequences tabs (`campaign-drawer.tsx`,
-`edit-campaign-modal.tsx`) render every control disabled for non-managers with an
-inline notice explaining why, and managers see a lighter reminder that changes
-are shared across the whole campaign.
+/campaigns/[id]/steps`) are campaign-wide: they propagate live to every Instantly
+sub-campaign, i.e. to every lead in the container, not just the editor's own.
+
+Both writes therefore go through `assertCampaignSettingsAccess`:
+
+- **Managers** may always edit.
+- **An employee** may edit only a campaign **no other employee is part of**. Alone
+  in the container, the only sending they can change is their own leads', so there
+  is nobody to surprise. The moment a teammate's lead joins it, the campaign
+  reverts to manager-only.
+
+"Employees in a campaign" (`campaignEmployeeOwners`) means every employee who owns
+a lead in it, plus its creator and assignee when those are employees — so a
+campaign someone built but has not filled with leads yet is still theirs. Managers
+are deliberately not counted, or every manager-created container would be
+permanently multi-employee and lock out the one employee working it.
+
+Employees always keep read-only access (GET stays open) so they can see what is
+being sent. The Options and Sequences tabs (`campaign-drawer.tsx`,
+`edit-campaign-modal.tsx`) key off the server's `can_edit_settings` flag on the
+campaign payload rather than the viewer's role, disabling every control with an
+inline notice when it is false. The flag is a UI hint only — the two write routes
+re-check server-side.
 
 ---
 

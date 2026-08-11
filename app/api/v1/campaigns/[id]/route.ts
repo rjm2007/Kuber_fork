@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/auth/api-auth";
 import { ok, fail } from "@/lib/api-response";
 import { PatchCampaignSchema } from "@/lib/validators/campaigns";
-import { assertCampaignAccess } from "@/lib/auth/scope";
+import { assertCampaignAccess, campaignsEditableByEmployee } from "@/lib/auth/scope";
 import { deleteCampaignInstantly } from "@/lib/services/campaign-lifecycle";
 import { computeCampaignStats } from "@/lib/campaign-status";
 import { dbForUser } from "@/lib/supabase/scoped";
@@ -45,7 +45,13 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     ? { ...campaign, ...computeCampaignStats(memberships ?? []) }
     : campaign;
 
-  return ok({ ...scopedCampaign, memberships: memberships ?? [] });
+  // Whether the caller may edit the shared Options/Sequences (EDGE_CASES.md
+  // §2.10). Always true for a manager; for an employee, only when no other
+  // employee has leads in this container.
+  const can_edit_settings = user.role !== "employee"
+    || (await campaignsEditableByEmployee(db, user.id, [id])).has(id);
+
+  return ok({ ...scopedCampaign, can_edit_settings, memberships: memberships ?? [] });
 }
 
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

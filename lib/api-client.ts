@@ -133,6 +133,8 @@ export interface DbCampaign {
   sender_name: string | null;
   hot_count: number;
   cold_count: number;
+  /** Server's verdict on whether the caller may edit Options/Sequences (EDGE_CASES.md §2.10). */
+  can_edit_settings?: boolean;
   // followup_day_2 / followup_day_3 are kept as nullable columns in the DB but
   // no longer written on creation — step delays now live in campaign_steps rows.
   followup_day_2: number | null;
@@ -182,6 +184,10 @@ export function mapDbLead(l: DbLead): Lead {
   };
 }
 
+// ponytail: second copy of lib/mappers.ts mapDbCampaign (and of DbCampaign
+// above), kept in sync by hand — they already disagree on attachmentName /
+// assignedTo. Collapse to the mappers.ts one if a third field has to be added
+// in two places.
 export function mapDbCampaign(c: DbCampaign): Campaign {
   const statusMap: Record<string, Campaign["status"]> = {
     draft: "Draft", processing: "Draft", active: "Live", paused: "Paused", completed: "Live", archived: "Paused",
@@ -205,6 +211,9 @@ export function mapDbCampaign(c: DbCampaign): Campaign {
     hot: c.hot_count ?? 0,
     cold: c.cold_count ?? 0,
     createdBy: c.created_by,
+    // Absent (an older payload) means "not allowed" — never assume edit rights
+    // the server did not grant.
+    canEditSettings: c.can_edit_settings === true,
   };
 }
 

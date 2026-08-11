@@ -3,7 +3,7 @@ import { requireAuth } from "@/lib/auth/api-auth";
 import { ok, fail } from "@/lib/api-response";
 import { CreateCampaignSchema } from "@/lib/validators/campaigns";
 import { buildDefaultCampaignSteps } from "@/lib/constants";
-import { getAccessibleCampaignIds } from "@/lib/auth/scope";
+import { getAccessibleCampaignIds, campaignsEditableByEmployee } from "@/lib/auth/scope";
 import { computeCampaignStats } from "@/lib/campaign-status";
 import { dbForUser } from "@/lib/supabase/scoped";
 
@@ -47,6 +47,11 @@ export async function GET(req: NextRequest) {
       byCampaign.set(row.campaign_id as string, list);
     }
 
+    // Which of these the employee may edit the shared Options/Sequences of:
+    // the ones no other employee is part of (EDGE_CASES.md §2.10). The UI needs
+    // it per card to know whether to render those tabs editable.
+    const editable = await campaignsEditableByEmployee(db, user.id, ids);
+
     const scoped = (data ?? []).map((c) => {
       const stats = computeCampaignStats(byCampaign.get(c.id as string) ?? []);
       return {
@@ -56,6 +61,7 @@ export async function GET(req: NextRequest) {
         replied_count: stats.replied_count,
         hot_count: stats.hot_count,
         cold_count: stats.cold_count,
+        can_edit_settings: editable.has(c.id as string),
       };
     });
 
@@ -69,7 +75,8 @@ export async function GET(req: NextRequest) {
     .order("created_at", { ascending: false });
 
   if (error) return fail(500, "INTERNAL", error.message);
-  return ok({ campaigns: data });
+  // Managers administer every campaign, so this is always true for them.
+  return ok({ campaigns: (data ?? []).map((c) => ({ ...c, can_edit_settings: true })) });
 }
 
 // Any authenticated user may create a campaign. An employee only ever sees
@@ -119,6 +126,13 @@ export async function POST(req: NextRequest) {
 
   if (error) return fail(500, "INTERNAL", error.message);
 
+  // A campaign that was just created holds nobody else's leads yet, so its
+  // creator can always edit its settings. Stated explicitly because the client
+  // maps this response straight into a campaign card, and a missing flag reads
+  // as "not allowed" — which would leave the creator locked out of the Options
+  // tab until the next list refresh.
+  const created = { ...data, can_edit_settings: true };
+
   // Build sequence steps dynamically from the requested follow-up delays.
   const followupSteps = Array.isArray(parsed.data.followup_steps) && parsed.data.followup_steps.length > 0
     ? parsed.data.followup_steps
@@ -133,5 +147,5 @@ export async function POST(req: NextRequest) {
     }))
   );
 
-  return ok(data);
+  return ok(created);
 }

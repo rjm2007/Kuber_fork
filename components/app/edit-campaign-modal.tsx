@@ -73,11 +73,11 @@ export function SharedSettingsNotice({ readOnly, className }: { readOnly: boolea
       </span>
       <span>
         {readOnly
-          ? "Only managers can edit campaign options. These settings are shared by the whole campaign — every teammate's leads in it send under them."
+          ? "This campaign holds another teammate's leads, so only a manager can change its settings — they are shared by the whole campaign, and every lead in it sends under them."
           : (
             <>
               <span className="font-medium">Shared campaign settings</span>
-              {" — changes here apply to every teammate's leads in this campaign, not just your own."}
+              {" — changes here apply to every lead in this campaign, not just the ones you are looking at."}
             </>
           )}
       </span>
