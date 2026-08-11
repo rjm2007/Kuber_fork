@@ -80,15 +80,18 @@
 }
 
 /* ── Surface ladder ───────────────────────────────────────────────────────────
-   Each level must be visibly lighter than the one it sits on. Reusing a level's
-   fill on top of itself (e.g. bg-secondary/20 inside a bg-card drawer) makes the
-   nested element disappear — pick the next level down instead.
+   Each level must be visibly different from the one it sits on. Reusing a
+   level's fill on top of itself (e.g. bg-card inputs inside a bg-card panel,
+   or bg-secondary/20 inside a bg-card drawer) makes the nested element
+   disappear — pick the next level instead.
 
-     page      bg-background          (3.9%)
-     panel     bg-card + rounded-xl   (7%)    — top-level card on the page
-     section   bg-secondary/30        (~9.4%) — nested inside a panel, drawer, or modal
-     modal     bg-card + rounded-2xl  (7%)    — Dialog default; sections inside it are still bg-secondary/30
-     field     bg-card                (7%)    — Input / Select / Textarea default; do not override
+     page      bg-background                 — page chrome
+     panel     bg-card + rounded-xl          — top-level card on the page
+     section   bg-secondary/30               — nested inside a panel, drawer, or modal
+     modal     bg-card + rounded-2xl         — Dialog default; sections inside still bg-secondary/30
+     field     bg-background                 — Input / Select / Textarea / field-like triggers
+                                             MUST contrast with the surrounding panel.
+                                             Never put bg-card fields on bg-card panels.
    ──────────────────────────────────────────────────────────────────────────── */
 
 * { border-color: var(--border); }

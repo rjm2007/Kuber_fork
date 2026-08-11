@@ -78,7 +78,7 @@ export function TagInput({
         {tip && <InfoTip text={tip} side="right" />}
       </div>
       <div
-        className="relative min-h-9 flex flex-wrap gap-1.5 items-center rounded-md border border-input bg-card px-3 py-2 cursor-text focus-within:ring-1 focus-within:ring-ring focus-within:border-transparent transition-shadow"
+        className="relative min-h-9 flex flex-wrap gap-1.5 items-center rounded-md border border-input bg-background px-3 py-2 cursor-text focus-within:ring-1 focus-within:ring-ring focus-within:border-transparent transition-shadow"
         onClick={() => !maxReached && inputRef.current?.focus()}
       >
         {pills.map((p) => (

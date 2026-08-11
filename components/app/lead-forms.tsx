@@ -160,7 +160,7 @@ function AssignToField({
     <div className="space-y-1.5">
       <Label>Assign to</Label>
       <Select value={value || "unassigned"} onValueChange={(v) => onChange(v === "unassigned" ? "" : v)}>
-        <SelectTrigger className="bg-card"><SelectValue /></SelectTrigger>
+        <SelectTrigger className="bg-background"><SelectValue /></SelectTrigger>
         <SelectContent>
           <SelectItem value="unassigned">Leave in pool (unassigned)</SelectItem>
           {employees.map((e) => (
@@ -232,7 +232,7 @@ function AssignStrategyPicker({
       </div>
       {mode === "manual" && (
         <Select value={assignTo || "unassigned"} onValueChange={(v) => onAssignToChange(v === "unassigned" ? "" : v)}>
-          <SelectTrigger className="bg-card"><SelectValue placeholder="Pick an employee" /></SelectTrigger>
+          <SelectTrigger className="bg-background"><SelectValue placeholder="Pick an employee" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="unassigned">Pick an employee…</SelectItem>
             {employees.map((e) => (
@@ -704,7 +704,7 @@ export function ApolloForm({ onImport }: { onImport: (n: number) => void }) {
                 <InfoTip side="right" text="Every lead here costs a paid Apollo credit to reveal an email for — this is a hard cap on how many the import will spend, no matter how many keywords are selected." />
               </div>
               <Select value={String(maxTotalLeads)} onValueChange={(v) => setMaxTotalLeads(Number(v))}>
-                <SelectTrigger className="bg-card"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="bg-background"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {(strictCap ? STRICT_TIERS : [25, 50, 100, 250, 500]).map((n) => (
                     <SelectItem key={n} value={String(n)} disabled={apolloRemaining != null && n > apolloRemaining}>
@@ -727,7 +727,7 @@ export function ApolloForm({ onImport }: { onImport: (n: number) => void }) {
                 onValueChange={(v) => setMaxPerKeyword(Number(v) as 25 | 50)}
                 disabled={perKeywordCapIsMoot}
               >
-                <SelectTrigger className="bg-card"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="bg-background"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {[25, 50].map((n) => (
                     // An option above the fair share can never bite — the budget
@@ -1067,7 +1067,7 @@ export function ExcelForm({ onImport }: { onImport: (n: number) => void }) {
                             });
                           }}
                         >
-                          <SelectTrigger className="h-8 text-xs bg-card">
+                          <SelectTrigger className="h-8 text-xs bg-background">
                             <SelectValue placeholder="Not mapped" />
                           </SelectTrigger>
                           <SelectContent>

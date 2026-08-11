@@ -1535,7 +1535,7 @@ export default function LeadsPage() {
                 <div className="h-10 rounded-md border border-border bg-secondary/40 animate-pulse" />
               ) : (
                 <Select value={assignTarget} onValueChange={setAssignTarget}>
-                  <SelectTrigger className="bg-card"><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="bg-background"><SelectValue /></SelectTrigger>
                   <SelectContent className="z-300">
                     <SelectItem value="unassigned">Unassigned (pool)</SelectItem>
                     {employees.map((e) => (

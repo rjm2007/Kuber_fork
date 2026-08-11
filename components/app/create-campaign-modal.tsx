@@ -82,11 +82,9 @@ const TIME_OPTIONS = Array.from({ length: 48 }, (_, index) => {
   return { value, label };
 });
 
-/** Inputs default to bg-card, which is also the Dialog surface — fields placed
- *  directly on the modal would camouflage. This fill keeps them visibly
- *  editable: gray on the white modal in light mode, lighter gray in dark mode.
- *  (Inputs nested inside bg-secondary/30 section cards keep the default
- *  bg-card fill, which already stands out there.) */
+/** Nested field fill for controls that sit on the modal's bg-card surface.
+ *  Shared Input/Select default is already bg-background; this stronger fill is
+ *  for dense toolbar-style fields that need a clearer editable affordance. */
 const FIELD_FILL = "bg-secondary/70 hover:bg-secondary focus-visible:bg-secondary transition-colors";
 
 function TimeSelect({ value, onChange }: { value: string; onChange: (value: string) => void }) {

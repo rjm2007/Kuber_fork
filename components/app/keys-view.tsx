@@ -633,7 +633,7 @@ function ModelField({ provider, value, onChange }: {
 
   if (loading) {
     return (
-      <div className="flex h-9 w-full items-center gap-2 rounded-md border border-input bg-card px-3 text-xs text-muted-foreground">
+      <div className="flex h-9 w-full items-center gap-2 rounded-md border border-input bg-background px-3 text-xs text-muted-foreground">
         <RefreshCw className="size-3.5 animate-spin" /> Loading models…
       </div>
     );
@@ -667,7 +667,7 @@ function ModelField({ provider, value, onChange }: {
           <PopoverTrigger asChild>
             <button
               type="button"
-              className="flex h-9 w-full items-center justify-between gap-2 rounded-md border border-input bg-card px-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="flex h-9 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <span className={cn("truncate font-mono text-xs", !value && "text-muted-foreground font-sans")}>
                 {value || "Choose a model"}

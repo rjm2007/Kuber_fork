@@ -1,0 +1,27 @@
+---
+description: Input/select/textarea fills must contrast with surrounding panels — never same color as bg
+globs: **/*.{tsx,ts,css}
+alwaysApply: true
+---
+
+# UI surface contrast
+
+**Never put form fields on the same background color as their parent panel.**
+
+Same-fill inputs (`bg-card` fields inside `bg-card` cards) disappear in light mode. Borders alone do not count as contrast.
+
+## Surface ladder
+
+- Page → `bg-background`
+- Panel / card / modal → `bg-card`
+- Nested section inside a panel → `bg-secondary/30` (not `/20`)
+- Fields (Input, Select, Textarea, field-like triggers) → `bg-background`
+
+## Rules
+
+1. Shared field components must default to `bg-background`.
+2. Do not pass `className="… bg-card …"` onto inputs/selects sitting on `bg-card` panels.
+3. Field-like outline buttons (territory, mailbox, locations picker) use `bg-background`, not `bg-card`.
+4. If a nested block looks invisible, step down the ladder — do not reuse the parent fill.
+
+Canonical note: `CLAUDE.md` and the ladder comment in `app/globals.css`.

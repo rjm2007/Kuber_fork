@@ -37,7 +37,7 @@ export function SearchInput({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className={cn("bg-card", SIZE_CLASSES[size], className)}
+        className={cn("bg-background", SIZE_CLASSES[size], className)}
       />
     </div>
   );

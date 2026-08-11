@@ -126,7 +126,7 @@ export function CampaignsClient({ initialCampaigns }: { initialCampaigns: Campai
         />
         {role === "manager" && users.length > 0 && (
           <Select value={ownerFilter} onValueChange={setOwnerFilter}>
-            <SelectTrigger className="h-9 w-40 bg-card"><SelectValue placeholder="Owner" /></SelectTrigger>
+            <SelectTrigger className="h-9 w-40 bg-background"><SelectValue placeholder="Owner" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All owners</SelectItem>
               {users.map((u) => (
