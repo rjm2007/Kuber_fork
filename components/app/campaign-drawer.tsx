@@ -88,7 +88,7 @@ import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, BarChart, Bar, XAxis
 import { EmptyState } from "@/components/ui/empty-state";
 import { ServiceHealthBanner } from "@/components/app/service-health-banner";
 import {
-  computeCampaignStats, deliveryBucket, DELIVERY_BUCKET_LABELS, DELIVERY_BUCKET_ORDER,
+  computeCampaignStats, deliveryBucket, DELIVERY_BUCKET_LABELS,
   type DeliveryBucket,
 } from "@/lib/campaign-status";
 
@@ -2021,6 +2021,26 @@ export function CampaignDetail({
               wrapperClassName="flex-1 min-w-36 max-w-xs"
             />
 
+            {/* Delivery filter — dropdown right next to search, matching the
+                Leads table pattern. "Not queued" and "Send failed" are left
+                out of the picker entirely (not meaningful filters day-to-day);
+                the remaining buckets only show up once they're non-empty. */}
+            <Select value={leadsDelivery} onValueChange={(v) => setLeadsDelivery(v as DeliveryBucket | "all")}>
+              <SelectTrigger className="h-8 w-36 gap-2 rounded-md px-3 text-xs shadow-sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent align="start" className="min-w-36">
+                <SelectItem value="all">All ({campaignLeads.length})</SelectItem>
+                {(["sending", "sent", "replied", "bounced"] as const)
+                  .filter((b) => (deliveryCounts[b] ?? 0) > 0)
+                  .map((b) => (
+                    <SelectItem key={b} value={b}>
+                      {DELIVERY_BUCKET_LABELS[b]} ({deliveryCounts[b] ?? 0})
+                    </SelectItem>
+                  ))}
+              </SelectContent>
+            </Select>
+
             {/* Sort pills */}
             <SegmentedTabs
               size="sm"
@@ -2043,30 +2063,13 @@ export function CampaignDetail({
                 { value: "kanban", label: "Kanban", icon: LayoutGrid },
               ]}
             />
-
-            {/* Delivery filter — same segmented control as the sort/view toggles
-                above, so it reads as a control rather than plain text on the panel.
-                Only buckets that actually occur get a tab, so a healthy campaign
-                never shows an empty "Bounced" nudging you to click it. */}
-            <SegmentedTabs
-              size="sm"
-              className="basis-full"
-              value={leadsDelivery}
-              onValueChange={setLeadsDelivery}
-              options={[
-                { value: "all" as const, label: "All", count: campaignLeads.length },
-                ...DELIVERY_BUCKET_ORDER
-                  .filter((b) => (deliveryCounts[b] ?? 0) > 0)
-                  .map((b) => ({ value: b, label: DELIVERY_BUCKET_LABELS[b], count: deliveryCounts[b] ?? 0 })),
-              ]}
-            />
           </div>
 
           {leadsViewMode === "kanban" ? (
             /* ── Kanban view ── */
             <div className="flex flex-col flex-1 min-h-0 bg-card/30">
               <CampaignKanban
-                leads={sortedCampaignLeads}
+                leads={filteredLeads}
                 selectedId={selectedId}
                 onSelect={handleKanbanSelect}
                 onRetry={handleRetryOne}
