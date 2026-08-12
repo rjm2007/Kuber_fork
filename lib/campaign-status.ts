@@ -61,19 +61,50 @@ export type DeliveryBucket =
 
 export type DeliveryLeadLike = {
   crm_status: string;
-  contacted?: boolean;
-  bounced?: boolean;
+  first_sent_at?: string | null;
 };
 
+/**
+ * Exactly one bucket per lead — they are outcomes of the same mail, not badges
+ * that stack. A replied or bounced lead was obviously sent; it just has a more
+ * specific ending, so it is NOT also counted as "sent".
+ */
 export function deliveryBucket(cl: DeliveryLeadLike): DeliveryBucket {
-  // A bounce stands alone — it already implies the mail went out, so it never
-  // stacks with 'sent'.
-  if (cl.bounced) return "bounced";
-  if (cl.crm_status === "failed") return "send_failed";
+  // 'failed' means two opposite things, and first_sent_at is what separates
+  // them: set = we mailed them and the address rejected it; NULL = Instantly
+  // refused the lead at add-time and nothing was ever sent.
+  if (cl.crm_status === "failed") return cl.first_sent_at ? "bounced" : "send_failed";
   if (cl.crm_status === "replied") return "replied";
-  if (cl.contacted) return "sent";
+  if (cl.first_sent_at) return "sent";
+  // crm_status='sent' is only Instantly ACCEPTING the lead; it drips the real
+  // send out later and confirms it with the email_sent webhook.
   if (cl.crm_status === "sent") return "sending";
   return "not_queued";
+}
+
+/**
+ * Split a campaign's stored counters into the mutually exclusive figures the UI
+ * shows. sent_count is DELIVERED (it only ever grows, so the webhook can
+ * increment it and reconcile-counters can verify it); a lead who then replied
+ * or bounced has a more specific outcome and must leave the SENT tile rather
+ * than be counted in two places at once.
+ */
+export function campaignOutcomes(c: {
+  sent_count: number;
+  replied_count: number;
+  bounced_count?: number;
+}): { sent: number; delivered: number; replied: number; bounced: number } {
+  const delivered = c.sent_count ?? 0;
+  const replied = c.replied_count ?? 0;
+  const bounced = c.bounced_count ?? 0;
+  return {
+    delivered,
+    replied,
+    bounced,
+    // Floored: counter drift must never render a negative tile. The nightly
+    // reconcile recomputes all three from campaign_leads.
+    sent: Math.max(0, delivered - replied - bounced),
+  };
 }
 
 export const DELIVERY_BUCKET_LABELS: Record<DeliveryBucket, string> = {
@@ -105,27 +136,41 @@ export type CampaignStatsRow = CampaignLeadLike & {
 
 export function computeCampaignStats(rows: CampaignStatsRow[]): {
   total_leads: number;
+  /** Delivered and nothing more — what the SENT tile shows. Excludes replied/bounced. */
   sent_count: number;
+  /** Every lead a mail actually reached, replies and bounces included. The
+   *  honest denominator for reply rate; never shown as "sent" on its own. */
+  delivered_count: number;
   replied_count: number;
+  bounced_count: number;
   hot_count: number;
   cold_count: number;
 } {
   let sent_count = 0;
   let replied_count = 0;
+  let bounced_count = 0;
   let hot_count = 0;
   let cold_count = 0;
   for (const r of rows) {
-    const bucket = campaignBucket(r);
-    // "Sent" means DELIVERED — matches campaigns.sent_count, which the manager
-    // path reads. Deriving it from the draft status instead would count every
-    // lead merely queued at Instantly and put this employee-scoped number
-    // wildly above the manager's for the same campaign.
-    if (r.first_sent_at) sent_count++;
-    if (bucket === "replied") replied_count++;
+    // One bucket per lead, so these tiles sum to the delivered total instead of
+    // double-counting a replied lead as sent too.
+    switch (deliveryBucket(r)) {
+      case "sent":    sent_count++;    break;
+      case "replied": replied_count++; break;
+      case "bounced": bounced_count++; break;
+    }
     if (r.lead_temperature === "hot") hot_count++;
     if (r.lead_temperature === "cold") cold_count++;
   }
-  return { total_leads: rows.length, sent_count, replied_count, hot_count, cold_count };
+  return {
+    total_leads: rows.length,
+    sent_count,
+    delivered_count: sent_count + replied_count + bounced_count,
+    replied_count,
+    bounced_count,
+    hot_count,
+    cold_count,
+  };
 }
 
 export const CAMPAIGN_KANBAN_COLS: {

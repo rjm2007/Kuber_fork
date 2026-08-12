@@ -270,6 +270,18 @@ export async function POST(req: NextRequest) {
       } catch { /* non-fatal — reconcile-counters is the backstop */ }
     }
 
+    // A bounce leaves the SENT tile and joins the BOUNCED one — the tiles are
+    // mutually exclusive outcomes of the same delivered mail, so sent_count is
+    // NOT decremented here; the display subtracts bounced_count off it.
+    if (p.event_type === "email_bounced" && masterId && isFirstDelivery && beforeState?.crm_status !== "failed") {
+      try {
+        await cdb.rpc("increment_campaign_counter", {
+          p_campaign_id: masterId,
+          p_column: "bounced_count",
+        });
+      } catch { /* non-fatal — reconcile-counters is the backstop */ }
+    }
+
     // Increment campaign-level replied_count ONLY the first time this lead replies.
     // Without this guard, a lead who replies twice inflates replied_count past sent_count,
     // producing reply rates above 100% — confirmed bug in test campaigns.

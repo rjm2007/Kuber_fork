@@ -15,8 +15,12 @@ export type CampaignReportData = {
     leads: number;
     draftsGenerated: number;
     certified: number;
+    /** Delivered and nothing more — excludes replied and bounced. */
     sent: number;
+    /** Every lead a mail reached: sent + replied + bounced. Reply rate's base. */
+    delivered: number;
     replied: number;
+    bounced: number;
     failed: number;
   };
   rates: { replyRate: number; certifyRate: number };

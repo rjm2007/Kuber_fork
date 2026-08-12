@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Megaphone, Users, Send, MessageSquare, Clock, Gauge, ArrowUp,
   Globe, Calendar, ExternalLink, Loader2, CheckCircle2, RotateCcw, RefreshCw, Check, Save, History, ChevronDown, ArrowLeft,
-  List, LayoutGrid, BarChart2, Flame, Snowflake, ThumbsDown, Layers, Paperclip, X, Sparkles, Pencil, Reply,
+  List, LayoutGrid, BarChart2, Flame, Snowflake, ThumbsDown, Layers, Paperclip, X, Sparkles, Pencil, Reply, AlertTriangle,
 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
@@ -177,10 +177,9 @@ type CampaignLead = {
    * regeneration looks like the old row demoted to 'rejected'.
    */
   draft_activity?: DraftActivity;
-  /** Instantly's email_sent webhook has fired — the mail actually went out. */
-  contacted?: boolean;
-  /** Instantly's email_bounced webhook has fired — the address rejected it. */
-  bounced?: boolean;
+  /** Set by Instantly's email_sent webhook — the mail actually went out. NULL
+   *  while crm_status='sent' means queued in the drip, not yet delivered. */
+  first_sent_at?: string | null;
   attachment?: AttachmentInfo;
 };
 
@@ -1532,9 +1531,15 @@ export function CampaignDetail({
   const analyticsTotalLeads = report?.totals.leads ?? (!loading ? scopedStats.total_leads : (campaign.leads ?? 0));
   const analyticsSent = report?.totals.sent ?? (!loading ? scopedStats.sent_count : (campaign.sent ?? 0));
   const analyticsReplied = report?.totals.replied ?? (!loading ? scopedStats.replied_count : (campaign.replied ?? 0));
+  const analyticsBounced = report?.totals.bounced ?? (!loading ? scopedStats.bounced_count : (campaign.bounced ?? 0));
   const analyticsHot = !loading ? scopedStats.hot_count : (campaign.hot ?? 0);
   const analyticsCold = !loading ? scopedStats.cold_count : (campaign.cold ?? 0);
-  const analyticsReplyRate = report?.rates.replyRate ?? (analyticsSent > 0 ? Math.round((analyticsReplied / analyticsSent) * 100) : 0);
+  // Reply rate divides by DELIVERED, not by the SENT tile — a reply proves the
+  // mail arrived, so it belongs in the base even though it left the tile.
+  const analyticsDelivered = report?.totals.delivered
+    ?? (!loading ? scopedStats.delivered_count : (campaign.delivered ?? 0));
+  const analyticsReplyRate = report?.rates.replyRate
+    ?? (analyticsDelivered > 0 ? Math.round((analyticsReplied / analyticsDelivered) * 100) : 0);
 
   // NOTE: --primary/--muted-foreground already hold a complete `hsl(...)` string
   // (set dynamically in lib/branding.ts), so wrapping them again in `hsl(var(...))`
@@ -1810,11 +1815,15 @@ export function CampaignDetail({
             /* ── Analytics view ── */
             <div className="px-6 pb-4 flex flex-col gap-3 flex-1 min-h-0">
               {/* Stat cards */}
-              <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
+              <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-7 gap-3">
                 {[
                   { label: "Leads",      value: analyticsTotalLeads, icon: Users,          accent: "" },
-                  { label: "Sent",       value: analyticsSent,       icon: Send,           accent: "" },
+                  // Sent / Replied / Bounced are exclusive outcomes of the same
+                  // delivered mail — they add up to the delivered total shown as
+                  // Sent's sub-line, and no lead is counted in two of them.
+                  { label: "Sent",       value: analyticsSent,       icon: Send,           accent: "", sub: `${analyticsDelivered} delivered` },
                   { label: "Replied",    value: analyticsReplied,    icon: MessageSquare,  accent: "", sub: `${analyticsReplyRate}% reply rate` },
+                  { label: "Bounced",    value: analyticsBounced,    icon: AlertTriangle,  accent: "red" },
                   { label: "Certified",  value: report?.totals.certified ?? 0, icon: CheckCircle2, accent: "", sub: report ? `${report.rates.certifyRate}% of drafts` : undefined },
                   { label: "Hot",        value: analyticsHot,        icon: Flame,          accent: "red" },
                   { label: "Cold",       value: analyticsCold,       icon: Snowflake,      accent: "sky" },
@@ -1968,15 +1977,15 @@ export function CampaignDetail({
 
                 {/* Replied vs Sent */}
                 <div className="rounded-xl border border-border bg-card p-4">
-                  <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-1">Replied vs. sent</p>
+                  <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-1">Replied vs. delivered</p>
                   <p className="text-[10px] text-muted-foreground mb-2">
-                    {analyticsReplyRate}% of sent emails on this campaign got a reply
+                    {analyticsReplyRate}% of delivered emails on this campaign got a reply
                   </p>
                   <ResponsiveContainer width="100%" height={140}>
                     <BarChart
                       data={[
-                        { name: "Sent",    v: analyticsSent,    fill: "var(--primary)", opacity: 1 },
-                        { name: "Replied", v: analyticsReplied, fill: "#22c55e",         opacity: 1 },
+                        { name: "Delivered", v: analyticsDelivered, fill: "var(--primary)", opacity: 1 },
+                        { name: "Replied",   v: analyticsReplied,   fill: "#22c55e",        opacity: 1 },
                       ]}
                       margin={{ top: 8, right: 4, left: -28, bottom: 0 }}
                     >

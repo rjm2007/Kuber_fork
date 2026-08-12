@@ -57,8 +57,10 @@ export async function GET(req: NextRequest) {
       return {
         ...c,
         total_leads: stats.total_leads,
-        sent_count: stats.sent_count,
+        // DELIVERED — the client mapper subtracts replied/bounced off it.
+        sent_count: stats.delivered_count,
         replied_count: stats.replied_count,
+        bounced_count: stats.bounced_count,
         hot_count: stats.hot_count,
         cold_count: stats.cold_count,
         can_edit_settings: editable.has(c.id as string),

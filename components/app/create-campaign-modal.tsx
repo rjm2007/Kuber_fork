@@ -28,8 +28,12 @@ export type Campaign = {
   name: string;
   status: "Draft" | "Scheduled" | "Live" | "Paused";
   leads: number;
+  /** Delivered and still just sent — replied and bounced are counted separately. */
   sent: number;
+  /** Every lead a mail reached, replied/bounced included. Reply rate's denominator. */
+  delivered: number;
   replied: number;
+  bounced: number;
   humanInLoop: boolean;
   createdAt: string;
   dailyLimit?: number;

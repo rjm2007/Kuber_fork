@@ -5,7 +5,9 @@ import {
   CAMPAIGN_BUCKET_LABELS,
   CAMPAIGN_KANBAN_COLS,
   campaignBucket,
+  computeCampaignStats,
   type CampaignKanbanBucket,
+  type CampaignStatsRow,
 } from "@/lib/campaign-status";
 import { assertCampaignAccess } from "@/lib/auth/scope";
 import { dbForUser } from "@/lib/supabase/scoped";
@@ -30,7 +32,7 @@ export async function GET(
 
   const { data: campaign } = await db
     .from("campaigns")
-    .select("id, sent_count, replied_count")
+    .select("id, sent_count, replied_count, bounced_count")
     .eq("id", id)
     .maybeSingle();
 
@@ -58,7 +60,6 @@ export async function GET(
 
   let draftsGenerated = 0;
   let certified = 0;
-  let delivered = 0;
   let failed = 0;
   let generating = 0;
   let pending = 0;
@@ -67,7 +68,6 @@ export async function GET(
   for (const row of leads) {
     const draft = unwrapDraft(row.email_drafts as DraftRow);
     const ds = draft?.status;
-    if (row.first_sent_at) delivered++;
     if (ds && ds !== "generating") draftsGenerated++;
     if (ds === "approved") certified++;
     if (ds === "failed") failed++;
@@ -77,16 +77,25 @@ export async function GET(
     bucketCounts[campaignBucket(row)]++;
   }
 
-  const replied = leads.filter((r) => r.crm_status === "replied").length;
-  // campaign.sent_count / replied_count are campaign-wide counters — only a
-  // safe floor for a manager (who sees the whole campaign); falling back to
-  // them for an employee would leak the other employees' numbers back in.
-  //
-  // "Sent" is DELIVERED (first_sent_at), not the draft's 'sent' status — that
-  // one flips when we hand the lead to Instantly, days before the mail leaves.
-  // This tile read 100/100 on a campaign where only 44 had actually gone out.
-  const sentTotal = user.role === "employee" ? delivered : Math.max(delivered, campaign.sent_count ?? 0);
-  const repliedTotal = user.role === "employee" ? replied : Math.max(replied, campaign.replied_count ?? 0);
+  // One bucket per lead: a replied or bounced lead is NOT also counted as sent.
+  // Both figures come from the same rows the caller can see, which is what makes
+  // this employee-scoped for free — an employee's rows were already filtered to
+  // their own leads above, a manager's were not.
+  const scoped = computeCampaignStats(leads as CampaignStatsRow[]);
+  // The campaign-wide columns are only a safe floor for a manager; falling back
+  // to them for an employee would leak co-workers' numbers back in.
+  const outcomes = user.role === "employee"
+    ? scoped
+    : {
+        ...scoped,
+        delivered_count: Math.max(scoped.delivered_count, campaign.sent_count ?? 0),
+        replied_count: Math.max(scoped.replied_count, campaign.replied_count ?? 0),
+        bounced_count: Math.max(scoped.bounced_count, campaign.bounced_count ?? 0),
+      };
+  const deliveredTotal = outcomes.delivered_count;
+  const repliedTotal = outcomes.replied_count;
+  const bouncedTotal = outcomes.bounced_count;
+  const sentTotal = Math.max(0, deliveredTotal - repliedTotal - bouncedTotal);
 
   const attempted = succeeded + failed;
   const successRate = attempted > 0 ? Math.round((succeeded / attempted) * 100) : 0;
@@ -104,11 +113,16 @@ export async function GET(
       draftsGenerated,
       certified,
       sent: sentTotal,
+      delivered: deliveredTotal,
       replied: repliedTotal,
+      bounced: bouncedTotal,
       failed,
     },
     rates: {
-      replyRate: sentTotal > 0 ? Math.round((repliedTotal / sentTotal) * 100) : 0,
+      // Denominator is DELIVERED, not the narrowed sent tile — a reply is
+      // evidence the mail arrived, so excluding replies from the base would
+      // shrink it every time the campaign succeeds and inflate the rate.
+      replyRate: deliveredTotal > 0 ? Math.round((repliedTotal / deliveredTotal) * 100) : 0,
       certifyRate: draftsGenerated > 0 ? Math.round((certified / draftsGenerated) * 100) : 0,
     },
     draftGeneration: {

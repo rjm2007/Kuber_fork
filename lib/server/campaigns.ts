@@ -39,8 +39,12 @@ async function overlayEmployeeStats(
     return {
       ...c,
       total_leads: stats.total_leads,
-      sent_count: stats.sent_count,
+      // sent_count is DELIVERED here too — mapDbCampaign subtracts replied and
+      // bounced off it. Handing it the already-narrowed number would subtract
+      // them twice and under-report this employee's SENT tile.
+      sent_count: stats.delivered_count,
       replied_count: stats.replied_count,
+      bounced_count: stats.bounced_count,
       hot_count: stats.hot_count,
       cold_count: stats.cold_count,
     };

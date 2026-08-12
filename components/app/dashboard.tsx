@@ -95,9 +95,13 @@ export function DashboardView({
 }: DashboardViewProps) {
   const hotLeads      = hotCount;
   const liveCampaigns = campaigns.filter((c) => c.status === "Live").length;
-  const totalSent     = campaigns.reduce((a, c) => a + c.sent, 0);
-  const totalReplied  = campaigns.reduce((a, c) => a + c.replied, 0);
-  const replyRate     = totalSent > 0 ? Math.round((totalReplied / totalSent) * 100) : 0;
+  const totalSent      = campaigns.reduce((a, c) => a + c.sent, 0);
+  const totalReplied   = campaigns.reduce((a, c) => a + c.replied, 0);
+  // Reply rate divides by DELIVERED — a replied lead has left `sent` for the
+  // Replied bucket, so dividing by `sent` would shrink the base every time a
+  // campaign works and overstate the rate.
+  const totalDelivered = campaigns.reduce((a, c) => a + c.delivered, 0);
+  const replyRate      = totalDelivered > 0 ? Math.round((totalReplied / totalDelivered) * 100) : 0;
 
   const pulse = (w: string) => <span className={cn("inline-block h-6 rounded bg-secondary/60 animate-pulse", w)} />;
 

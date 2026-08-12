@@ -15,7 +15,7 @@ type Db = ReturnType<typeof createAdminClient>;
 async function reconcile(db: Db) {
   const { data: campaigns } = await db
     .from("campaigns")
-    .select("id, total_leads, sent_count, replied_count, hot_count, cold_count")
+    .select("id, total_leads, sent_count, replied_count, bounced_count, hot_count, cold_count")
     .eq("is_deleted", false);
 
   let updated = 0;
@@ -33,6 +33,9 @@ async function reconcile(db: Db) {
       // which happens days before the mail actually goes out.
       sent_count: rows.filter((r) => r.first_sent_at != null).length,
       replied_count: rows.filter((r) => r.last_reply_at != null).length,
+      // A 'failed' row WITHOUT first_sent_at is not a bounce — Instantly refused
+      // the lead at add-time and nothing was ever sent.
+      bounced_count: rows.filter((r) => r.crm_status === "failed" && r.first_sent_at != null).length,
       hot_count: rows.filter((r) => r.lead_temperature === "hot").length,
       cold_count: rows.filter((r) => r.lead_temperature === "cold").length,
     };
@@ -41,6 +44,7 @@ async function reconcile(db: Db) {
       truth.total_leads !== (c.total_leads ?? 0) ||
       truth.sent_count !== (c.sent_count ?? 0) ||
       truth.replied_count !== (c.replied_count ?? 0) ||
+      truth.bounced_count !== (c.bounced_count ?? 0) ||
       truth.hot_count !== (c.hot_count ?? 0) ||
       truth.cold_count !== (c.cold_count ?? 0);
 

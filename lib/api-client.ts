@@ -3,6 +3,7 @@
 import type { Lead, LeadStatus, LeadScore, LeadSource, EnrichmentStage } from "@/lib/leads";
 import type { Campaign } from "@/components/app/create-campaign-modal";
 import type { CampaignStepInput } from "@/lib/constants";
+import { campaignOutcomes } from "@/lib/campaign-status";
 
 // ─── Token helper ─────────────────────────────────────────────────────────────
 
@@ -121,8 +122,10 @@ export interface DbCampaign {
   status: string;
   human_in_loop: boolean;
   total_leads: number;
+  /** DELIVERED — replies and bounces included. See campaignOutcomes(). */
   sent_count: number;
   replied_count: number;
+  bounced_count?: number;
   created_at: string;
   daily_limit: number | null;
   window_from: string | null;
@@ -197,8 +200,7 @@ export function mapDbCampaign(c: DbCampaign): Campaign {
     name: c.name,
     status: statusMap[c.status] ?? "Draft",
     leads: c.total_leads,
-    sent: c.sent_count,
-    replied: c.replied_count,
+    ...campaignOutcomes(c),
     humanInLoop: c.human_in_loop,
     createdAt: c.created_at.slice(0, 10),
     dailyLimit: c.daily_limit ?? 30,
@@ -1006,8 +1008,12 @@ export async function fetchCampaignReport(token: string, campaignId: string): Pr
     leads: number;
     draftsGenerated: number;
     certified: number;
+    /** Delivered and nothing more — excludes replied and bounced. */
     sent: number;
+    /** Every lead a mail reached: sent + replied + bounced. Reply rate's base. */
+    delivered: number;
     replied: number;
+    bounced: number;
     failed: number;
   };
   rates: { replyRate: number; certifyRate: number };

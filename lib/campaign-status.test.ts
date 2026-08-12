@@ -1,49 +1,59 @@
 /**
- * Self-check for deliveryBucket — the one place that decides whether a lead is
- * still waiting in Instantly's drip or has actually been mailed. Run with:
+ * Self-check for the delivery model — the one place that decides whether a lead
+ * is still waiting in Instantly's drip, has actually been mailed, or ended in a
+ * more specific outcome. Run with:
  *   npx tsx lib/campaign-status.test.ts
  */
 import { strict as assert } from "assert";
-import { computeCampaignStats, deliveryBucket } from "./campaign-status";
+import { campaignOutcomes, computeCampaignStats, deliveryBucket } from "./campaign-status";
+
+const DELIVERED = "2026-08-12T00:00:00Z";
 
 // crm_status='sent' is the hand-off to Instantly, NOT a delivery.
 assert.equal(deliveryBucket({ crm_status: "sent" }), "sending");
-// Only the email_sent webhook (→ contacted) promotes it.
-assert.equal(deliveryBucket({ crm_status: "sent", contacted: true }), "sent");
+// Only the email_sent webhook (→ first_sent_at) promotes it.
+assert.equal(deliveryBucket({ crm_status: "sent", first_sent_at: DELIVERED }), "sent");
 
-// A bounce stands alone and outranks everything, including its own delivery.
-assert.equal(deliveryBucket({ crm_status: "failed", contacted: true, bounced: true }), "bounced");
-assert.equal(deliveryBucket({ crm_status: "replied", bounced: true }), "bounced");
+// 'failed' means two opposite things; first_sent_at is the only thing that
+// separates "we mailed them and it bounced" from "it was never sent at all".
+assert.equal(deliveryBucket({ crm_status: "failed", first_sent_at: DELIVERED }), "bounced");
+assert.equal(deliveryBucket({ crm_status: "failed", first_sent_at: null }), "send_failed");
 
-// 'failed' without a bounce event = Instantly refused the lead; never sent.
-assert.equal(deliveryBucket({ crm_status: "failed" }), "send_failed");
-
-// A reply outranks a plain delivery.
-assert.equal(deliveryBucket({ crm_status: "replied", contacted: true }), "replied");
+// A replied lead is replied, not also sent — the buckets are exclusive.
+assert.equal(deliveryBucket({ crm_status: "replied", first_sent_at: DELIVERED }), "replied");
 
 // Never handed to Instantly at all.
 assert.equal(deliveryBucket({ crm_status: "draft" }), "not_queued");
 assert.equal(deliveryBucket({ crm_status: "approved" }), "not_queued");
 
-// The employee-scoped sent_count must count DELIVERED leads, matching what
-// campaigns.sent_count is reconciled from. Deriving it from the draft status
-// would report 3 here — every lead merely queued at Instantly — and put an
-// employee's card above the manager's for the same campaign.
-assert.equal(
-  computeCampaignStats([
-    { crm_status: "sent", email_drafts: { status: "sent" }, first_sent_at: "2026-08-12T00:00:00Z" },
-    { crm_status: "sent", email_drafts: { status: "sent" }, first_sent_at: null },
-    { crm_status: "sent", email_drafts: { status: "sent" }, first_sent_at: null },
-  ]).sent_count,
-  1,
-);
+// The tiles must not double-count: one replied and one bounced lead leave the
+// sent figure, but both still count as delivered (the mail did reach them).
+const stats = computeCampaignStats([
+  { crm_status: "sent",    first_sent_at: DELIVERED, email_drafts: { status: "sent" } },
+  { crm_status: "sent",    first_sent_at: DELIVERED, email_drafts: { status: "sent" } },
+  { crm_status: "replied", first_sent_at: DELIVERED, email_drafts: { status: "sent" } },
+  { crm_status: "failed",  first_sent_at: DELIVERED, email_drafts: { status: "sent" } },
+  { crm_status: "sent",    first_sent_at: null,      email_drafts: { status: "sent" } }, // still queued
+  { crm_status: "draft",   first_sent_at: null,      email_drafts: { status: "draft" } },
+]);
+assert.deepEqual(stats, {
+  total_leads: 6,
+  sent_count: 2,
+  delivered_count: 4,
+  replied_count: 1,
+  bounced_count: 1,
+  hot_count: 0,
+  cold_count: 0,
+});
+// The three outcome tiles account for every delivered mail exactly once.
+assert.equal(stats.sent_count + stats.replied_count + stats.bounced_count, stats.delivered_count);
 
-// A replied lead was necessarily delivered, so it still counts toward sent.
+// The stored-counter split must agree with the row-by-row tally above.
 assert.deepEqual(
-  computeCampaignStats([
-    { crm_status: "replied", email_drafts: { status: "sent" }, first_sent_at: "2026-08-12T00:00:00Z" },
-  ]),
-  { total_leads: 1, sent_count: 1, replied_count: 1, hot_count: 0, cold_count: 0 },
+  campaignOutcomes({ sent_count: 4, replied_count: 1, bounced_count: 1 }),
+  { sent: 2, delivered: 4, replied: 1, bounced: 1 },
 );
+// Counter drift must never render a negative tile.
+assert.equal(campaignOutcomes({ sent_count: 0, replied_count: 2 }).sent, 0);
 
-console.log("campaign-status: all delivery bucket checks passed");
+console.log("campaign-status: all delivery checks passed");
