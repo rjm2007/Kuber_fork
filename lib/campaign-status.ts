@@ -36,6 +36,61 @@ export function isFailedDraft(cl: CampaignLeadLike): boolean {
 }
 
 /**
+ * Where a lead stands with the OUTSIDE world — did a mail actually reach them?
+ * Deliberately separate from campaignBucket above, which tracks our internal
+ * draft pipeline.
+ *
+ * The distinction that matters: crm_status='sent' only means Instantly ACCEPTED
+ * the lead into the sequence. It then drips the real send out over days at the
+ * campaign's daily limit, and confirms each one with an email_sent webhook. So
+ * 'sent' is "sending", and only the webhook (surfaced as `contacted` by the
+ * campaign leads API) means it actually left.
+ *
+ * crm_status='failed' is doubly overloaded — set both on a bounce AND on a lead
+ * Instantly refused at add-time. Only the bounce event tells them apart, and
+ * they mean opposite things: bounced = we sent it and the mailbox rejected it;
+ * send_failed = it was never sent at all.
+ */
+export type DeliveryBucket =
+  | "not_queued"
+  | "sending"
+  | "sent"
+  | "replied"
+  | "bounced"
+  | "send_failed";
+
+export type DeliveryLeadLike = {
+  crm_status: string;
+  contacted?: boolean;
+  bounced?: boolean;
+};
+
+export function deliveryBucket(cl: DeliveryLeadLike): DeliveryBucket {
+  // A bounce stands alone — it already implies the mail went out, so it never
+  // stacks with 'sent'.
+  if (cl.bounced) return "bounced";
+  if (cl.crm_status === "failed") return "send_failed";
+  if (cl.crm_status === "replied") return "replied";
+  if (cl.contacted) return "sent";
+  if (cl.crm_status === "sent") return "sending";
+  return "not_queued";
+}
+
+export const DELIVERY_BUCKET_LABELS: Record<DeliveryBucket, string> = {
+  not_queued:  "Not queued",
+  sending:     "Sending",
+  sent:        "Sent 🤝",
+  replied:     "Replied",
+  bounced:     "Bounced",
+  send_failed: "Send failed",
+};
+
+/** Chip order in the leads filter — worst news last so it stays noticeable. */
+export const DELIVERY_BUCKET_ORDER: DeliveryBucket[] = [
+  "not_queued", "sending", "sent", "replied", "bounced", "send_failed",
+];
+
+/**
  * Recomputes the campaign-card / analytics-tab summary numbers (leads, sent,
  * replied, hot, cold) from a set of campaign_leads rows. Used to give an
  * employee their OWN scoped counts — the campaigns table's total_leads /
@@ -43,7 +98,10 @@ export function isFailedDraft(cl: CampaignLeadLike): boolean {
  * and were never meant to be shown to an employee as-is (spec §5: a campaign
  * is a shared container, an employee only sees/counts their own leads in it).
  */
-export type CampaignStatsRow = CampaignLeadLike & { lead_temperature?: string | null };
+export type CampaignStatsRow = CampaignLeadLike & {
+  lead_temperature?: string | null;
+  first_sent_at?: string | null;
+};
 
 export function computeCampaignStats(rows: CampaignStatsRow[]): {
   total_leads: number;
@@ -58,7 +116,11 @@ export function computeCampaignStats(rows: CampaignStatsRow[]): {
   let cold_count = 0;
   for (const r of rows) {
     const bucket = campaignBucket(r);
-    if (bucket === "sent" || bucket === "replied") sent_count++;
+    // "Sent" means DELIVERED — matches campaigns.sent_count, which the manager
+    // path reads. Deriving it from the draft status instead would count every
+    // lead merely queued at Instantly and put this employee-scoped number
+    // wildly above the manager's for the same campaign.
+    if (r.first_sent_at) sent_count++;
     if (bucket === "replied") replied_count++;
     if (r.lead_temperature === "hot") hot_count++;
     if (r.lead_temperature === "cold") cold_count++;

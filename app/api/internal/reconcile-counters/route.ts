@@ -22,13 +22,16 @@ async function reconcile(db: Db) {
   for (const c of campaigns ?? []) {
     const { data: cls } = await db
       .from("campaign_leads")
-      .select("crm_status, instantly_lead_id, last_reply_at, lead_temperature")
+      .select("crm_status, first_sent_at, last_reply_at, lead_temperature")
       .eq("campaign_id", c.id);
 
     const rows = cls ?? [];
     const truth = {
       total_leads: rows.length,
-      sent_count: rows.filter((r) => r.instantly_lead_id != null).length,
+      // Ground truth for "sent" is delivery (first_sent_at), NOT instantly_lead_id
+      // — that only records that Instantly accepted the lead into the sequence,
+      // which happens days before the mail actually goes out.
+      sent_count: rows.filter((r) => r.first_sent_at != null).length,
       replied_count: rows.filter((r) => r.last_reply_at != null).length,
       hot_count: rows.filter((r) => r.lead_temperature === "hot").length,
       cold_count: rows.filter((r) => r.lead_temperature === "cold").length,

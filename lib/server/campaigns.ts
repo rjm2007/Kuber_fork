@@ -6,6 +6,7 @@ import { computeCampaignStats } from "@/lib/campaign-status";
 type StatsRow = {
   campaign_id: string;
   crm_status: string;
+  first_sent_at: string | null;
   lead_temperature: string | null;
   email_drafts: { status: string } | { status: string }[] | null;
 };
@@ -22,7 +23,7 @@ async function overlayEmployeeStats(
   const ids = campaigns.map((c) => c.id);
   const { data: ownRows } = await db
     .from("campaign_leads")
-    .select("campaign_id, crm_status, lead_temperature, email_drafts(status), leads!inner(assigned_to)")
+    .select("campaign_id, crm_status, first_sent_at, lead_temperature, email_drafts(status), leads!inner(assigned_to)")
     .in("campaign_id", ids)
     .eq("leads.assigned_to", scopedUserId);
 

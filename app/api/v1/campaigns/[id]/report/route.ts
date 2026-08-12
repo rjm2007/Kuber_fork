@@ -42,7 +42,7 @@ export async function GET(
   // seeing the full campaign-wide funnel/draft-generation numbers).
   let rowsQuery = db
     .from("campaign_leads")
-    .select("id, crm_status, draft_id, email_drafts(status), leads!inner(assigned_to)")
+    .select("id, crm_status, first_sent_at, draft_id, email_drafts(status), leads!inner(assigned_to)")
     .eq("campaign_id", id);
   if (user.role === "employee") rowsQuery = rowsQuery.eq("leads.assigned_to", user.id);
   const { data: rows } = await rowsQuery;
@@ -58,7 +58,7 @@ export async function GET(
 
   let draftsGenerated = 0;
   let certified = 0;
-  let sent = 0;
+  let delivered = 0;
   let failed = 0;
   let generating = 0;
   let pending = 0;
@@ -67,9 +67,9 @@ export async function GET(
   for (const row of leads) {
     const draft = unwrapDraft(row.email_drafts as DraftRow);
     const ds = draft?.status;
+    if (row.first_sent_at) delivered++;
     if (ds && ds !== "generating") draftsGenerated++;
     if (ds === "approved") certified++;
-    if (ds === "sent") sent++;
     if (ds === "failed") failed++;
     if (ds === "generating") generating++;
     if (!draft || !row.draft_id) pending++;
@@ -81,7 +81,11 @@ export async function GET(
   // campaign.sent_count / replied_count are campaign-wide counters — only a
   // safe floor for a manager (who sees the whole campaign); falling back to
   // them for an employee would leak the other employees' numbers back in.
-  const sentTotal = user.role === "employee" ? sent : Math.max(sent, campaign.sent_count ?? 0);
+  //
+  // "Sent" is DELIVERED (first_sent_at), not the draft's 'sent' status — that
+  // one flips when we hand the lead to Instantly, days before the mail leaves.
+  // This tile read 100/100 on a campaign where only 44 had actually gone out.
+  const sentTotal = user.role === "employee" ? delivered : Math.max(delivered, campaign.sent_count ?? 0);
   const repliedTotal = user.role === "employee" ? replied : Math.max(replied, campaign.replied_count ?? 0);
 
   const attempted = succeeded + failed;

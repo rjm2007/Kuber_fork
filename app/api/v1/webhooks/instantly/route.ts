@@ -198,7 +198,7 @@ export async function POST(req: NextRequest) {
     // (3) the cross-campaign echo check below.
     const { data: beforeState } = await cdb
       .from("campaign_leads")
-      .select("crm_status, interest_status, last_reply_at")
+      .select("crm_status, interest_status, last_reply_at, first_sent_at")
       .eq("id", campaignLeadId)
       .maybeSingle();
     const wasAlreadyReplied = beforeState?.crm_status === "replied";
@@ -246,8 +246,28 @@ export async function POST(req: NextRequest) {
       patch.last_reply_at   = receivedAt;
       patch.last_reply_body = replyBody;
     }
+    // THE moment a mail actually goes out. crm_status was already flipped to
+    // 'sent' days earlier when Instantly merely accepted the lead, so this is
+    // the only signal that separates "queued in the drip" from "delivered".
+    // isFirstDelivery keeps a re-delivered webhook from moving the timestamp.
+    if (p.event_type === "email_sent" && isFirstDelivery && !beforeState?.first_sent_at) {
+      patch.first_sent_at = receivedAt;
+    }
     if (Object.keys(patch).length > 1) {
       await cdb.from("campaign_leads").update(patch).eq("id", campaignLeadId);
+    }
+
+    // sent_count is the number every card / analytics tile / reply rate reads,
+    // and it now means DELIVERED — so it moves here, on the webhook, not at
+    // hand-off time. Guarded the same way replied_count is: only the first
+    // delivery for this lead counts.
+    if (p.event_type === "email_sent" && masterId && isFirstDelivery && !beforeState?.first_sent_at) {
+      try {
+        await cdb.rpc("increment_campaign_counter", {
+          p_campaign_id: masterId,
+          p_column: "sent_count",
+        });
+      } catch { /* non-fatal — reconcile-counters is the backstop */ }
     }
 
     // Increment campaign-level replied_count ONLY the first time this lead replies.

@@ -498,11 +498,16 @@ export async function sendCampaign(
 
   // 7) Roll up master campaign status + counter. sent_count is RECONCILED from the
   //    actual data rather than a racy read-modify-write on a value read minutes ago.
+  //    It counts DELIVERED leads (first_sent_at), not the ones we just handed to
+  //    Instantly — those are only queued, and Instantly drips them out over the
+  //    following days. Right after a send this is usually still 0, which is
+  //    correct: nothing has actually gone out yet. The email_sent webhook
+  //    increments it from here on.
   const { count: reconciledSent } = await db
     .from("campaign_leads")
     .select("id", { count: "exact", head: true })
     .eq("campaign_id", campaignId)
-    .eq("crm_status", "sent");
+    .not("first_sent_at", "is", null);
 
   await db.from("campaigns").update({
     status: "active",

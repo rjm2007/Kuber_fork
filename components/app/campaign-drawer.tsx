@@ -87,7 +87,10 @@ import {
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, BarChart, Bar, XAxis, YAxis } from "recharts";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ServiceHealthBanner } from "@/components/app/service-health-banner";
-import { computeCampaignStats } from "@/lib/campaign-status";
+import {
+  computeCampaignStats, deliveryBucket, DELIVERY_BUCKET_LABELS, DELIVERY_BUCKET_ORDER,
+  type DeliveryBucket,
+} from "@/lib/campaign-status";
 
 /**
  * Strips quoted-reply lines from a stored email plain-text body for display.
@@ -122,6 +125,20 @@ const DRAFT_STATUS_LABEL: Record<string, string> = {
   sent:       "Sent",
   failed:     "Failed",
   rejected:   "Rejected",
+};
+
+/**
+ * Delivery pill colours. Amber for "sending" is deliberate — it reads as
+ * in-flight, so nobody mistakes a lead still waiting in Instantly's drip for
+ * one that has actually been mailed (green).
+ */
+const DELIVERY_PILL_CLS: Record<DeliveryBucket, string> = {
+  not_queued:  "bg-muted text-muted-foreground border border-border",
+  sending:     "bg-amber-500/15 text-amber-600 border border-amber-500/30",
+  sent:        "bg-green-500/15 text-green-600 border border-green-500/30",
+  replied:     "bg-primary/15 text-primary border border-primary/30",
+  bounced:     "bg-red-500/15 text-red-500 border border-red-500/30",
+  send_failed: "bg-red-500/15 text-red-500 border border-red-500/30",
 };
 
 /** In-flight wording, kept apart from status labels — this is an activity, not a stored status. */
@@ -160,6 +177,10 @@ type CampaignLead = {
    * regeneration looks like the old row demoted to 'rejected'.
    */
   draft_activity?: DraftActivity;
+  /** Instantly's email_sent webhook has fired — the mail actually went out. */
+  contacted?: boolean;
+  /** Instantly's email_bounced webhook has fired — the address rejected it. */
+  bounced?: boolean;
   attachment?: AttachmentInfo;
 };
 
@@ -439,6 +460,7 @@ export function CampaignDetail({
   const [error, setError] = useState("");
   const [configOpen, setConfigOpen] = useState(false);
   const [leadsSort, setLeadsSort] = useState<CampaignLeadsSort>("az");
+  const [leadsDelivery, setLeadsDelivery] = useState<DeliveryBucket | "all">("all");
   const [leadsViewMode, setLeadsViewMode] = useState<"list" | "kanban">("list");
   const [historyOpen, setHistoryOpen] = useState(false);
   const [versions, setVersions] = useState<Array<{ id: string; subject: string | null; body: string | null; status: string; version: number; created_at: string }>>([]);
@@ -1405,7 +1427,17 @@ export function CampaignDetail({
         ? `Send all (${primaryAction.count})`
         : "Send all (0)";
 
-  const sortedCampaignLeads = sortCampaignLeads(campaignLeads, leadsSort);
+  // Counts come from the UNFILTERED set, so a chip never reports a number that
+  // shrinks the moment you click it.
+  const deliveryCounts = campaignLeads.reduce((acc, cl) => {
+    const b = deliveryBucket(cl);
+    acc[b] = (acc[b] ?? 0) + 1;
+    return acc;
+  }, {} as Partial<Record<DeliveryBucket, number>>);
+
+  // Applied before the split into list/kanban so BOTH views honour the filter.
+  const sortedCampaignLeads = sortCampaignLeads(campaignLeads, leadsSort)
+    .filter((cl) => leadsDelivery === "all" || deliveryBucket(cl) === leadsDelivery);
 
   const filteredLeads = sortedCampaignLeads.filter((cl) => {
     if (!leadsSearch) return true;
@@ -1911,16 +1943,16 @@ export function CampaignDetail({
                       <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">Sequence step performance</p>
                       <InfoTip
                         side="right"
-                        text="Each row is one email in this campaign's sequence — Email 1 is the initial outreach, Email 2 is the first follow-up, and so on. The bar shows what percentage of leads at that step have already had their email sent."
+                        text="Each row is one email in this campaign's sequence — Email 1 is the initial outreach, Email 2 is the first follow-up, and so on. The bar shows what percentage of leads at that step have been handed to Instantly. Instantly then drips the actual sends out at the campaign's daily limit, so this runs ahead of the Sent tile above."
                       />
                     </div>
-                    <p className="text-[10px] text-muted-foreground mb-3">% of leads sent, per email in the sequence</p>
+                    <p className="text-[10px] text-muted-foreground mb-3">% of leads queued to Instantly, per email in the sequence</p>
                     <div className="space-y-3">
                       {stepPerformancePct.map((s) => (
                         <div key={s.name}>
                           <div className="flex items-center justify-between text-xs mb-1">
                             <span className="font-medium">{s.name}</span>
-                            <span className="text-muted-foreground tabular-nums">{s.sent}/{s.total} sent · {s.pct}%</span>
+                            <span className="text-muted-foreground tabular-nums">{s.sent}/{s.total} queued · {s.pct}%</span>
                           </div>
                           <div className="h-2.5 rounded-full bg-muted overflow-hidden">
                             <div
@@ -2011,6 +2043,23 @@ export function CampaignDetail({
                 { value: "kanban", label: "Kanban", icon: LayoutGrid },
               ]}
             />
+
+            {/* Delivery filter — same segmented control as the sort/view toggles
+                above, so it reads as a control rather than plain text on the panel.
+                Only buckets that actually occur get a tab, so a healthy campaign
+                never shows an empty "Bounced" nudging you to click it. */}
+            <SegmentedTabs
+              size="sm"
+              className="basis-full"
+              value={leadsDelivery}
+              onValueChange={setLeadsDelivery}
+              options={[
+                { value: "all" as const, label: "All", count: campaignLeads.length },
+                ...DELIVERY_BUCKET_ORDER
+                  .filter((b) => (deliveryCounts[b] ?? 0) > 0)
+                  .map((b) => ({ value: b, label: DELIVERY_BUCKET_LABELS[b], count: deliveryCounts[b] ?? 0 })),
+              ]}
+            />
           </div>
 
           {leadsViewMode === "kanban" ? (
@@ -2077,7 +2126,6 @@ export function CampaignDetail({
                               {(() => {
                                 const activity = getDraftActivity(cl);
                                 const ds = cl.email_drafts?.status;
-                                const crm = cl.crm_status;
                                 const pills: { label: string; cls: string }[] = [];
 
                                 // Draft pill — an in-flight generation/regeneration
@@ -2095,19 +2143,13 @@ export function CampaignDetail({
                                   pills.push({ label: "Certified", cls: "bg-primary/15 text-primary border border-primary/30" });
                                 }
 
-                                // Sent pill
-                                if (ds === "sent" || crm === "sent") {
-                                  pills.push({ label: "Sent", cls: "bg-emerald-500/15 text-emerald-600 border border-emerald-500/30" });
-                                }
-
-                                // Completed — sequence finished (sent or replied, no more follow-ups pending)
-                                if (crm === "sent" || crm === "replied") {
-                                  pills.push({ label: "Completed", cls: "bg-green-500/15 text-green-600 border border-green-500/30" });
-                                }
-
-                                // Reply received
-                                if (crm === "replied") {
-                                  pills.push({ label: "Reply received", cls: "bg-primary/15 text-primary border border-primary/30" });
+                                // Delivery pill — exactly one, straight off the shared
+                                // bucket so this and the filter chips can never disagree.
+                                // 'not_queued' has no pill of its own: the draft pill
+                                // above already says where such a lead stands.
+                                const delivery = deliveryBucket(cl);
+                                if (delivery !== "not_queued") {
+                                  pills.push({ label: DELIVERY_BUCKET_LABELS[delivery], cls: DELIVERY_PILL_CLS[delivery] });
                                 }
 
                                 // Fallback if nothing matched

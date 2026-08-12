@@ -32,6 +32,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     .select(
       `*, attachment_path, attachment_name, attachment_mime, attachment_size, attachment_url,
        email_drafts(id, subject, body, status, created_at, step_number),
+       reply_events(event_type),
        leads!inner(first_name, last_name, email, title, country, assigned_to, organizations(name))`,
       { count: "exact" }
     )
@@ -82,9 +83,18 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   }
 
   // Compute resolved attachment per lead
-  const items = (data ?? []).map((cl: Record<string, unknown>) => ({
+  const items = (data ?? []).map(({ reply_events, ...cl }: Record<string, unknown>) => {
+    // `contacted` comes off first_sent_at, the same column campaigns.sent_count
+    // is reconciled from, so a lead's pill can never disagree with the campaign
+    // card's total. A bounce has no column of its own and doesn't need one:
+    // crm_status 'failed' covers both a bounce AND a lead Instantly refused at
+    // add-time, and only the event tells those two apart.
+    const events = (reply_events ?? []) as { event_type: string }[];
+    return {
     ...cl,
     leads: mapLeadRow(cl.leads as Record<string, unknown> | null),
+    contacted: cl.first_sent_at != null,
+    bounced: events.some((e) => e.event_type === "email_bounced"),
     draft_activity: activityByLead.get(cl.lead_id as string) ?? null,
     attachment: {
       perLead: cl.attachment_name
@@ -99,7 +109,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         ? { name: campaign.attachment_name, size: campaign.attachment_size, url: campaign.attachment_url ?? null, source: "campaign" as const }
         : null,
     },
-  }));
+  };
+  });
 
   return ok({ campaign_leads: items, total: count, page, limit });
 }
