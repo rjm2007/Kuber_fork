@@ -39,7 +39,7 @@ const STEPS = ["Find company", "Select company", "Select people", "Batch & assig
 const COMPANY_PAGE_SIZE_OPTIONS = [10, 20] as const;
 const CONTACT_PAGE_SIZE_OPTIONS = [10, 20, 30] as const;
 const DEFAULT_COMPANY_PAGE_SIZE = 20;
-const DEFAULT_CONTACT_PAGE_SIZE = 30;
+const DEFAULT_CONTACT_PAGE_SIZE = 10;
 
 function LookupPaginationBar({
   label,
