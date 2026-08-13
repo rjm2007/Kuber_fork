@@ -27,14 +27,16 @@ import { supabase } from "@/lib/supabase";
 import { BatchConfirmModal } from "@/components/app/batch-confirm-modal";
 import { Stepper } from "@/components/ui/stepper";
 
-async function getToken(): Promise<string> {
+// Exported so the Company Lookup wizard reuses these verbatim rather than
+// growing a second copy of the batch/assignment controls that then drifts.
+export async function getToken(): Promise<string> {
   const { data } = await supabase.auth.getSession();
   return data.session?.access_token ?? "";
 }
 
 // ─── BatchNameField ───────────────────────────────────────────────────────────
 
-function BatchNameField({
+export function BatchNameField({
   value,
   onChange,
   color,
@@ -133,7 +135,7 @@ function BatchNameField({
 // route the whole imported batch to one employee at creation time, instead of
 // leaving every lead in the pool for manual assignment later.
 
-function useAssignableEmployees(enabled: boolean) {
+export function useAssignableEmployees(enabled: boolean) {
   const [employees, setEmployees] = useState<Profile[]>([]);
 
   useEffect(() => {
@@ -194,7 +196,7 @@ export function buildImportAssignment(mode: ImportAssignMode, assignTo: string):
   return {};
 }
 
-function AssignStrategyPicker({
+export function AssignStrategyPicker({
   employees,
   mode,
   onModeChange,

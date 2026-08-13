@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { FileSpreadsheet, Search, UserPlus } from "lucide-react";
+import { Building2, FileSpreadsheet, Search, UserPlus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ApolloForm, ExcelForm, ManualForm, type ManualFormProps } from "@/components/app/lead-forms";
+import { CompanyLookupForm } from "@/components/app/company-lookup-form";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useApp } from "@/lib/app-context";
@@ -18,12 +19,13 @@ interface AddLeadsDrawerProps {
   editMode?: boolean;
 }
 
-type SectionKey = "apollo" | "excel" | "manual";
+type SectionKey = "apollo" | "company" | "excel" | "manual";
 
 const SECTIONS: { value: SectionKey; label: string; icon: typeof Search; description: string }[] = [
-  { value: "apollo", label: "Apollo Search", icon: Search,          description: "Filter Apollo's database by industry, title & location" },
-  { value: "excel",  label: "Excel / CSV",   icon: FileSpreadsheet, description: "Upload a spreadsheet and map its columns" },
-  { value: "manual", label: "Manual Entry",  icon: UserPlus,        description: "Add an organization and its people by hand" },
+  { value: "apollo",  label: "Apollo Search",  icon: Search,          description: "Filter Apollo's database by industry, title & location" },
+  { value: "company", label: "Company Lookup", icon: Building2,       description: "Find one company by name and pick its contacts" },
+  { value: "excel",   label: "Excel / CSV",    icon: FileSpreadsheet, description: "Upload a spreadsheet and map its columns" },
+  { value: "manual",  label: "Manual Entry",   icon: UserPlus,        description: "Add an organization and its people by hand" },
 ];
 
 export function AddLeadsDrawer({
@@ -111,6 +113,7 @@ export function AddLeadsDrawer({
             ) : (
               <>
                 {section === "apollo" && <ApolloForm onImport={handleImport} />}
+                {section === "company" && <CompanyLookupForm onImport={handleImport} />}
                 {section === "excel" && <ExcelForm onImport={handleImport} />}
                 {section === "manual" && <ManualForm onImport={handleImport} />}
               </>

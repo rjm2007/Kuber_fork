@@ -24,6 +24,10 @@ async function headers() {
 export interface ApolloSearchPerson {
   id: string;
   first_name: string | null;
+  // Apollo masks the surname on SEARCH (e.g. "Do***e") — the real one only
+  // arrives with the paid bulk_match. Company Lookup shows this so a person is
+  // recognisable before anyone pays; the keyword import ignores it.
+  last_name_obfuscated?: string | null;
   title: string | null;
   has_email: boolean;
   // Location comes back on search results too — stored at insert so
@@ -43,25 +47,42 @@ export interface ApolloSearchResult {
 }
 
 export async function searchPeople(opts: {
-  keyword: string;
-  locations: string[];
+  keyword?: string;
+  locations?: string[];
   page: number;
   perPage?: number;
   titles?: string[];
   seniorities?: string[];
+  /** Apollo organization ids. Passing these switches the call to ROSTER MODE:
+   *  everyone at those companies, with none of the segment filters below.
+   *
+   *  The keyword import narrows hard on purpose — it is mining a whole industry
+   *  and every extra person it returns is a person it might pay to reveal.
+   *  Company Lookup is the opposite: the company is already chosen, the search
+   *  is free, and a title filter here would silently hide the one contact the
+   *  client actually wanted. `contact_email_status` is the only filter kept,
+   *  because a person Apollo holds no email for cannot be actioned at all. */
+  organizationIds?: string[];
 }): Promise<ApolloSearchResult> {
+  const rosterMode = (opts.organizationIds?.length ?? 0) > 0;
+
   const body: Record<string, unknown> = {
-    person_titles: opts.titles ?? APOLLO_TITLES,
-    person_seniorities: opts.seniorities ?? APOLLO_SENIORITIES,
-    q_keywords: opts.keyword,
-    organization_num_employees_ranges: EMPLOYEE_RANGES,
     contact_email_status: CONTACT_EMAIL_STATUSES,
-    include_similar_titles: false,
     per_page: opts.perPage ?? 100,
     page: opts.page,
   };
 
-  if (opts.locations.length > 0) {
+  if (rosterMode) {
+    body.organization_ids = opts.organizationIds;
+  } else {
+    body.person_titles = opts.titles ?? APOLLO_TITLES;
+    body.person_seniorities = opts.seniorities ?? APOLLO_SENIORITIES;
+    body.q_keywords = opts.keyword;
+    body.organization_num_employees_ranges = EMPLOYEE_RANGES;
+    body.include_similar_titles = false;
+  }
+
+  if ((opts.locations?.length ?? 0) > 0) {
     body.person_locations = opts.locations;
   }
 
@@ -79,6 +100,173 @@ export async function searchPeople(opts: {
   }
 
   return res.json();
+}
+
+// ── Organization search (Company Lookup) ────────────────────────────────────
+// Unlike people search, this endpoint COSTS 1 credit per page — charged per
+// page requested, not per result returned, so always ask for the biggest page
+// we are allowed. Apollo returns 0 credits when nothing matches.
+
+export interface ApolloPagination {
+  page: number;
+  per_page: number;
+  total_entries: number;
+  total_pages: number;
+}
+
+export interface ApolloOrganization {
+  id: string;
+  name: string | null;
+  primary_domain: string | null;
+  website_url: string | null;
+  linkedin_url: string | null;
+  logo_url: string | null;
+  founded_year: number | null;
+  phone: string | null;
+  // Apollo's published field list does not pin these down (see the PRD's
+  // verification table), and live responses have been seen using more than one
+  // spelling — so they are normalised out of the raw row rather than read
+  // straight off it. Null means "not returned", which the UI shows as "—".
+  estimated_num_employees: number | null;
+  country: string | null;
+  city: string | null;
+  state: string | null;
+  industry: string | null;
+}
+
+export interface ApolloOrgSearchResult {
+  organizations: ApolloOrganization[];
+  pagination: ApolloPagination;
+}
+
+/** Every Organization Search filter beyond the three basic fields. All are
+ *  documented on the endpoint; the UI surfaces them under Advanced Search. */
+export interface ApolloOrgAdvancedFilters {
+  employeeRanges?: string[];
+  keywordTags?: string[];
+  revenueMin?: number;
+  revenueMax?: number;
+  technologyUids?: string[];
+  notLocations?: string[];
+  latestFundingAmountMin?: number;
+  latestFundingAmountMax?: number;
+  totalFundingMin?: number;
+  totalFundingMax?: number;
+  latestFundingDateMin?: string;
+  latestFundingDateMax?: string;
+  jobTitles?: string[];
+  jobLocations?: string[];
+  numJobsMin?: number;
+  numJobsMax?: number;
+  jobPostedAtMin?: string;
+  jobPostedAtMax?: string;
+}
+
+type RawOrg = Record<string, unknown>;
+
+function firstString(row: RawOrg, keys: string[]): string | null {
+  for (const k of keys) {
+    const v = row[k];
+    if (typeof v === "string" && v.trim() !== "") return v;
+  }
+  return null;
+}
+
+function firstNumber(row: RawOrg, keys: string[]): number | null {
+  for (const k of keys) {
+    const v = row[k];
+    if (typeof v === "number" && Number.isFinite(v)) return v;
+    if (typeof v === "string" && v.trim() !== "" && Number.isFinite(Number(v))) return Number(v);
+  }
+  return null;
+}
+
+function normalizeOrg(row: RawOrg): ApolloOrganization {
+  return {
+    id: String(row.id ?? ""),
+    name: firstString(row, ["name"]),
+    primary_domain: firstString(row, ["primary_domain", "domain"]),
+    website_url: firstString(row, ["website_url", "website"]),
+    linkedin_url: firstString(row, ["linkedin_url"]),
+    logo_url: firstString(row, ["logo_url"]),
+    founded_year: firstNumber(row, ["founded_year"]),
+    phone: firstString(row, ["phone", "primary_phone", "sanitized_phone"]),
+    estimated_num_employees: firstNumber(row, ["estimated_num_employees", "employee_count", "num_employees"]),
+    country: firstString(row, ["country", "organization_country"]),
+    city: firstString(row, ["city", "organization_city"]),
+    state: firstString(row, ["state", "organization_state"]),
+    industry: firstString(row, ["industry"]),
+  };
+}
+
+/** Apollo's own page ceiling. Asking for less does NOT cost less — the credit
+ *  is charged per page — so the request always uses the maximum. */
+export const APOLLO_ORG_PER_PAGE = 100;
+
+export async function searchOrganizations(opts: {
+  name: string;
+  locations?: string[];
+  domains?: string[];
+  page?: number;
+  advanced?: ApolloOrgAdvancedFilters;
+}): Promise<ApolloOrgSearchResult> {
+  const a = opts.advanced ?? {};
+  const body: Record<string, unknown> = {
+    q_organization_name: opts.name,
+    page: opts.page ?? 1,
+    per_page: APOLLO_ORG_PER_PAGE,
+  };
+
+  const setList = (key: string, value?: string[]) => {
+    if (value && value.length > 0) body[key] = value;
+  };
+  const setRange = (key: string, min?: number | string, max?: number | string) => {
+    const range: Record<string, number | string> = {};
+    if (min !== undefined && min !== "") range.min = min;
+    if (max !== undefined && max !== "") range.max = max;
+    if (Object.keys(range).length > 0) body[key] = range;
+  };
+
+  setList("organization_locations", opts.locations);
+  setList("q_organization_domains_list", opts.domains);
+  setList("organization_num_employees_ranges", a.employeeRanges);
+  setList("q_organization_keyword_tags", a.keywordTags);
+  setList("currently_using_any_of_technology_uids", a.technologyUids);
+  setList("organization_not_locations", a.notLocations);
+  setList("q_organization_job_titles", a.jobTitles);
+  setList("organization_job_locations", a.jobLocations);
+  setRange("revenue_range", a.revenueMin, a.revenueMax);
+  setRange("latest_funding_amount_range", a.latestFundingAmountMin, a.latestFundingAmountMax);
+  setRange("total_funding_range", a.totalFundingMin, a.totalFundingMax);
+  setRange("latest_funding_date_range", a.latestFundingDateMin, a.latestFundingDateMax);
+  setRange("organization_num_jobs_range", a.numJobsMin, a.numJobsMax);
+  setRange("organization_job_posted_at_range", a.jobPostedAtMin, a.jobPostedAtMax);
+
+  const res = await fetchWithRetry(
+    "apollo",
+    `${BASE}/mixed_companies/search`,
+    { method: "POST", headers: await headers(), body: JSON.stringify(body) }
+  );
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw Object.assign(new Error(`Apollo org search ${res.status}: ${text.slice(0, 300)}`), {
+      status: res.status,
+    });
+  }
+
+  const raw = await res.json() as { organizations?: RawOrg[]; pagination?: Partial<ApolloPagination> };
+  const organizations = (raw.organizations ?? []).map(normalizeOrg).filter((o) => o.id !== "");
+
+  return {
+    organizations,
+    pagination: {
+      page: raw.pagination?.page ?? opts.page ?? 1,
+      per_page: raw.pagination?.per_page ?? APOLLO_ORG_PER_PAGE,
+      total_entries: raw.pagination?.total_entries ?? organizations.length,
+      total_pages: raw.pagination?.total_pages ?? 1,
+    },
+  };
 }
 
 export interface ApolloBulkMatchPerson {

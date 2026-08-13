@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { dbId } from "./id";
 import { domainField } from "@/lib/validators/organizations";
+import { COMPANY_LOOKUP_MAX_CONTACTS, COMPANY_LOOKUP_MAX_PAGES } from "@/lib/constants";
 
 export const CreateLeadSchema = z.object({
   first_name: z.string().optional(),
@@ -103,6 +104,80 @@ export const ApolloSearchSchema = z.object({
   (data) => !data.strict_cap || [25, 50, 100].includes(data.max_total_leads),
   { message: "Strict mode only allows 25, 50, or 100 total leads", path: ["max_total_leads"] },
 );
+
+// ── Company Lookup ──────────────────────────────────────────────────────────
+
+/** Every Organization Search filter beyond the three basic fields, surfaced in
+ *  the UI under Advanced Search. All optional — an untouched Advanced panel
+ *  must never narrow a search. */
+const CompanyAdvancedSchema = z.object({
+  employeeRanges: z.array(z.string()).optional(),
+  keywordTags: z.array(z.string()).optional(),
+  revenueMin: z.number().nonnegative().optional(),
+  revenueMax: z.number().nonnegative().optional(),
+  technologyUids: z.array(z.string()).optional(),
+  notLocations: z.array(z.string()).optional(),
+  latestFundingAmountMin: z.number().nonnegative().optional(),
+  latestFundingAmountMax: z.number().nonnegative().optional(),
+  totalFundingMin: z.number().nonnegative().optional(),
+  totalFundingMax: z.number().nonnegative().optional(),
+  latestFundingDateMin: z.string().optional(),
+  latestFundingDateMax: z.string().optional(),
+  jobTitles: z.array(z.string()).optional(),
+  jobLocations: z.array(z.string()).optional(),
+  numJobsMin: z.number().int().nonnegative().optional(),
+  numJobsMax: z.number().int().nonnegative().optional(),
+  jobPostedAtMin: z.string().optional(),
+  jobPostedAtMax: z.string().optional(),
+}).optional();
+
+export const CompanySearchSchema = z.object({
+  name: z.string().trim().min(1).max(200),
+  country: z.string().trim().max(100).optional(),
+  website: z.string().trim().max(200).optional(),
+  // Each page is a paid Apollo call. Capped here as well as in the UI so a
+  // hand-rolled request cannot walk Apollo's 500-page limit on our credits.
+  page: z.number().int().min(1).max(COMPANY_LOOKUP_MAX_PAGES).default(1),
+  advanced: CompanyAdvancedSchema,
+});
+
+export const CompanyPeopleSchema = z.object({
+  apollo_org_id: z.string().trim().min(1),
+  page: z.number().int().min(1).max(20).default(1),
+});
+
+/** One selected contact, carried from the free people search. Only `apollo_id`
+ *  is load-bearing — the rest is display data re-fetched authoritatively by the
+ *  paid reveal, so nothing here is trusted as final. */
+const CompanyContactSchema = z.object({
+  apollo_id: z.string().trim().min(1),
+  first_name: z.string().nullable().optional(),
+  title: z.string().nullable().optional(),
+  city: z.string().nullable().optional(),
+  state: z.string().nullable().optional(),
+  country: z.string().nullable().optional(),
+});
+
+export const CompanyImportSchema = z.object({
+  organization: z.object({
+    apollo_org_id: z.string().trim().min(1),
+    name: z.string().trim().min(1),
+    domain: z.string().trim().nullable().optional(),
+    website: z.string().trim().nullable().optional(),
+    industry: z.string().trim().nullable().optional(),
+    employees: z.number().int().nullable().optional(),
+    city: z.string().trim().nullable().optional(),
+    state: z.string().trim().nullable().optional(),
+    country: z.string().trim().nullable().optional(),
+  }),
+  // THE spend ceiling for the reveal step. Enforced here so the limit holds
+  // regardless of what the client sends.
+  contacts: z.array(CompanyContactSchema).min(1).max(COMPANY_LOOKUP_MAX_CONTACTS),
+  batch_name: z.string().min(1),
+  color: z.string().default("violet"),
+  assigned_to: dbId.nullable().optional(),
+  assignment_strategy: ImportAssignmentStrategy,
+});
 
 export const ExcelImportSchema = z.discriminatedUnion("mode", [
   z.object({ mode: z.literal("headers"), storage_path: z.string().min(1) }),
