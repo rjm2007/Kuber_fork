@@ -1090,7 +1090,7 @@ export function SettingsView() {
                         <h3 className="font-display text-base font-semibold mt-0.5">Appearance mode</h3>
                       </div>
                     </div>
-                    <SettingsRow label="Workspace mode" description="Switch between a dark or light workspace background.">
+                    <SettingsRow label="Workspace mode" description="Switch between a dark or light workspace ">
                       <div className="grid grid-cols-2 gap-3 max-w-sm">
                         {(["dark", "light"] as const).map((m) => {
                           const active = mode === m;
