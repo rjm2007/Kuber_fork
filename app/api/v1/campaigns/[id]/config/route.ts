@@ -6,6 +6,15 @@ import { patchInstantlyCampaignConfig } from "@/lib/services/instantly";
 import { assertCampaignSettingsAccess } from "@/lib/auth/scope";
 import { dbForUser } from "@/lib/supabase/scoped";
 
+// Each sub-campaign now costs a read plus a write instead of a blind write:
+// campaign_schedule is replaced wholesale by Instantly, so the current one has
+// to be read back before a single field can be changed without wiping the rest
+// (see patchInstantlyCampaignConfig). A wide campaign can hold ~30 country
+// buckets, so worst case is ~60 sequential calls. 120s matches the other
+// multi-step Instantly routes in this app (send, bulk-delete) and leaves
+// comfortable headroom; the default platform timeout would not.
+export const maxDuration = 120;
+
 // PATCH /api/v1/campaigns/[id]/config
 // Edits campaign schedule/config on live campaigns and syncs to all Instantly
 // sub-campaigns. Unlike the main PATCH /campaigns/[id] route this is not
@@ -49,6 +58,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     .eq("campaign_id", id)
     .not("instantly_campaign_id", "is", null);
 
+  // Daily limit, window and send days are genuinely campaign-wide and belong on
+  // every sub-campaign. Timezone deliberately does NOT travel down: each
+  // sub-campaign holds its own recipient-country timezone, computed at fan-out
+  // (campaign-fanout.ts pickTimezone), and holding a distinct one is the only
+  // reason these sub-campaigns exist. campaigns.schedule_timezone is just the
+  // fallback used for leads whose country can't be resolved — propagating it
+  // here overwrote India/Germany/Australia with the master's zone on every save.
+  // See docs/campaign-timezone-rca.md.
   const syncErrors: string[] = [];
   for (const sub of subs ?? []) {
     if (!sub.instantly_campaign_id) continue;
@@ -58,7 +75,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         dailyLimit: parsed.data.daily_limit,
         windowFrom: parsed.data.window_from,
         windowTo:   parsed.data.window_to,
-        timezone:   parsed.data.schedule_timezone,
         sendDays:   parsed.data.send_days,
       });
     } catch (e) {

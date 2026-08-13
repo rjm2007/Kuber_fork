@@ -150,11 +150,19 @@ export function EditCampaignForm({
       if (!session) return;
 
       // 1. Patch campaign config (schedule, limit, sender, AI context)
+      //
+      // schedule_timezone is sent ONLY when the user actually changed it. The
+      // "page" variant renders no timezone control at all (the window is stated
+      // as local time of the recipient), so on that screen this is never dirty
+      // and never sent — which is the point: it used to be resubmitted on every
+      // save, carrying the campaign's auto-detected zone down onto every
+      // country sub-campaign. See docs/campaign-timezone-rca.md.
+      const timezoneChanged = timezone !== (campaign.timezone ?? "Asia/Kolkata");
       const result = await patchCampaignConfig(session.access_token, campaign.id, {
         daily_limit: dailyLimit,
         window_from: windowFrom,
         window_to: windowTo,
-        schedule_timezone: timezone,
+        ...(timezoneChanged ? { schedule_timezone: timezone } : {}),
         send_days: sendDays,
         sender_name: senderName || undefined,
         ai_prompt_context: aiPromptContext || undefined,
