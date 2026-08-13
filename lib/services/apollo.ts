@@ -181,7 +181,10 @@ function firstNumber(row: RawOrg, keys: string[]): number | null {
   return null;
 }
 
-function normalizeOrg(row: RawOrg): ApolloOrganization {
+/** Exported so the mock provider can build raw Apollo-shaped rows and run them
+ *  through this exact parser — the field-name guessing above is the part most
+ *  likely to be wrong, so the mock should exercise it rather than bypass it. */
+export function normalizeOrg(row: RawOrg): ApolloOrganization {
   return {
     id: String(row.id ?? ""),
     name: firstString(row, ["name"]),

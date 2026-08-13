@@ -6,8 +6,8 @@ import { searchOrganizations } from "@/lib/services/apollo";
 import { getServiceSecret } from "@/lib/services/service-keys";
 import { checkApolloCredits } from "@/lib/services/provider-credits";
 import { dbForUser } from "@/lib/supabase/scoped";
-import { DEV_COMPANY_ID } from "@/lib/constants";
 import { normalizeDomain } from "@/lib/utils/domain";
+import { isApolloMockCompany, mockSearchOrganizations } from "@/lib/services/apollo-mock";
 
 export const maxDuration = 60;
 
@@ -28,11 +28,10 @@ export async function POST(req: NextRequest) {
   let user: Awaited<ReturnType<typeof requireManager>>;
   try { user = await requireManager(req); } catch (r) { return r as Response; }
 
-  // Same rule as the keyword search: provider_keys are shared across tenants,
-  // so an internal-workspace search would spend the live client's credits.
-  if (user.companyId === DEV_COMPANY_ID) {
-    return fail(403, "APOLLO_DISABLED_DEV", "Company Lookup is disabled for the internal/dev workspace — Apollo credits are shared with the live client account.");
-  }
+  // provider_keys are shared across tenants, so an internal-workspace search
+  // would spend the live client's credits. Rather than a flat 403, the dev
+  // workspace runs the whole feature against fixtures — same flow, no bill.
+  const mock = isApolloMockCompany(user.companyId);
 
   const body = await req.json().catch(() => null);
   const parsed = CompanySearchSchema.safeParse(body);
@@ -40,7 +39,8 @@ export async function POST(req: NextRequest) {
 
   const { name, country, website, page, advanced } = parsed.data;
 
-  if (!(await getServiceSecret("apollo"))) {
+  // Mock mode needs no key and no balance — there is nothing to spend.
+  if (!mock && !(await getServiceSecret("apollo"))) {
     return fail(503, "UPSTREAM_APOLLO", "Apollo API key not configured — add one in Settings > Keys");
   }
 
@@ -48,21 +48,25 @@ export async function POST(req: NextRequest) {
 
   // A manager clicking Search has usually just topped up if they were empty,
   // so read fresh rather than serving a stale "out of credits".
-  const credits = await checkApolloCredits(db, { fresh: true });
+  const credits = mock
+    ? { ok: true, remaining: null as number | null, message: "mock" }
+    : await checkApolloCredits(db, { fresh: true });
   if (!credits.ok) {
     return fail(402, "APOLLO_OUT_OF_CREDITS", credits.message);
   }
 
   let result;
   try {
-    result = await searchOrganizations({
-      name,
-      locations: country ? [country] : undefined,
-      // Apollo wants a bare domain here, not a pasted URL.
-      domains: website ? [safeDomain(website)] : undefined,
-      page,
-      advanced,
-    });
+    result = mock
+      ? mockSearchOrganizations({ name, locations: country ? [country] : undefined, page })
+      : await searchOrganizations({
+          name,
+          locations: country ? [country] : undefined,
+          // Apollo wants a bare domain here, not a pasted URL.
+          domains: website ? [safeDomain(website)] : undefined,
+          page,
+          advanced,
+        });
   } catch (err) {
     const status = (err as { status?: number }).status;
     if (status === 401) return fail(502, "UPSTREAM_APOLLO", "Invalid or unauthorized Apollo key");
@@ -77,7 +81,17 @@ export async function POST(req: NextRequest) {
   // apollo-source row without filtering on event name, so this must be exactly
   // ONE row per paid page: a second row double-counts, a missing row hides the
   // spend. Apollo bills nothing for an empty result, so nothing is logged then.
-  if (orgs.length > 0) {
+  // A mock search spends nothing, so it must never write an apollo-source row:
+  // Usage sums payload.credits_consumed across those without filtering on event
+  // name, and a fake credit there would corrupt the one number this whole
+  // exercise exists to keep honest. Logged under `system` instead.
+  if (mock) {
+    await db.from("enrichment_logs").insert({
+      source: "system",
+      event: "COMPANY_LOOKUP_MOCK",
+      payload: { stage: "company_search", query: name, page, returned: orgs.length, credits_consumed: 0 },
+    });
+  } else if (orgs.length > 0) {
     await db.from("enrichment_logs").insert({
       source: "apollo",
       event: "CREDITS_CONSUMED",
@@ -151,8 +165,11 @@ export async function POST(req: NextRequest) {
     page: result.pagination.page,
     total_entries: result.pagination.total_entries,
     total_pages: result.pagination.total_pages,
-    credits_spent: orgs.length > 0 ? 1 : 0,
+    credits_spent: mock ? 0 : (orgs.length > 0 ? 1 : 0),
     apollo_credits_remaining: credits.remaining,
+    // Surfaced so the wizard can label the data as fixtures — nobody should
+    // mistake a mock company for a real one.
+    mock,
   });
 }
 

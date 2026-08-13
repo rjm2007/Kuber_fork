@@ -3,8 +3,8 @@ import { requireManager } from "@/lib/auth/api-auth";
 import { fail, ok } from "@/lib/api-response";
 import { CompanyImportSchema } from "@/lib/validators/leads";
 import { dbForUser } from "@/lib/supabase/scoped";
-import { DEV_COMPANY_ID } from "@/lib/constants";
 import { normalizeDomain } from "@/lib/utils/domain";
+import { isApolloMockCompany, mockRevealedEmail } from "@/lib/services/apollo-mock";
 import { internalAppBaseUrl } from "@/lib/internal-url";
 import { getServiceSecret } from "@/lib/services/service-keys";
 
@@ -30,9 +30,7 @@ export async function POST(req: NextRequest) {
   let user: Awaited<ReturnType<typeof requireManager>>;
   try { user = await requireManager(req); } catch (r) { return r as Response; }
 
-  if (user.companyId === DEV_COMPANY_ID) {
-    return fail(403, "APOLLO_DISABLED_DEV", "Company Lookup is disabled for the internal/dev workspace.");
-  }
+  const mock = isApolloMockCompany(user.companyId);
 
   const body = await req.json().catch(() => null);
   const parsed = CompanyImportSchema.safeParse(body);
@@ -98,8 +96,11 @@ export async function POST(req: NextRequest) {
     city: organization.city ?? null,
     state: organization.state ?? null,
     country: organization.country ?? null,
-    enrichment_stage: "queued",
-    enrichment_status: "SCRAPE_QUEUED",
+    // A mock company's domain does not exist, so it must never be queued for
+    // scraping — Firecrawl bills per attempt and would burn real credits on a
+    // fixture. Landing it as already-done keeps it out of the scrape worker.
+    enrichment_stage: mock ? "done" : "queued",
+    enrichment_status: mock ? "ENRICHMENT_COMPLETE" : "SCRAPE_QUEUED",
     enrichment_attempts: 0,
     created_at: new Date().toISOString(),
   }).select("id").single();
@@ -142,8 +143,14 @@ export async function POST(req: NextRequest) {
         apollo_id: c.apollo_id,
         first_name: c.first_name ?? null,
         title: c.title ?? null,
+        // MOCK: the address is written now, not left for the reveal. A row with
+        // has_email=true / email=null IS the instruction to spend a credit, and
+        // the background watchdog neither knows nor cares that the lead came
+        // from a fixture — it would happily pay Apollo to look up "mock_person_…".
+        // Writing the email up front keeps the row permanently ineligible.
         has_email: true,
-        email: null,
+        email: mock ? mockRevealedEmail(c.first_name ?? null, domain) : null,
+        email_status: mock ? "verified" : null,
         city: c.city ?? null,
         state: c.state ?? null,
         country: c.country ?? null,
@@ -171,7 +178,9 @@ export async function POST(req: NextRequest) {
     await logLeadEvents(db, leads.map((l) => ({
       leadId: l.id as string,
       event: "created" as const,
-      detail: `Imported from Apollo — Company Lookup (${organization.name})`,
+      detail: mock
+        ? `MOCK import — Company Lookup (${organization.name}). Fixture data, no Apollo credits spent.`
+        : `Imported from Apollo — Company Lookup (${organization.name})`,
       actorId: user.id,
     })));
   }
@@ -181,7 +190,10 @@ export async function POST(req: NextRequest) {
   // already cover a pass dying mid-run.
   const baseUrl = internalAppBaseUrl(req);
   const authHeader = req.headers.get("authorization") ?? "";
-  if (importId && leads.length > 0 && (await getServiceSecret("apollo"))) {
+  // Never in mock mode: these leads already carry their email, so the reveal
+  // would find nothing to claim — but calling it at all is a paid code path
+  // pointed at fabricated Apollo ids, and not calling it is free.
+  if (!mock && importId && leads.length > 0 && (await getServiceSecret("apollo"))) {
     after(() =>
       fetch(`${baseUrl}/api/v1/leads/enrich`, {
         method: "POST",
@@ -197,7 +209,8 @@ export async function POST(req: NextRequest) {
     inserted: leads.length,
     skipped_known: contacts.length - fresh.length,
     // What the reveal is about to cost, so the UI can state it plainly.
-    reveal_credits_queued: leads.length,
+    reveal_credits_queued: mock ? 0 : leads.length,
+    mock,
   });
 }
 

@@ -5,7 +5,8 @@ import { CompanyPeopleSchema } from "@/lib/validators/leads";
 import { searchPeople } from "@/lib/services/apollo";
 import { getServiceSecret } from "@/lib/services/service-keys";
 import { dbForUser } from "@/lib/supabase/scoped";
-import { DEV_COMPANY_ID, companyLookupTitleRank } from "@/lib/constants";
+import { companyLookupTitleRank } from "@/lib/constants";
+import { isApolloMockCompany, mockSearchPeople } from "@/lib/services/apollo-mock";
 
 export const maxDuration = 60;
 
@@ -27,9 +28,9 @@ export async function POST(req: NextRequest) {
   let user: Awaited<ReturnType<typeof requireManager>>;
   try { user = await requireManager(req); } catch (r) { return r as Response; }
 
-  if (user.companyId === DEV_COMPANY_ID) {
-    return fail(403, "APOLLO_DISABLED_DEV", "Company Lookup is disabled for the internal/dev workspace.");
-  }
+  // Dev workspace runs on fixtures — see apollo-mock.ts for why the switch is
+  // the tenant rather than an env flag.
+  const mock = isApolloMockCompany(user.companyId);
 
   const body = await req.json().catch(() => null);
   const parsed = CompanyPeopleSchema.safeParse(body);
@@ -37,7 +38,7 @@ export async function POST(req: NextRequest) {
 
   const { apollo_org_id, page } = parsed.data;
 
-  if (!(await getServiceSecret("apollo"))) {
+  if (!mock && !(await getServiceSecret("apollo"))) {
     return fail(503, "UPSTREAM_APOLLO", "Apollo API key not configured — add one in Settings > Keys");
   }
 
@@ -62,7 +63,9 @@ export async function POST(req: NextRequest) {
     // at the company and chooses, rather than the system pre-filtering for
     // them. contact_email_status still applies: a person Apollo holds no email
     // for cannot be actioned, so Apollo is asked not to return them at all.
-    result = await searchPeople({ organizationIds: [apollo_org_id], page });
+    result = mock
+      ? mockSearchPeople({ organizationIds: [apollo_org_id] })
+      : await searchPeople({ organizationIds: [apollo_org_id], page });
   } catch (err) {
     const status = (err as { status?: number }).status;
     if (status === 401) return fail(502, "UPSTREAM_APOLLO", "Invalid or unauthorized Apollo key");
@@ -118,5 +121,6 @@ export async function POST(req: NextRequest) {
     total_entries: result.total_entries,
     selectable: contacts.filter((c) => !c.already_imported && !c.unenrichable).length,
     credits_spent: 0,
+    mock,
   });
 }

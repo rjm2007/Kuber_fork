@@ -141,6 +141,8 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
   const [viewPage, setViewPage] = useState(0);
   const [totalEntries, setTotalEntries] = useState(0);
   const [creditsSpent, setCreditsSpent] = useState(0);
+  // Set by the server when this workspace runs on fixtures instead of Apollo.
+  const [mock, setMock] = useState(false);
   const [selectedCompany, setSelectedCompany] = useState<Company | null>(null);
 
   // Step 3 — contacts
@@ -179,7 +181,7 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
     try {
       const data = await call<{
         companies: Company[]; page: number; total_entries: number;
-        total_pages: number; credits_spent: number;
+        total_pages: number; credits_spent: number; mock?: boolean;
       }>("/api/v1/leads/company-search", {
         name: name.trim(),
         country: country.trim() || undefined,
@@ -188,6 +190,7 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
         advanced: buildAdvanced(advanced),
       });
 
+      setMock(!!data.mock);
       setCompanies((prev) => (page === 1 ? data.companies : [...prev, ...data.companies]));
       setApolloPage(data.page);
       setTotalEntries(data.total_entries);
@@ -276,6 +279,13 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
   return (
     <div className="space-y-5">
       <Stepper steps={STEPS} current={step} className="pb-4 mb-6 border-b border-border" />
+
+      {mock && (
+        <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-600 dark:text-amber-400">
+          <strong>Test mode</strong> — this workspace runs Company Lookup against sample data. No Apollo
+          credits are spent, and imported contacts carry placeholder emails rather than real ones.
+        </div>
+      )}
 
       {/* ── Step 1 — Find company ─────────────────────────────────────────── */}
       {step === 0 && (
@@ -518,8 +528,13 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
           )}
 
           <p className="text-[11px] text-muted-foreground">
-            Surnames are partly hidden until the email is revealed. Revealing costs{" "}
-            <strong>1 credit per contact</strong> — {picked.length} selected = <strong>{picked.length} credit{picked.length === 1 ? "" : "s"}</strong>.
+            Surnames are partly hidden until the email is revealed.{" "}
+            {mock ? (
+              <>Test mode — revealing these costs nothing and produces placeholder emails.</>
+            ) : (
+              <>Revealing costs <strong>1 credit per contact</strong> — {picked.length} selected ={" "}
+              <strong>{picked.length} credit{picked.length === 1 ? "" : "s"}</strong>.</>
+            )}
           </p>
         </div>
       )}
@@ -542,8 +557,12 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
             onAssignToChange={setAssignTo}
           />
           <p className="text-[11px] text-amber-500">
-            Importing {picked.length} contact{picked.length === 1 ? "" : "s"} will spend{" "}
-            <strong>{picked.length} Apollo credit{picked.length === 1 ? "" : "s"}</strong> revealing their emails.
+            {mock ? (
+              <>Test mode — importing {picked.length} contact{picked.length === 1 ? "" : "s"} spends no credits and writes placeholder emails.</>
+            ) : (
+              <>Importing {picked.length} contact{picked.length === 1 ? "" : "s"} will spend{" "}
+              <strong>{picked.length} Apollo credit{picked.length === 1 ? "" : "s"}</strong> revealing their emails.</>
+            )}
           </p>
         </div>
       )}
