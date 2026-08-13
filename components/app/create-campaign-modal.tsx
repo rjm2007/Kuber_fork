@@ -131,7 +131,6 @@ export function CreateCampaignModal({
   const [windowTo, setWindowTo] = useState("18:00");
   const [timezone, setTimezone] = useState("Asia/Kolkata");
   const [timezoneOverride, setTimezoneOverride] = useState(false);
-  const [primaryCountry, setPrimaryCountry] = useState<string | null>(null);
   const [scheduleDate, setScheduleDate] = useState<Date | undefined>();
   const [senderName, setSenderName] = useState("");
   const [aiPromptContext, setAiPromptContext] = useState("");
@@ -207,7 +206,6 @@ export function CreateCampaignModal({
     if (!open) return;
     const country = getMostCommonCountry(leads);
     const autoTz = country ? (COUNTRY_TO_TIMEZONE[country] ?? "UTC") : "Asia/Kolkata";
-    setPrimaryCountry(country);
     setTimezone(autoTz);
     setTimezoneOverride(false);
     setAssignTo(""); // default: container mode, keep current lead owners
@@ -231,7 +229,7 @@ export function CreateCampaignModal({
   function reset() {
     setName(""); setHumanInLoop(true);
     setWindowFrom("08:00"); setWindowTo("18:00"); setTimezone("Asia/Kolkata");
-    setTimezoneOverride(false); setPrimaryCountry(null);
+    setTimezoneOverride(false);
     setScheduleDate(undefined); setSenderName(""); setAiPromptContext("");
     setSendDays({ monday: true, tuesday: true, wednesday: true, thursday: true, friday: true, saturday: false, sunday: false });
     setFollowupSteps([{ delay: 30, delay_unit: "days" }, { delay: 90, delay_unit: "days" }]);
@@ -422,9 +420,16 @@ export function CreateCampaignModal({
                 <div className="flex items-center gap-2.5">
                   <Globe className="size-4 text-muted-foreground shrink-0" />
                   <div>
-                    <p className="text-sm font-medium leading-none">Timezone</p>
+                    {/* Named for what it actually does. Every lead with a known
+                        country sends in that country's own time, decided per
+                        country at send time — this value is only the stand-in
+                        for leads whose country we can't resolve. Labelling it
+                        plain "Timezone" read as "the timezone this campaign
+                        sends in", which is what led to it being pushed over
+                        every country's schedule. See docs/campaign-timezone-rca.md. */}
+                    <p className="text-sm font-medium leading-none">Fallback timezone</p>
                     <p className="text-xs text-muted-foreground">
-                      Auto-detected: <span className="font-mono">{timezone}</span>{primaryCountry ? ` (${primaryCountry})` : ""}
+                      Leads send in their own country&apos;s time. Used only for leads with no country: <span className="font-mono">{timezone}</span>
                     </p>
                   </div>
                 </div>
