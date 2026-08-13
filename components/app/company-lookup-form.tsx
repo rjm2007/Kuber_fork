@@ -123,8 +123,59 @@ function buildAdvanced(raw: Record<string, string>): Record<string, unknown> | u
   return Object.keys(out).length > 0 ? out : undefined;
 }
 
+/**
+ * Results are paid for, so they must outlive the component.
+ *
+ * The wizard lives inside a modal whose tabs unmount it, and a reload wipes
+ * React state entirely — so "switch to Excel and back" or "refresh the page"
+ * used to mean searching again, and every repeat search is another credit. On
+ * 13 Aug 2026 that cost three credits for two distinct searches.
+ *
+ * sessionStorage is the right scope here: it survives reloads, tab switches
+ * and modal close/reopen within the tab, and is discarded when the tab closes,
+ * so nobody inherits a stale company list days later. It is per-browser, so it
+ * does not stop a second user paying for the same query — a shared server-side
+ * cache would, and is the upgrade if that ever shows up in the usage log.
+ */
+const CACHE_KEY = "kuber:company-lookup:v1";
+
+type CachedState = {
+  criteria: string;
+  companies: Company[];
+  apolloPage: number;
+  totalEntries: number;
+  creditsSpent: number;
+  mock: boolean;
+  step: number;
+  selectedCompany: Company | null;
+  contacts: Contact[];
+  picked: string[];
+  batchName: string;
+};
+
+function readCache(): CachedState | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = sessionStorage.getItem(CACHE_KEY);
+    return raw ? (JSON.parse(raw) as CachedState) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeCache(state: CachedState) {
+  if (typeof window === "undefined") return;
+  try {
+    sessionStorage.setItem(CACHE_KEY, JSON.stringify(state));
+  } catch {
+    // Quota or private-mode failure is not worth breaking the flow over —
+    // the worst case is the pre-existing behaviour.
+  }
+}
+
 export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void }) {
-  const [step, setStep] = useState(0);
+  const cached = readCache();
+  const [step, setStep] = useState(cached?.step ?? 0);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -136,21 +187,21 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
   const [advanced, setAdvanced] = useState<Record<string, string>>({});
 
   // Step 2 — companies
-  const [companies, setCompanies] = useState<Company[]>([]);
-  const [apolloPage, setApolloPage] = useState(0);
+  const [companies, setCompanies] = useState<Company[]>(cached?.companies ?? []);
+  const [apolloPage, setApolloPage] = useState(cached?.apolloPage ?? 0);
   const [viewPage, setViewPage] = useState(0);
-  const [totalEntries, setTotalEntries] = useState(0);
-  const [creditsSpent, setCreditsSpent] = useState(0);
+  const [totalEntries, setTotalEntries] = useState(cached?.totalEntries ?? 0);
+  const [creditsSpent, setCreditsSpent] = useState(cached?.creditsSpent ?? 0);
   // Set by the server when this workspace runs on fixtures instead of Apollo.
-  const [mock, setMock] = useState(false);
-  const [selectedCompany, setSelectedCompany] = useState<Company | null>(null);
+  const [mock, setMock] = useState(cached?.mock ?? false);
+  const [selectedCompany, setSelectedCompany] = useState<Company | null>(cached?.selectedCompany ?? null);
 
   // Step 3 — contacts
-  const [contacts, setContacts] = useState<Contact[]>([]);
-  const [picked, setPicked] = useState<string[]>([]);
+  const [contacts, setContacts] = useState<Contact[]>(cached?.contacts ?? []);
+  const [picked, setPicked] = useState<string[]>(cached?.picked ?? []);
 
   // Step 4 — batch
-  const [batchName, setBatchName] = useState("");
+  const [batchName, setBatchName] = useState(cached?.batchName ?? "");
   const [color, setColor] = useState("violet");
   const [batchNameError, setBatchNameError] = useState(false);
   const [assignTo, setAssignTo] = useState("");
@@ -158,6 +209,41 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
   const employees = useAssignableEmployees(true);
 
   const activeAdvanced = Object.entries(advanced).filter(([, v]) => v.trim() !== "");
+
+  /** Identity of a search. Two searches with the same criteria return the same
+   *  companies, so re-running one is a credit spent for nothing. */
+  const criteria = JSON.stringify({
+    name: name.trim().toLowerCase(),
+    country: country.trim().toLowerCase(),
+    website: website.trim().toLowerCase(),
+    advanced: buildAdvanced(advanced) ?? null,
+  });
+
+  /** Persist whatever has been paid for, so a reload or a tab switch never
+   *  forces the manager to buy the same page twice. */
+  function persist(next: Partial<CachedState>) {
+    writeCache({
+      criteria,
+      companies,
+      apolloPage,
+      totalEntries,
+      creditsSpent,
+      mock,
+      step,
+      selectedCompany,
+      contacts,
+      picked,
+      batchName,
+      ...next,
+    });
+  }
+
+  function startOver() {
+    if (typeof window !== "undefined") sessionStorage.removeItem(CACHE_KEY);
+    setCompanies([]); setApolloPage(0); setViewPage(0); setTotalEntries(0);
+    setCreditsSpent(0); setSelectedCompany(null); setContacts([]); setPicked([]);
+    setError(""); setStep(0);
+  }
 
   async function call<T>(url: string, payload: unknown): Promise<T> {
     const token = await getToken();
@@ -176,6 +262,22 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
   /** page 1 = a new search (resets results); page > 1 = buy another Apollo page. */
   async function runSearch(page: number) {
     if (!name.trim()) { setError("Enter a company name."); return; }
+
+    // Already bought this exact search — show what we have instead of paying
+    // for the same answer again. Only for page 1: asking for a further page is
+    // always a deliberate, separately confirmed purchase.
+    if (page === 1 && cached && cached.criteria === criteria && cached.companies.length > 0) {
+      setCompanies(cached.companies);
+      setApolloPage(cached.apolloPage);
+      setTotalEntries(cached.totalEntries);
+      setCreditsSpent(cached.creditsSpent);
+      setMock(cached.mock);
+      setViewPage(0);
+      setError("");
+      setStep(1);
+      return;
+    }
+
     setError("");
     setBusy(true);
     try {
@@ -190,13 +292,23 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
         advanced: buildAdvanced(advanced),
       });
 
+      const merged = page === 1 ? data.companies : [...companies, ...data.companies];
+      const spent = creditsSpent + data.credits_spent;
       setMock(!!data.mock);
-      setCompanies((prev) => (page === 1 ? data.companies : [...prev, ...data.companies]));
+      setCompanies(merged);
       setApolloPage(data.page);
       setTotalEntries(data.total_entries);
-      setCreditsSpent((c) => c + data.credits_spent);
+      setCreditsSpent(spent);
       if (page === 1) { setViewPage(0); setSelectedCompany(null); }
       setStep(1);
+      // Written the moment the credit is spent, not on unmount — a crash or a
+      // hard reload between the two would otherwise lose what was paid for.
+      persist({
+        criteria, companies: merged, apolloPage: data.page,
+        totalEntries: data.total_entries, creditsSpent: spent,
+        mock: !!data.mock, step: 1,
+        ...(page === 1 ? { selectedCompany: null, contacts: [], picked: [] } : {}),
+      });
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -211,11 +323,13 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
       const data = await call<{ contacts: Contact[] }>("/api/v1/leads/company-people", {
         apollo_org_id: company.apollo_org_id,
       });
+      const nextBatch = !batchName.trim() && company.name ? company.name : batchName;
       setSelectedCompany(company);
       setContacts(data.contacts);
       setPicked([]);
-      if (!batchName.trim() && company.name) setBatchName(company.name);
+      setBatchName(nextBatch);
       setStep(2);
+      persist({ selectedCompany: company, contacts: data.contacts, picked: [], step: 2, batchName: nextBatch });
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -256,6 +370,10 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
         ...buildImportAssignment(assignMode, assignTo),
       });
       if (!data.inserted) { setError("No contacts were imported — they may already be in the system."); setBusy(false); return; }
+      // The cached company list is stale the moment an import lands: the
+      // company we just took is now "already in system". Drop it so the next
+      // lookup starts clean rather than showing a list that lies.
+      if (typeof window !== "undefined") sessionStorage.removeItem(CACHE_KEY);
       onImport(data.inserted);
     } catch (e) {
       setError((e as Error).message);
@@ -264,11 +382,11 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
   }
 
   function togglePick(id: string) {
-    setPicked((prev) =>
-      prev.includes(id)
-        ? prev.filter((p) => p !== id)
-        : prev.length >= COMPANY_LOOKUP_MAX_CONTACTS ? prev : [...prev, id],
-    );
+    const next = picked.includes(id)
+      ? picked.filter((p) => p !== id)
+      : picked.length >= COMPANY_LOOKUP_MAX_CONTACTS ? picked : [...picked, id];
+    setPicked(next);
+    persist({ picked: next });
   }
 
   const viewStart = viewPage * ROWS_PER_VIEW;
@@ -371,20 +489,36 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
             )}
           </div>
 
-          <p className="text-[11px] text-amber-500">
-            Searching costs <strong>1 Apollo credit</strong> per page of up to 100 companies. A search that matches nothing costs nothing.
-          </p>
+          {cached && cached.criteria === criteria && cached.companies.length > 0 ? (
+            <p className="text-[11px] text-emerald-600 dark:text-emerald-400">
+              You already searched this — <strong>{cached.companies.length}</strong> companies are saved.
+              Searching again reuses them and costs nothing.
+            </p>
+          ) : (
+            <p className="text-[11px] text-amber-500">
+              Searching costs <strong>1 Apollo credit</strong> per page of up to 100 companies. A search that matches nothing costs nothing.
+            </p>
+          )}
         </div>
       )}
 
       {/* ── Step 2 — Select company ───────────────────────────────────────── */}
       {step === 1 && (
         <div className="space-y-3">
-          <p className="text-[11px] text-muted-foreground">
-            Showing <strong>{visible.length === 0 ? 0 : viewStart + 1}–{viewStart + visible.length}</strong> of{" "}
-            <strong>{companies.length}</strong> retrieved · <strong>{totalEntries.toLocaleString()}</strong> match in Apollo ·{" "}
-            <strong>{creditsSpent}</strong> credit{creditsSpent === 1 ? "" : "s"} spent
-          </p>
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-[11px] text-muted-foreground">
+              Showing <strong>{visible.length === 0 ? 0 : viewStart + 1}–{viewStart + visible.length}</strong> of{" "}
+              <strong>{companies.length}</strong> retrieved · <strong>{totalEntries.toLocaleString()}</strong> match in Apollo ·{" "}
+              <strong>{creditsSpent}</strong> credit{creditsSpent === 1 ? "" : "s"} spent
+            </p>
+            <button
+              type="button"
+              onClick={startOver}
+              className="shrink-0 text-[11px] text-muted-foreground underline hover:text-foreground"
+            >
+              Start over
+            </button>
+          </div>
 
           {companies.length === 0 ? (
             <div className="rounded-lg border border-border bg-secondary/30 px-4 py-6 text-center">

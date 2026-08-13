@@ -15,11 +15,13 @@ import { DEV_COMPANY_ID } from "@/lib/constants";
  * their money. The internal/dev workspace therefore runs against fixtures
  * instead of Apollo.
  *
- * The switch is the tenant, not an env var, on purpose. An env flag left on in
- * production would silently feed fake companies into the live workspace; a
- * tenant check cannot, because the live company id is never the dev one. It
- * also replaces the blanket "Apollo is disabled for dev" block with something
- * more useful than a 403 — dev gets the whole feature, just not the bill.
+ * Fixtures are used when EITHER the run is non-production (any localhost or
+ * preview build) OR the caller is the internal workspace. Both halves matter:
+ * the tenant check alone assumed developers log in as the dev company, which
+ * is not how the app is actually exercised — on 13 Aug 2026 three real credits
+ * were spent discovering that a tester signed in as the live tenant sails
+ * straight past it. NODE_ENV is only 'production' on the deployed build, so
+ * neither branch can silently disable live Apollo for the client.
  *
  * Shapes here mirror Apollo's documented responses: organization search returns
  * an `organizations` array plus a `pagination` object carrying page, per_page,
@@ -29,6 +31,20 @@ import { DEV_COMPANY_ID } from "@/lib/constants";
  * than pretending it is already correct.
  */
 export function isApolloMockCompany(companyId: string | null | undefined): boolean {
+  // Escape hatch for deliberately verifying the real integration from a dev
+  // machine. Opt-in only, and it cannot weaken production: there the tenant
+  // check below is the only thing that matters.
+  if (process.env.APOLLO_FORCE_LIVE === "1") return false;
+
+  // ANY non-production run — localhost included — uses fixtures. This is the
+  // rule that actually protects the client: gating on the dev TENANT alone
+  // assumed developers log in as the dev company, and on 13 Aug 2026 three real
+  // credits were spent proving that assumption wrong. NODE_ENV is 'production'
+  // only on the deployed build, so this can never silently disable live Apollo
+  // for the client.
+  if (process.env.NODE_ENV !== "production") return true;
+
+  // In production, only the internal workspace runs on fixtures.
   return companyId === DEV_COMPANY_ID;
 }
 

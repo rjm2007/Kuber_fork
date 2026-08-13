@@ -42,12 +42,31 @@ assert.equal(COMPANY_LOOKUP_MAX_CONTACTS, 5, "contact cap changed — this is th
 
 // ── Mock provider ───────────────────────────────────────────────────────────
 
-// THE safety assertion. If this ever flips, the live client workspace starts
-// receiving fabricated companies instead of real ones.
-assert.equal(isApolloMockCompany(DEV_COMPANY_ID), true, "dev workspace must use fixtures");
-assert.equal(isApolloMockCompany("00000000-0000-0000-0000-00000000000b"), false, "live workspace must NEVER use fixtures");
-assert.equal(isApolloMockCompany(null), false, "unknown company must not use fixtures");
-assert.equal(isApolloMockCompany(undefined), false, "missing company must not use fixtures");
+const LIVE_COMPANY = "00000000-0000-0000-0000-00000000000b";
+const originalEnv = process.env.NODE_ENV;
+
+// Outside production — which is how this script, `next dev` and every localhost
+// run execute — NOTHING reaches real Apollo, whichever tenant is signed in.
+// This is the rule that would have prevented the 13 Aug 2026 spend: a tester
+// signed into the live workspace on localhost sailed past a tenant-only check.
+assert.equal(process.env.NODE_ENV !== "production", true, "this check must run outside production");
+assert.equal(isApolloMockCompany(LIVE_COMPANY), true, "localhost must never spend live credits");
+assert.equal(isApolloMockCompany(DEV_COMPANY_ID), true, "localhost must never spend live credits");
+
+// In production the tenant decides, and the live workspace must reach real
+// Apollo — if this ever flips, the client silently receives fabricated data.
+process.env.NODE_ENV = "production";
+assert.equal(isApolloMockCompany(DEV_COMPANY_ID), true, "internal workspace uses fixtures in production");
+assert.equal(isApolloMockCompany(LIVE_COMPANY), false, "live workspace must use real Apollo in production");
+assert.equal(isApolloMockCompany(null), false, "unknown company must not use fixtures in production");
+assert.equal(isApolloMockCompany(undefined), false, "missing company must not use fixtures in production");
+
+// The opt-in escape hatch for deliberately testing the real integration.
+process.env.APOLLO_FORCE_LIVE = "1";
+process.env.NODE_ENV = originalEnv;
+assert.equal(isApolloMockCompany(LIVE_COMPANY), false, "APOLLO_FORCE_LIVE must reach real Apollo");
+delete process.env.APOLLO_FORCE_LIVE;
+assert.equal(isApolloMockCompany(LIVE_COMPANY), true, "removing the override restores fixture safety");
 
 const abc = mockSearchOrganizations({ name: "ABC" });
 assert.ok(abc.organizations.length > 0, "ABC should return companies");
