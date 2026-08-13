@@ -61,6 +61,14 @@ assert.equal(isApolloMockCompany(LIVE_COMPANY), false, "live workspace must use 
 assert.equal(isApolloMockCompany(null), false, "unknown company must not use fixtures in production");
 assert.equal(isApolloMockCompany(undefined), false, "missing company must not use fixtures in production");
 
+// Vercel preview builds also carry NODE_ENV=production, so they need their own
+// guard — a branch deploy must never bill the client.
+process.env.VERCEL_ENV = "preview";
+assert.equal(isApolloMockCompany(LIVE_COMPANY), true, "preview deploys must never spend live credits");
+process.env.VERCEL_ENV = "production";
+assert.equal(isApolloMockCompany(LIVE_COMPANY), false, "the real deployment must reach live Apollo");
+delete process.env.VERCEL_ENV;
+
 // The opt-in escape hatch for deliberately testing the real integration.
 process.env.APOLLO_FORCE_LIVE = "1";
 process.env.NODE_ENV = originalEnv;

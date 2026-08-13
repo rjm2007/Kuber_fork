@@ -44,7 +44,15 @@ export function isApolloMockCompany(companyId: string | null | undefined): boole
   // for the client.
   if (process.env.NODE_ENV !== "production") return true;
 
-  // In production, only the internal workspace runs on fixtures.
+  // Vercel PREVIEW builds also run with NODE_ENV=production, so the check above
+  // does not cover them — a branch deploy signed into as the live tenant would
+  // spend real credits, which is the same trap that cost three of them on
+  // 13 Aug 2026. VERCEL_ENV separates a preview from the real deployment, and
+  // is unset off Vercel, where the tenant check below still applies.
+  const vercelEnv = process.env.VERCEL_ENV;
+  if (vercelEnv && vercelEnv !== "production") return true;
+
+  // Genuine production: only the internal workspace runs on fixtures.
   return companyId === DEV_COMPANY_ID;
 }
 

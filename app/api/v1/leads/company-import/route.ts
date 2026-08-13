@@ -94,7 +94,9 @@ export async function POST(req: NextRequest) {
     industry: organization.industry ?? null,
     employees: organization.employees ?? null,
     city: organization.city ?? null,
-    state: organization.state ?? null,
+    // No `state` column on organizations — only city and country. The state
+    // Apollo returns is still kept per-contact on the lead rows below, which
+    // do have the column.
     country: organization.country ?? null,
     // A mock company's domain does not exist, so it must never be queued for
     // scraping — Firecrawl bills per attempt and would burn real credits on a
