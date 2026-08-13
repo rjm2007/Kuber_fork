@@ -76,7 +76,7 @@ function LookupPaginationBar({
             onPageChange(1);
           }}
         >
-          <SelectTrigger className="h-8 w-20 text-xs bg-background" id={id}>
+          <SelectTrigger className="h-8 w-20 text-xs bg-card" id={id}>
             <SelectValue />
           </SelectTrigger>
           <SelectContent align="start">
@@ -117,7 +117,7 @@ function LookupPaginationBar({
 /** Mirrors the company results table so loading does not jump once data arrives. */
 function CompanyTableSkeleton({ rows = 8 }: { rows?: number }) {
   return (
-    <div className="overflow-hidden rounded-lg border border-border" aria-busy="true" aria-label="Loading companies">
+    <div className="overflow-hidden rounded-lg border border-border bg-card" aria-busy="true" aria-label="Loading companies">
       <table className="w-full text-xs">
         <thead className="bg-secondary/30 text-muted-foreground">
           <tr>
@@ -149,7 +149,7 @@ function CompanyTableSkeleton({ rows = 8 }: { rows?: number }) {
 /** Mirrors the people checklist rows. */
 function PeopleListSkeleton({ rows = 8 }: { rows?: number }) {
   return (
-    <div className="overflow-hidden rounded-lg border border-border" aria-busy="true" aria-label="Loading people">
+    <div className="overflow-hidden rounded-lg border border-border bg-card" aria-busy="true" aria-label="Loading people">
       {Array.from({ length: rows }).map((_, i) => (
         <div
           key={i}
@@ -601,17 +601,17 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="ABC Plastics"
-              className="bg-background"
+              className="bg-card"
             />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label>Country <span className="text-muted-foreground font-normal">(optional)</span></Label>
-              <Input value={country} onChange={(e) => setCountry(e.target.value)} placeholder="Kenya" className="bg-background" />
+              <Input value={country} onChange={(e) => setCountry(e.target.value)} placeholder="Kenya" className="bg-card" />
             </div>
             <div className="space-y-1.5">
               <Label>Website <span className="text-muted-foreground font-normal">(optional)</span></Label>
-              <Input value={website} onChange={(e) => setWebsite(e.target.value)} placeholder="abcplastics.com" className="bg-background" />
+              <Input value={website} onChange={(e) => setWebsite(e.target.value)} placeholder="abcplastics.com" className="bg-card" />
             </div>
           </div>
 
@@ -641,7 +641,7 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
                     key={k}
                     type="button"
                     onClick={() => setAdvanced((a) => ({ ...a, [k]: "" }))}
-                    className="rounded border border-border bg-background px-1.5 py-0.5 text-[10px] text-muted-foreground hover:text-foreground"
+                    className="rounded border border-border bg-card px-1.5 py-0.5 text-[10px] text-muted-foreground hover:text-foreground"
                     title="Remove filter"
                   >
                     {k}: {v} ✕
@@ -664,7 +664,7 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
                             onChange={(e) => setAdvanced((a) => ({ ...a, [f.key]: e.target.value }))}
                             placeholder={f.placeholder}
                             type={f.kind === "date" ? "date" : f.kind === "num" ? "number" : "text"}
-                            className="h-8 bg-background text-xs"
+                            className="h-8 bg-card text-xs"
                           />
                         </div>
                       ))}
@@ -716,7 +716,7 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
                 </div>
               ) : (
                 <>
-                  <div className="overflow-hidden rounded-lg border border-border">
+                  <div className="overflow-hidden rounded-lg border border-border bg-card">
                     <table className="w-full text-xs">
                       <thead className="bg-secondary/30 text-muted-foreground">
                         <tr>
@@ -868,7 +868,7 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
             </div>
           ) : (
             <>
-              <div className="overflow-hidden rounded-lg border border-border">
+              <div className="overflow-hidden rounded-lg border border-border bg-card">
                 {visibleContacts.map((c) => {
                   const blocked = c.already_imported || c.unenrichable;
                   const on = picked.includes(c.apollo_id);
