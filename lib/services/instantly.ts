@@ -143,6 +143,71 @@ export async function createInstantlyCampaign(opts: {
   return data.id;
 }
 
+export interface InstantlySchedule {
+  name?: string;
+  timing?: { from?: string; to?: string };
+  days?: Record<string, boolean>;
+  timezone?: string;
+}
+
+export interface ScheduleFieldPatch {
+  windowFrom?: string;
+  windowTo?: string;
+  timezone?: string;
+  sendDays?: Record<string, boolean>;
+}
+
+/**
+ * Overlay ONLY the named fields onto an existing schedule, leaving every other
+ * field exactly as Instantly currently holds it. Pure, so the "don't blank the
+ * fields nobody asked about" rule is testable without a network round-trip —
+ * see instantly-schedule.test.ts.
+ */
+export function mergeInstantlySchedule(
+  base: InstantlySchedule,
+  patch: ScheduleFieldPatch,
+): InstantlySchedule {
+  return {
+    ...base,
+    name: base.name ?? "Default",
+    timing: {
+      ...(base.timing ?? {}),
+      ...(patch.windowFrom !== undefined ? { from: patch.windowFrom } : {}),
+      ...(patch.windowTo   !== undefined ? { to:   patch.windowTo   } : {}),
+    },
+    ...(patch.sendDays !== undefined ? { days: toInstantlyDays(patch.sendDays) } : {}),
+    ...(patch.timezone !== undefined ? { timezone: toInstantlyTimezone(patch.timezone) } : {}),
+  };
+}
+
+/** Read a campaign back from Instantly. Needed by patchInstantlyCampaignConfig
+ *  below — see the comment there for why a plain PATCH is not enough. */
+export async function getInstantlyCampaign(
+  instantlyCampaignId: string,
+): Promise<{ campaign_schedule?: { schedules?: InstantlySchedule[] } }> {
+  const res = await fetch(`${BASE}/campaigns/${instantlyCampaignId}`, { headers: await authOnly() });
+  return iJson(res);
+}
+
+/**
+ * Patch campaign settings, touching ONLY the fields the caller passed.
+ *
+ * Top-level scalars (name, daily_limit) patch independently — Instantly merges
+ * them field-wise, so an omitted one is left alone.
+ *
+ * campaign_schedule does NOT work that way: it is a nested object that Instantly
+ * REPLACES wholesale, so sending a partially-populated one silently wipes the
+ * fields left out of it. The previous version of this function rebuilt the whole
+ * schedule from `opts` and let missing fields serialise as undefined, which meant
+ * "change the window" also blanked days and timezone. So when any schedule field
+ * is passed, the current schedule is read back first and only the named fields
+ * are overlaid onto it. Callers that pass no schedule field never fetch and never
+ * send campaign_schedule at all.
+ *
+ * Timezone in particular is per-country and lives on the sub-campaign (see
+ * campaign-fanout.ts). It is only ever sent when a caller explicitly asks for a
+ * timezone change — never as a side effect of editing the window, days or limit.
+ */
 export async function patchInstantlyCampaignConfig(
   instantlyCampaignId: string,
   opts: {
@@ -157,16 +222,23 @@ export async function patchInstantlyCampaignConfig(
   const body: Record<string, unknown> = {};
   if (opts.name !== undefined) body.name = opts.name;
   if (opts.dailyLimit !== undefined) body.daily_limit = opts.dailyLimit;
-  if (opts.windowFrom !== undefined || opts.windowTo !== undefined || opts.timezone !== undefined || opts.sendDays !== undefined) {
+
+  const touchesSchedule =
+    opts.windowFrom !== undefined || opts.windowTo !== undefined
+    || opts.timezone !== undefined || opts.sendDays !== undefined;
+
+  if (touchesSchedule) {
+    const current = await getInstantlyCampaign(instantlyCampaignId);
+    const schedules = current.campaign_schedule?.schedules ?? [];
+    // Extra schedules (Instantly allows several) are preserved untouched.
     body.campaign_schedule = {
-      schedules: [{
-        name: "Default",
-        timing: { from: opts.windowFrom, to: opts.windowTo },
-        days: opts.sendDays ? toInstantlyDays(opts.sendDays) : undefined,
-        timezone: opts.timezone ? toInstantlyTimezone(opts.timezone) : undefined,
-      }],
+      schedules: [mergeInstantlySchedule(schedules[0] ?? {}, opts), ...schedules.slice(1)],
     };
   }
+
+  // Nothing to change — don't spend an API call proving it.
+  if (Object.keys(body).length === 0) return;
+
   const res = await fetch(`${BASE}/campaigns/${instantlyCampaignId}`, {
     method: "PATCH",
     headers: await h(),
