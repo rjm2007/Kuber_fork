@@ -92,23 +92,29 @@ assert.deepEqual(
   "results must be stable across identical searches",
 );
 
-// Pagination is reachable, so the "search 100 more" path and the page cap can
-// both be exercised.
-assert.equal(abc.pagination.total_entries, 137);
-assert.equal(abc.pagination.total_pages, 2);
-assert.equal(abc.organizations.length, 100, "page 1 should fill");
-assert.equal(mockSearchOrganizations({ name: "ABC", page: 2 }).organizations.length, 37, "page 2 holds the remainder");
+// Pagination is reachable in the UI (20 companies / page → 3 pages). Kept under
+// one Apollo page so demos don't need "Search 100 more".
+assert.equal(abc.pagination.total_entries, 48);
+assert.equal(abc.pagination.total_pages, 1);
+assert.equal(abc.organizations.length, 48, "page 1 should return the full fixture set");
+assert.equal(mockSearchOrganizations({ name: "ABC", page: 2 }).organizations.length, 0, "no second Apollo page");
 
 // Empty state on demand.
 assert.equal(mockSearchOrganizations({ name: "zzz ltd" }).organizations.length, 0, "zzz returns no companies");
 
-// Country narrows the set, mirroring organization_locations server-side.
+// Country relocates the set (all Kenya) rather than collapsing it — pagination
+// demos must still get a full fixture page when a country is filled in.
 const kenya = mockSearchOrganizations({ name: "ABC", locations: ["Kenya"] });
-assert.ok(kenya.organizations.length > 0 && kenya.organizations.length < 100, "country filter should narrow");
+assert.equal(kenya.organizations.length, 48, "country filter must still return a full fixture page");
 assert.ok(kenya.organizations.every((o) => o.country === "Kenya"), "country filter must actually filter");
+assert.ok(
+  kenya.organizations.some((o) => o.city === "Nairobi") &&
+    kenya.organizations.some((o) => o.name?.includes("Plastics Ltd")),
+  "native Kenya seeds should appear first",
+);
 
 const people = mockSearchPeople({ organizationIds: [abc.organizations[0].id] });
-assert.ok(people.people.length >= 6, "a company should have people");
+assert.ok(people.people.length >= 40, "a company should have enough people for UI pagination");
 assert.ok(people.people.every((p) => p.has_email), "contact_email_status means every result is contactable");
 assert.ok(people.people.every((p) => p.id.startsWith("mock_person_")), "mock person ids must be unmistakable");
 assert.ok(people.people.every((p) => (p.last_name_obfuscated ?? "").includes("*")), "Apollo masks surnames on search");

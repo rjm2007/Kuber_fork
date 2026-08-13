@@ -6,7 +6,7 @@ import { searchPeople } from "@/lib/services/apollo";
 import { getServiceSecret } from "@/lib/services/service-keys";
 import { dbForUser } from "@/lib/supabase/scoped";
 import { companyLookupTitleRank } from "@/lib/constants";
-import { isApolloMockCompany, mockSearchPeople } from "@/lib/services/apollo-mock";
+import { isApolloMockCompany, mockApolloDelay, mockSearchPeople } from "@/lib/services/apollo-mock";
 
 export const maxDuration = 60;
 
@@ -63,6 +63,7 @@ export async function POST(req: NextRequest) {
     // at the company and chooses, rather than the system pre-filtering for
     // them. contact_email_status still applies: a person Apollo holds no email
     // for cannot be actioned, so Apollo is asked not to return them at all.
+    if (mock) await mockApolloDelay();
     result = mock
       ? mockSearchPeople({ organizationIds: [apollo_org_id] })
       : await searchPeople({ organizationIds: [apollo_org_id], page });

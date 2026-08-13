@@ -7,7 +7,7 @@ import { getServiceSecret } from "@/lib/services/service-keys";
 import { checkApolloCredits } from "@/lib/services/provider-credits";
 import { dbForUser } from "@/lib/supabase/scoped";
 import { normalizeDomain } from "@/lib/utils/domain";
-import { isApolloMockCompany, mockSearchOrganizations } from "@/lib/services/apollo-mock";
+import { isApolloMockCompany, mockApolloDelay, mockSearchOrganizations } from "@/lib/services/apollo-mock";
 
 export const maxDuration = 60;
 
@@ -57,6 +57,7 @@ export async function POST(req: NextRequest) {
 
   let result;
   try {
+    if (mock) await mockApolloDelay();
     result = mock
       ? mockSearchOrganizations({ name, locations: country ? [country] : undefined, page })
       : await searchOrganizations({

@@ -184,7 +184,7 @@ export function LocationsPicker({
           variant="outline"
           onClick={() => setOpen((o) => !o)}
           className={cn(
-            "w-full justify-between px-3 py-2 text-sm font-normal text-left bg-background",
+            "w-full justify-between px-3 py-2 text-sm font-normal text-left bg-card",
             open ? "border-ring ring-1 ring-ring" : "border-input hover:border-muted-foreground",
           )}
         >

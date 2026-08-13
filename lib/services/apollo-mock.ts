@@ -60,6 +60,18 @@ export function isApolloMockCompany(companyId: string | null | undefined): boole
  *  "no results costs nothing" path are demonstrable on demand. */
 const NO_MATCH_TOKEN = "zzz";
 
+/** Fixture result count — enough for UI pagination (20/page → 3 pages) without
+ *  needing a second Apollo page. Kept under one paid page size on purpose. */
+const MOCK_TOTAL_ENTRIES = 48;
+
+/** Artificial latency so "Searching…" / busy UI is visible in demos. Real
+ *  Apollo is slower than this; fixtures would otherwise flash instantly. */
+export const MOCK_APOLLO_DELAY_MS = 900;
+
+export function mockApolloDelay(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, MOCK_APOLLO_DELAY_MS));
+}
+
 type Seed = {
   suffix: string;
   country: string;
@@ -70,17 +82,58 @@ type Seed = {
   industry: string;
 };
 
-// The first few are hand-written so a search for "ABC" reads like the real
-// disambiguation problem: same name, different country, different size.
+// Hand-written variety so a search for "ABC" reads like the real
+// disambiguation problem: same stem, different country / size / industry.
+// Length matches MOCK_TOTAL_ENTRIES so every row is unique (no numeric tiers).
 const SEEDS: Seed[] = [
-  { suffix: "Plastics Ltd",        country: "Kenya",   city: "Nairobi",  state: null,        employees: 120, tld: "co.ke", industry: "plastics" },
-  { suffix: "Industries",          country: "Kenya",   city: "Mombasa",  state: null,        employees: 80,  tld: "com",   industry: "packaging" },
-  { suffix: "Plastic Group",       country: "Nigeria", city: "Lagos",    state: null,        employees: 450, tld: "com",   industry: "plastics" },
-  { suffix: "Polymers Pvt Ltd",    country: "India",   city: "Mumbai",   state: "Maharashtra", employees: 210, tld: "in",  industry: "polymers" },
-  { suffix: "Packaging Solutions", country: "UAE",     city: "Dubai",    state: null,        employees: 65,  tld: "ae",    industry: "packaging" },
-  { suffix: "Moulding Co",         country: "Vietnam", city: "Hanoi",    state: null,        employees: 310, tld: "vn",    industry: "moulding" },
-  { suffix: "Exports",             country: "Turkey",  city: "Istanbul", state: null,        employees: 95,  tld: "com.tr", industry: "plastics" },
-  { suffix: "Recycling",           country: "Egypt",   city: "Cairo",    state: null,        employees: 140, tld: "com.eg", industry: "recycling" },
+  { suffix: "Plastics Ltd",           country: "Kenya",        city: "Nairobi",     state: null,           employees: 120, tld: "co.ke",  industry: "plastics" },
+  { suffix: "Industries",             country: "Kenya",        city: "Mombasa",     state: null,           employees: 80,  tld: "com",    industry: "packaging" },
+  { suffix: "Plastic Group",          country: "Nigeria",      city: "Lagos",       state: null,           employees: 450, tld: "com",    industry: "plastics" },
+  { suffix: "Polymers Pvt Ltd",       country: "India",        city: "Mumbai",      state: "Maharashtra",  employees: 210, tld: "in",     industry: "polymers" },
+  { suffix: "Packaging Solutions",    country: "UAE",          city: "Dubai",       state: null,           employees: 65,  tld: "ae",     industry: "packaging" },
+  { suffix: "Moulding Co",            country: "Vietnam",      city: "Hanoi",       state: null,           employees: 310, tld: "vn",     industry: "moulding" },
+  { suffix: "Exports",                country: "Turkey",       city: "Istanbul",    state: null,           employees: 95,  tld: "com.tr", industry: "plastics" },
+  { suffix: "Recycling",              country: "Egypt",        city: "Cairo",       state: null,           employees: 140, tld: "com.eg", industry: "recycling" },
+  { suffix: "Films & Sheets",         country: "India",        city: "Pune",        state: "Maharashtra",  employees: 175, tld: "in",     industry: "films" },
+  { suffix: "Compounding",            country: "Germany",      city: "Frankfurt",   state: null,           employees: 220, tld: "de",     industry: "compounding" },
+  { suffix: "Bottles Ltd",            country: "South Africa", city: "Johannesburg", state: null,          employees: 90,  tld: "co.za",  industry: "packaging" },
+  { suffix: "Injection Works",        country: "China",        city: "Shenzhen",    state: null,           employees: 580, tld: "cn",     industry: "moulding" },
+  { suffix: "Resins Trading",         country: "Singapore",    city: "Singapore",   state: null,           employees: 45,  tld: "sg",     industry: "trading" },
+  { suffix: "Pipe Systems",           country: "Kenya",        city: "Kisumu",      state: null,           employees: 110, tld: "co.ke",  industry: "pipes" },
+  { suffix: "Flexible Packaging",     country: "India",        city: "Ahmedabad",   state: "Gujarat",      employees: 260, tld: "in",     industry: "packaging" },
+  { suffix: "Masterbatch",            country: "Italy",        city: "Milan",       state: null,           employees: 130, tld: "it",     industry: "masterbatch" },
+  { suffix: "Thermoforming",          country: "Poland",       city: "Warsaw",      state: null,           employees: 155, tld: "pl",     industry: "thermoforming" },
+  { suffix: "Additives Co",           country: "USA",          city: "Houston",     state: "Texas",        employees: 340, tld: "com",    industry: "additives" },
+  { suffix: "Blow Moulding",          country: "Mexico",       city: "Monterrey",   state: null,           employees: 200, tld: "mx",     industry: "moulding" },
+  { suffix: "PVC Profiles",           country: "Turkey",       city: "Ankara",      state: null,           employees: 185, tld: "com.tr", industry: "pvc" },
+  { suffix: "Engineering Plastics",   country: "Japan",        city: "Osaka",       state: null,           employees: 420, tld: "jp",     industry: "engineering" },
+  { suffix: "Foam Products",          country: "Brazil",       city: "São Paulo",   state: null,           employees: 160, tld: "com.br", industry: "foam" },
+  { suffix: "Cable Compounds",        country: "India",        city: "Chennai",     state: "Tamil Nadu",   employees: 145, tld: "in",     industry: "compounds" },
+  { suffix: "Agricultural Films",     country: "Spain",        city: "Valencia",    state: null,           employees: 75,  tld: "es",     industry: "films" },
+  { suffix: "Medical Polymers",       country: "Ireland",      city: "Dublin",      state: null,           employees: 95,  tld: "ie",     industry: "medical" },
+  { suffix: "Consumer Packaging",     country: "UK",           city: "Manchester",  state: null,           employees: 210, tld: "co.uk",  industry: "packaging" },
+  { suffix: "Rubber & Plastics",      country: "Thailand",     city: "Bangkok",     state: null,           employees: 290, tld: "co.th",  industry: "rubber" },
+  { suffix: "Sheet Extrusion",        country: "Korea",        city: "Busan",       state: null,           employees: 180, tld: "kr",     industry: "extrusion" },
+  { suffix: "Industrial Containers",  country: "Nigeria",      city: "Abuja",       state: null,           employees: 70,  tld: "ng",     industry: "containers" },
+  { suffix: "Colour Concentrates",    country: "Netherlands",  city: "Rotterdam",   state: null,           employees: 115, tld: "nl",     industry: "concentrates" },
+  { suffix: "PET Recycling",          country: "Egypt",        city: "Alexandria",  state: null,           employees: 125, tld: "com.eg", industry: "recycling" },
+  { suffix: "Closure Systems",        country: "France",       city: "Lyon",        state: null,           employees: 150, tld: "fr",     industry: "closures" },
+  { suffix: "Wire & Cable",           country: "India",        city: "Delhi",       state: "Delhi",        employees: 320, tld: "in",     industry: "cable" },
+  { suffix: "Geosynthetics",          country: "Australia",    city: "Melbourne",   state: null,           employees: 85,  tld: "com.au", industry: "geosynthetics" },
+  { suffix: "Automotive Plastics",    country: "Germany",      city: "Stuttgart",   state: null,           employees: 510, tld: "de",     industry: "automotive" },
+  { suffix: "Food Grade Films",       country: "UAE",          city: "Abu Dhabi",   state: null,           employees: 55,  tld: "ae",     industry: "films" },
+  { suffix: "Industrial Hoses",       country: "Kenya",        city: "Nakuru",      state: null,           employees: 60,  tld: "co.ke",  industry: "hoses" },
+  { suffix: "Polymer Trading",        country: "Hong Kong",    city: "Hong Kong",   state: null,           employees: 40,  tld: "hk",     industry: "trading" },
+  { suffix: "Technical Compounds",    country: "Sweden",       city: "Gothenburg",  state: null,           employees: 100, tld: "se",     industry: "compounds" },
+  { suffix: "Stretch Wrap",           country: "Canada",       city: "Toronto",     state: "Ontario",      employees: 135, tld: "ca",     industry: "packaging" },
+  { suffix: "Plastic Furniture",      country: "Vietnam",      city: "Ho Chi Minh", state: null,           employees: 240, tld: "vn",     industry: "furniture" },
+  { suffix: "Insulation Boards",      country: "Poland",       city: "Kraków",      state: null,           employees: 105, tld: "pl",     industry: "insulation" },
+  { suffix: "Labware Plastics",       country: "USA",          city: "Boston",      state: "Massachusetts", employees: 190, tld: "com",   industry: "labware" },
+  { suffix: "Marine Polymers",        country: "Norway",       city: "Bergen",      state: null,           employees: 70,  tld: "no",     industry: "marine" },
+  { suffix: "Building Materials",     country: "India",        city: "Hyderabad",   state: "Telangana",    employees: 280, tld: "in",     industry: "building" },
+  { suffix: "Cosmetic Packaging",     country: "Italy",        city: "Turin",       state: null,           employees: 88,  tld: "it",     industry: "packaging" },
+  { suffix: "Agri Irrigation",        country: "Israel",       city: "Tel Aviv",    state: null,           employees: 160, tld: "co.il",  industry: "irrigation" },
+  { suffix: "Specialty Resins",       country: "Taiwan",       city: "Taipei",      state: null,           employees: 230, tld: "tw",     industry: "resins" },
 ];
 
 /** Deterministic, so the same search always returns the same companies and a
@@ -107,9 +160,12 @@ export function mockSearchOrganizations(opts: {
     return { organizations: [], pagination: { page, per_page: APOLLO_ORG_PER_PAGE, total_entries: 0, total_pages: 0 } };
   }
 
-  // A realistic "common name" result count: more than one page, so the paging
-  // controls and the three-page cap are both reachable in a demo.
-  const totalEntries = 137;
+  // ~48 companies — enough for the 20-per-page UI paginator (3 pages) while
+  // still fitting in one Apollo page, so demos don't need "Search 100 more".
+  // Country narrows WHERE the companies are, not HOW MANY — a common-name
+  // search in India still returns a full page of Indian matches. Filtering the
+  // seed list alone used to collapse "India" to six rows and hide pagination.
+  const totalEntries = MOCK_TOTAL_ENTRIES;
   const totalPages = Math.ceil(totalEntries / APOLLO_ORG_PER_PAGE);
   if (page > totalPages) {
     return { organizations: [], pagination: { page, per_page: APOLLO_ORG_PER_PAGE, total_entries: totalEntries, total_pages: totalPages } };
@@ -117,20 +173,47 @@ export function mockSearchOrganizations(opts: {
 
   const startIndex = (page - 1) * APOLLO_ORG_PER_PAGE;
   const countThisPage = Math.min(APOLLO_ORG_PER_PAGE, totalEntries - startIndex);
-  const countryFilter = opts.locations?.[0]?.toLowerCase();
+  const countryFilter = opts.locations?.[0]?.trim();
+
+  // Prefer seeds that already match the requested country so cities look real;
+  // pad from the rest (relocated) so the page stays full for UI testing.
+  const matchedSeeds = countryFilter
+    ? SEEDS.filter((s) => s.country.toLowerCase().includes(countryFilter.toLowerCase()))
+    : SEEDS;
+  const padSeeds = countryFilter
+    ? SEEDS.filter((s) => !s.country.toLowerCase().includes(countryFilter.toLowerCase()))
+    : [];
+  const geoTemplate = matchedSeeds[0] ?? {
+    country: countryFilter ?? "Unknown",
+    city: countryFilter ?? "Unknown",
+    state: null as string | null,
+  };
 
   const rows: Record<string, unknown>[] = [];
   for (let i = 0; i < countThisPage; i++) {
     const globalIndex = startIndex + i;
-    const seed = SEEDS[globalIndex % SEEDS.length];
-    // Later pages get a numeric suffix so every row is visibly distinct rather
-    // than the same eight names repeating.
-    const tier = Math.floor(globalIndex / SEEDS.length);
-    const name = tier === 0 ? `${query} ${seed.suffix}` : `${query} ${seed.suffix} ${tier + 1}`;
-    const domain = `${slug(query)}${slug(seed.suffix)}${tier === 0 ? "" : tier + 1}.${seed.tld}`;
+    let seed: Seed;
+    let relocated = false;
+    if (!countryFilter) {
+      seed = SEEDS[globalIndex % SEEDS.length];
+    } else if (globalIndex < matchedSeeds.length) {
+      seed = matchedSeeds[globalIndex];
+    } else {
+      seed = padSeeds[(globalIndex - matchedSeeds.length) % Math.max(1, padSeeds.length)] ?? SEEDS[globalIndex % SEEDS.length];
+      relocated = true;
+    }
+
+    const tier = countryFilter && globalIndex >= matchedSeeds.length
+      ? Math.floor((globalIndex - matchedSeeds.length) / Math.max(1, padSeeds.length)) + 2
+      : 0;
+    const name = tier > 0 ? `${query} ${seed.suffix} ${tier}` : `${query} ${seed.suffix}`;
+    const domain = `${slug(query)}${slug(seed.suffix)}${tier > 0 ? tier : ""}.${relocated ? "com" : seed.tld}`;
+    const country = relocated ? geoTemplate.country : seed.country;
+    const city = relocated ? geoTemplate.city : seed.city;
+    const state = relocated ? geoTemplate.state : seed.state;
 
     rows.push({
-      id: `mock_org_${hash(name)}`,
+      id: `mock_org_${hash(name + (countryFilter ?? ""))}`,
       name,
       primary_domain: domain,
       website_url: `https://www.${domain}`,
@@ -139,26 +222,20 @@ export function mockSearchOrganizations(opts: {
       founded_year: 1985 + (hash(name) % 35),
       phone: null,
       estimated_num_employees: seed.employees + (hash(name) % 40),
-      country: seed.country,
-      city: seed.city,
-      state: seed.state,
+      country,
+      city,
+      state,
       industry: seed.industry,
     });
   }
 
-  // Apollo applies organization_locations server-side; mirror that so the
-  // country field on step 1 visibly changes the result set.
-  const filtered = countryFilter
-    ? rows.filter((r) => String(r.country ?? "").toLowerCase().includes(countryFilter))
-    : rows;
-
   return {
-    organizations: filtered.map(normalizeOrg),
+    organizations: rows.map(normalizeOrg),
     pagination: {
       page,
       per_page: APOLLO_ORG_PER_PAGE,
-      total_entries: countryFilter ? filtered.length : totalEntries,
-      total_pages: countryFilter ? 1 : totalPages,
+      total_entries: totalEntries,
+      total_pages: totalPages,
     },
   };
 }
@@ -197,8 +274,8 @@ export function mockSearchPeople(opts: {
 }): ApolloSearchResult {
   const orgId = opts.organizationIds[0] ?? "mock_org";
   const seed = hash(orgId);
-  // 6–12 people, deterministic per organization.
-  const count = 6 + (seed % 7);
+  // 42–48 people — enough for the 30-per-page UI paginator (2 pages).
+  const count = 42 + (seed % 7);
 
   const people: ApolloSearchPerson[] = [];
   for (let i = 0; i < count; i++) {

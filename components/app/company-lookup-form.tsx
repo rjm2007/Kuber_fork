@@ -1,12 +1,29 @@
 "use client";
 
-import { useState } from "react";
-import { AlertCircle, Building2, ChevronDown, Search, Users } from "lucide-react";
+import { useState, type ReactNode } from "react";
+import { AlertCircle, Building2, ChevronDown, ChevronRight, Search, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationNext,
+  PaginationPrevious,
+} from "@/components/ui/pagination";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Stepper } from "@/components/ui/stepper";
 import { cn } from "@/lib/utils";
+import { Avatar } from "@/components/leads/lead-ui";
 import {
   AssignStrategyPicker,
   BatchNameField,
@@ -19,9 +36,136 @@ import { COMPANY_LOOKUP_MAX_CONTACTS, COMPANY_LOOKUP_MAX_PAGES } from "@/lib/con
 
 const STEPS = ["Find company", "Select company", "Select people", "Batch & assign"];
 
-/** Rows shown per screen while paging through companies already paid for.
- *  Purely cosmetic — moving between these pages costs nothing. */
-const ROWS_PER_VIEW = 20;
+const COMPANY_PAGE_SIZE_OPTIONS = [10, 20] as const;
+const CONTACT_PAGE_SIZE_OPTIONS = [10, 20, 30] as const;
+const DEFAULT_COMPANY_PAGE_SIZE = 20;
+const DEFAULT_CONTACT_PAGE_SIZE = 30;
+
+function LookupPaginationBar({
+  label,
+  id,
+  pageSize,
+  pageSizeOptions,
+  onPageSizeChange,
+  page,
+  totalItems,
+  onPageChange,
+  middle,
+}: {
+  label: string;
+  id: string;
+  pageSize: number;
+  pageSizeOptions: readonly number[];
+  onPageSizeChange: (size: number) => void;
+  page: number;
+  totalItems: number;
+  onPageChange: (page: number) => void;
+  middle?: ReactNode;
+}) {
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  const safePage = Math.min(page, totalPages);
+
+  return (
+    <div className="flex items-center justify-between gap-4 border-t border-border pt-3">
+      <Field orientation="horizontal" className="w-fit">
+        <FieldLabel htmlFor={id}>{label}</FieldLabel>
+        <Select
+          value={String(pageSize)}
+          onValueChange={(v) => {
+            onPageSizeChange(Number(v));
+            onPageChange(1);
+          }}
+        >
+          <SelectTrigger className="h-8 w-20 text-xs bg-background" id={id}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent align="start">
+            {pageSizeOptions.map((n) => (
+              <SelectItem key={n} value={String(n)}>
+                {n}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </Field>
+      {middle}
+      <div className="flex items-center gap-3">
+        <span className="font-mono text-xs text-muted-foreground tabular-nums">
+          Page {safePage} of {totalPages}
+        </span>
+        <Pagination className="mx-0 w-auto">
+          <PaginationContent>
+            <PaginationItem>
+              <PaginationPrevious
+                onClick={() => onPageChange(Math.max(1, safePage - 1))}
+                disabled={safePage <= 1}
+              />
+            </PaginationItem>
+            <PaginationItem>
+              <PaginationNext
+                onClick={() => onPageChange(Math.min(totalPages, safePage + 1))}
+                disabled={safePage >= totalPages}
+              />
+            </PaginationItem>
+          </PaginationContent>
+        </Pagination>
+      </div>
+    </div>
+  );
+}
+
+/** Mirrors the company results table so loading does not jump once data arrives. */
+function CompanyTableSkeleton({ rows = 8 }: { rows?: number }) {
+  return (
+    <div className="overflow-hidden rounded-lg border border-border" aria-busy="true" aria-label="Loading companies">
+      <table className="w-full text-xs">
+        <thead className="bg-secondary/30 text-muted-foreground">
+          <tr>
+            <th className="px-3 py-2 text-left font-medium">Company</th>
+            <th className="px-3 py-2 text-left font-medium">Location</th>
+            <th className="px-3 py-2 text-right font-medium">Staff</th>
+            <th className="px-3 py-2 text-left font-medium">Website</th>
+            <th className="px-3 py-2" />
+          </tr>
+        </thead>
+        <tbody>
+          {Array.from({ length: rows }).map((_, i) => (
+            <tr key={i} className="border-t border-border">
+              <td className="px-3 py-2.5"><Skeleton className="h-3.5 w-36" /></td>
+              <td className="px-3 py-2.5"><Skeleton className="h-3.5 w-24" /></td>
+              <td className="px-3 py-2.5"><Skeleton className="ml-auto h-3.5 w-10" /></td>
+              <td className="px-3 py-2.5"><Skeleton className="h-3.5 w-28" /></td>
+              <td className="w-10 px-2 py-2.5">
+                <Skeleton className="ml-auto size-7 rounded-full" />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/** Mirrors the people checklist rows. */
+function PeopleListSkeleton({ rows = 8 }: { rows?: number }) {
+  return (
+    <div className="overflow-hidden rounded-lg border border-border" aria-busy="true" aria-label="Loading people">
+      {Array.from({ length: rows }).map((_, i) => (
+        <div
+          key={i}
+          className="flex items-center gap-3 border-b border-border px-3 py-2.5 last:border-b-0"
+        >
+          <Skeleton className="size-8 shrink-0 rounded-full" />
+          <div className="min-w-0 flex-1 space-y-1.5">
+            <Skeleton className="h-3.5 w-28" />
+            <Skeleton className="h-3 w-40 max-w-[55%]" />
+          </div>
+          <Skeleton className="size-4 shrink-0 rounded-sm" />
+        </div>
+      ))}
+    </div>
+  );
+}
 
 interface Company {
   apollo_org_id: string;
@@ -49,6 +193,23 @@ interface Contact {
   organization_name: string | null;
   already_imported: boolean;
   unenrichable: boolean;
+}
+
+function companyWebsiteHref(c: Company): string | null {
+  const raw = c.website?.trim() || c.domain?.trim();
+  if (!raw) return null;
+  return /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+}
+
+function companyWebsiteLabel(c: Company): string {
+  return c.domain?.trim() || c.website?.replace(/^https?:\/\//i, "").replace(/\/$/, "") || "—";
+}
+
+/** Apollo returns surnames obfuscated (e.g. "Sh***a"). Show "Kavish S." instead. */
+function formatContactName(firstName: string | null, lastNameMasked: string | null): string {
+  const first = firstName?.trim() || "—";
+  const initial = lastNameMasked?.trim().match(/[A-Za-z]/)?.[0];
+  return initial ? `${first} ${initial.toUpperCase()}.` : first;
 }
 
 /** Every Organization Search filter beyond the three basic fields. Comma-separated
@@ -137,7 +298,7 @@ function buildAdvanced(raw: Record<string, string>): Record<string, unknown> | u
  * does not stop a second user paying for the same query — a shared server-side
  * cache would, and is the upgrade if that ever shows up in the usage log.
  */
-const CACHE_KEY = "kuber:company-lookup:v1";
+const CACHE_KEY = "kuber:company-lookup:v3";
 
 type CachedState = {
   criteria: string;
@@ -178,6 +339,8 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
   const [step, setStep] = useState(cached?.step ?? 0);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  /** Which list is mid-fetch — drives skeleton UI while mock delay / Apollo runs. */
+  const [loadingList, setLoadingList] = useState<"companies" | "people" | null>(null);
 
   // Step 1 — search inputs
   const [name, setName] = useState("");
@@ -189,7 +352,8 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
   // Step 2 — companies
   const [companies, setCompanies] = useState<Company[]>(cached?.companies ?? []);
   const [apolloPage, setApolloPage] = useState(cached?.apolloPage ?? 0);
-  const [viewPage, setViewPage] = useState(0);
+  const [companyPage, setCompanyPage] = useState(1);
+  const [companyPageSize, setCompanyPageSize] = useState(DEFAULT_COMPANY_PAGE_SIZE);
   const [totalEntries, setTotalEntries] = useState(cached?.totalEntries ?? 0);
   const [creditsSpent, setCreditsSpent] = useState(cached?.creditsSpent ?? 0);
   // Set by the server when this workspace runs on fixtures instead of Apollo.
@@ -198,6 +362,8 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
 
   // Step 3 — contacts
   const [contacts, setContacts] = useState<Contact[]>(cached?.contacts ?? []);
+  const [contactPage, setContactPage] = useState(1);
+  const [contactPageSize, setContactPageSize] = useState(DEFAULT_CONTACT_PAGE_SIZE);
   const [picked, setPicked] = useState<string[]>(cached?.picked ?? []);
 
   // Step 4 — batch
@@ -238,13 +404,6 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
     });
   }
 
-  function startOver() {
-    if (typeof window !== "undefined") sessionStorage.removeItem(CACHE_KEY);
-    setCompanies([]); setApolloPage(0); setViewPage(0); setTotalEntries(0);
-    setCreditsSpent(0); setSelectedCompany(null); setContacts([]); setPicked([]);
-    setError(""); setStep(0);
-  }
-
   async function call<T>(url: string, payload: unknown): Promise<T> {
     const token = await getToken();
     const res = await fetch(url, {
@@ -272,7 +431,7 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
       setTotalEntries(cached.totalEntries);
       setCreditsSpent(cached.creditsSpent);
       setMock(cached.mock);
-      setViewPage(0);
+      setCompanyPage(1);
       setError("");
       setStep(1);
       return;
@@ -280,6 +439,18 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
 
     setError("");
     setBusy(true);
+    setLoadingList("companies");
+    // Jump to the results step immediately so the table skeleton is visible
+    // during the mock delay / real Apollo round-trip — otherwise busy only
+    // flips the search button label on the form the user just left.
+    if (page === 1) {
+      setCompanies([]);
+      setCompanyPage(1);
+      setSelectedCompany(null);
+      setContacts([]);
+      setPicked([]);
+      setStep(1);
+    }
     try {
       const data = await call<{
         companies: Company[]; page: number; total_entries: number;
@@ -299,7 +470,7 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
       setApolloPage(data.page);
       setTotalEntries(data.total_entries);
       setCreditsSpent(spent);
-      if (page === 1) { setViewPage(0); setSelectedCompany(null); }
+      if (page === 1) { setCompanyPage(1); setSelectedCompany(null); }
       setStep(1);
       // Written the moment the credit is spent, not on unmount — a crash or a
       // hard reload between the two would otherwise lose what was paid for.
@@ -311,29 +482,37 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
       });
     } catch (e) {
       setError((e as Error).message);
+      if (page === 1) setStep(0);
     } finally {
       setBusy(false);
+      setLoadingList(null);
     }
   }
 
   async function loadPeople(company: Company) {
     setError("");
     setBusy(true);
+    setLoadingList("people");
+    setSelectedCompany(company);
+    setContacts([]);
+    setContactPage(1);
+    setPicked([]);
+    setStep(2);
     try {
       const data = await call<{ contacts: Contact[] }>("/api/v1/leads/company-people", {
         apollo_org_id: company.apollo_org_id,
       });
       const nextBatch = !batchName.trim() && company.name ? company.name : batchName;
-      setSelectedCompany(company);
       setContacts(data.contacts);
-      setPicked([]);
       setBatchName(nextBatch);
-      setStep(2);
       persist({ selectedCompany: company, contacts: data.contacts, picked: [], step: 2, batchName: nextBatch });
     } catch (e) {
       setError((e as Error).message);
+      setSelectedCompany(null);
+      setStep(1);
     } finally {
       setBusy(false);
+      setLoadingList(null);
     }
   }
 
@@ -389,8 +568,16 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
     persist({ picked: next });
   }
 
-  const viewStart = viewPage * ROWS_PER_VIEW;
-  const visible = companies.slice(viewStart, viewStart + ROWS_PER_VIEW);
+  const companyTotalPages = Math.max(1, Math.ceil(companies.length / companyPageSize));
+  const safeCompanyPage = Math.min(companyPage, companyTotalPages);
+  const companyStart = (safeCompanyPage - 1) * companyPageSize;
+  const visibleCompanies = companies.slice(companyStart, companyStart + companyPageSize);
+
+  const contactTotalPages = Math.max(1, Math.ceil(contacts.length / contactPageSize));
+  const safeContactPage = Math.min(contactPage, contactTotalPages);
+  const contactStart = (safeContactPage - 1) * contactPageSize;
+  const visibleContacts = contacts.slice(contactStart, contactStart + contactPageSize);
+
   const canBuyMorePages = apolloPage < COMPANY_LOOKUP_MAX_PAGES && companies.length < totalEntries;
   const atPickLimit = picked.length >= COMPANY_LOOKUP_MAX_CONTACTS;
 
@@ -505,100 +692,148 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
       {/* ── Step 2 — Select company ───────────────────────────────────────── */}
       {step === 1 && (
         <div className="space-y-3">
-          <div className="flex items-center justify-between gap-2">
-            <p className="text-[11px] text-muted-foreground">
-              Showing <strong>{visible.length === 0 ? 0 : viewStart + 1}–{viewStart + visible.length}</strong> of{" "}
-              <strong>{companies.length}</strong> retrieved · <strong>{totalEntries.toLocaleString()}</strong> match in Apollo ·{" "}
-              <strong>{creditsSpent}</strong> credit{creditsSpent === 1 ? "" : "s"} spent
-            </p>
-            <button
-              type="button"
-              onClick={startOver}
-              className="shrink-0 text-[11px] text-muted-foreground underline hover:text-foreground"
-            >
-              Start over
-            </button>
-          </div>
-
-          {companies.length === 0 ? (
-            <div className="rounded-lg border border-border bg-secondary/30 px-4 py-6 text-center">
-              <Building2 className="mx-auto mb-2 size-5 text-muted-foreground" />
-              <p className="text-sm font-medium">No companies matched</p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Try a shorter name, remove the country, or adjust Advanced search. This search cost nothing.
-              </p>
-              <Button type="button" variant="outline" className="mt-3 bg-card" onClick={() => setStep(0)}>Refine search</Button>
-            </div>
+          {loadingList === "companies" ? (
+            <>
+              <Skeleton className="h-3 w-72 max-w-full" />
+              <CompanyTableSkeleton rows={Math.min(companyPageSize, 8)} />
+            </>
           ) : (
             <>
-              <div className="overflow-hidden rounded-lg border border-border">
-                <table className="w-full text-xs">
-                  <thead className="bg-secondary/30 text-muted-foreground">
-                    <tr>
-                      <th className="px-3 py-2 text-left font-medium">Company</th>
-                      <th className="px-3 py-2 text-left font-medium">Location</th>
-                      <th className="px-3 py-2 text-right font-medium">Staff</th>
-                      <th className="px-3 py-2 text-left font-medium">Website</th>
-                      <th className="px-3 py-2" />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {visible.map((c) => (
-                      <tr key={c.apollo_org_id} className="border-t border-border">
-                        <td className="px-3 py-2">
-                          <span className="font-medium">{c.name ?? "—"}</span>
-                          {c.already_in_system && (
-                            <span className="ml-2 rounded bg-secondary px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                              Already in system
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-3 py-2 text-muted-foreground">
-                          {[c.city, c.country].filter(Boolean).join(", ") || "—"}
-                        </td>
-                        <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">
-                          {c.employees?.toLocaleString() ?? "—"}
-                        </td>
-                        <td className="px-3 py-2 text-muted-foreground">{c.domain ?? "—"}</td>
-                        <td className="px-3 py-2 text-right">
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant={c.already_in_system ? "outline" : "default"}
-                            disabled={c.already_in_system || busy}
-                            title={c.already_in_system ? "This company is already tracked — Company Lookup adds companies that aren't yet in the system" : undefined}
-                            onClick={() => void loadPeople(c)}
-                          >
-                            {c.already_in_system ? "Unavailable" : "Select"}
-                          </Button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <p className="text-[11px] text-muted-foreground">
+                Showing <strong>{visibleCompanies.length === 0 ? 0 : companyStart + 1}–{companyStart + visibleCompanies.length}</strong> of{" "}
+                <strong>{companies.length}</strong> retrieved · <strong>{totalEntries.toLocaleString()}</strong> match in Apollo ·{" "}
+                <strong>{creditsSpent}</strong> credit{creditsSpent === 1 ? "" : "s"} spent
+              </p>
 
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex gap-2">
-                  <Button type="button" size="sm" variant="outline" className="bg-card"
-                    disabled={viewPage === 0}
-                    onClick={() => setViewPage((p) => Math.max(0, p - 1))}>Previous</Button>
-                  <Button type="button" size="sm" variant="outline" className="bg-card"
-                    disabled={viewStart + ROWS_PER_VIEW >= companies.length}
-                    onClick={() => setViewPage((p) => p + 1)}>Next</Button>
-                  <span className="self-center text-[10px] text-muted-foreground">free</span>
+              {companies.length === 0 ? (
+                <div className="rounded-lg border border-border bg-secondary/30 px-4 py-6 text-center">
+                  <Building2 className="mx-auto mb-2 size-5 text-muted-foreground" />
+                  <p className="text-sm font-medium">No companies matched</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Try a shorter name, remove the country, or adjust Advanced search. This search cost nothing.
+                  </p>
+                  <Button type="button" variant="outline" className="mt-3 bg-card" onClick={() => setStep(0)}>Refine search</Button>
                 </div>
-                {canBuyMorePages && (
-                  <Button type="button" size="sm" variant="outline" className="bg-card" disabled={busy}
-                    onClick={() => { if (confirm("Fetch 100 more companies from Apollo? This costs 1 credit.")) void runSearch(apolloPage + 1); }}>
-                    Search 100 more (1 credit)
-                  </Button>
-                )}
-              </div>
-              {!canBuyMorePages && companies.length < totalEntries && (
-                <p className="text-[11px] text-muted-foreground">
-                  Page limit reached for this search. Narrow it with a country, website or Advanced filter instead.
-                </p>
+              ) : (
+                <>
+                  <div className="overflow-hidden rounded-lg border border-border">
+                    <table className="w-full text-xs">
+                      <thead className="bg-secondary/30 text-muted-foreground">
+                        <tr>
+                          <th className="px-3 py-2 text-left font-medium">Company</th>
+                          <th className="px-3 py-2 text-left font-medium">Location</th>
+                          <th className="px-3 py-2 text-right font-medium">Staff</th>
+                          <th className="px-3 py-2 text-left font-medium">Website</th>
+                          <th className="px-3 py-2" />
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {visibleCompanies.map((c) => {
+                          const unavailable = c.already_in_system || busy;
+                          const websiteHref = companyWebsiteHref(c);
+                          return (
+                            <tr
+                              key={c.apollo_org_id}
+                              className={cn(
+                                "border-t border-border transition-colors",
+                                unavailable
+                                  ? "opacity-60"
+                                  : "cursor-pointer hover:bg-secondary/30",
+                              )}
+                              title={
+                                c.already_in_system
+                                  ? "This company is already tracked — Company Lookup adds companies that aren't yet in the system"
+                                  : `Select ${c.name ?? "company"}`
+                              }
+                              onClick={() => {
+                                if (!unavailable) void loadPeople(c);
+                              }}
+                            >
+                              <td className="px-3 py-2.5">
+                                <span className="font-medium">{c.name ?? "—"}</span>
+                                {c.already_in_system && (
+                                  <span className="ml-2 rounded bg-secondary px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                                    Already in system
+                                  </span>
+                                )}
+                              </td>
+                              <td className="px-3 py-2.5 text-muted-foreground">
+                                {[c.city, c.country].filter(Boolean).join(", ") || "—"}
+                              </td>
+                              <td className="px-3 py-2.5 text-right tabular-nums text-muted-foreground">
+                                {c.employees?.toLocaleString() ?? "—"}
+                              </td>
+                              <td className="px-3 py-2.5">
+                                {websiteHref ? (
+                                  <a
+                                    href={websiteHref}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-blue-400 hover:underline"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    {companyWebsiteLabel(c)}
+                                  </a>
+                                ) : (
+                                  <span className="text-muted-foreground">—</span>
+                                )}
+                              </td>
+                              <td className="w-10 px-2 py-2.5 text-right">
+                                <span
+                                  className={cn(
+                                    "ml-auto flex size-7 items-center justify-center rounded-full",
+                                    c.already_in_system
+                                      ? "bg-secondary text-muted-foreground/40"
+                                      : "bg-primary/10 text-primary",
+                                  )}
+                                >
+                                  <ChevronRight className="size-3.5" aria-hidden />
+                                </span>
+                                <span className="sr-only">
+                                  {c.already_in_system ? "Unavailable" : "Select"}
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <LookupPaginationBar
+                    id="company-lookup-per-page"
+                    label="Companies per page"
+                    pageSize={companyPageSize}
+                    pageSizeOptions={COMPANY_PAGE_SIZE_OPTIONS}
+                    onPageSizeChange={setCompanyPageSize}
+                    page={companyPage}
+                    totalItems={companies.length}
+                    onPageChange={setCompanyPage}
+                    middle={
+                      canBuyMorePages ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          disabled={busy}
+                          className="h-8 text-xs bg-card"
+                          onClick={() => {
+                            if (confirm("Fetch 100 more companies from Apollo? This costs 1 credit.")) {
+                              void runSearch(apolloPage + 1);
+                            }
+                          }}
+                        >
+                          Search 100 more (1 credit)
+                        </Button>
+                      ) : undefined
+                    }
+                  />
+                  {!canBuyMorePages && companies.length < totalEntries && (
+                    <p className="text-[11px] text-muted-foreground">
+                      Page limit reached for this search. Narrow it with a country, website or Advanced filter instead.
+                    </p>
+                  )}
+                </>
               )}
             </>
           )}
@@ -612,12 +847,18 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
             <p className="text-[11px] text-muted-foreground">
               People at <strong>{selectedCompany?.name}</strong> · listing is free
             </p>
-            <span className={cn("text-xs font-medium", atPickLimit && "text-primary")}>
-              {picked.length} / {COMPANY_LOOKUP_MAX_CONTACTS} selected
-            </span>
+            {loadingList === "people" ? (
+              <Skeleton className="h-3.5 w-16" />
+            ) : (
+              <span className={cn("text-xs font-medium", atPickLimit && "text-primary")}>
+                {picked.length} / {COMPANY_LOOKUP_MAX_CONTACTS} selected
+              </span>
+            )}
           </div>
 
-          {contacts.length === 0 ? (
+          {loadingList === "people" ? (
+            <PeopleListSkeleton rows={Math.min(contactPageSize, 8)} />
+          ) : contacts.length === 0 ? (
             <div className="rounded-lg border border-border bg-secondary/30 px-4 py-6 text-center">
               <Users className="mx-auto mb-2 size-5 text-muted-foreground" />
               <p className="text-sm font-medium">No contactable people found</p>
@@ -626,50 +867,77 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
               </p>
             </div>
           ) : (
-            <div className="max-h-80 overflow-y-auto rounded-lg border border-border">
-              {contacts.map((c) => {
-                const blocked = c.already_imported || c.unenrichable;
-                const on = picked.includes(c.apollo_id);
-                return (
-                  <label
-                    key={c.apollo_id}
-                    className={cn(
-                      "flex items-center gap-3 border-b border-border px-3 py-2 last:border-b-0",
-                      blocked ? "opacity-50" : "cursor-pointer hover:bg-secondary/30",
-                    )}
-                  >
-                    {/* Native input — there is no shared Checkbox in this
-                        codebase and one control does not justify adding one. */}
-                    <input
-                      type="checkbox"
-                      className="size-3.5 shrink-0 accent-primary"
-                      checked={on}
-                      disabled={blocked || (!on && atPickLimit)}
-                      onChange={() => togglePick(c.apollo_id)}
-                    />
-                    <span className="min-w-0 flex-1 text-xs">
-                      <span className="font-medium">
-                        {c.first_name ?? "—"} {c.last_name_masked ?? ""}
+            <>
+              <div className="overflow-hidden rounded-lg border border-border">
+                {visibleContacts.map((c) => {
+                  const blocked = c.already_imported || c.unenrichable;
+                  const on = picked.includes(c.apollo_id);
+                  const displayName = formatContactName(c.first_name, c.last_name_masked);
+                  return (
+                    <label
+                      key={c.apollo_id}
+                      className={cn(
+                        "flex items-center gap-3 border-b border-border px-3 py-2.5 last:border-b-0",
+                        blocked ? "opacity-50" : "cursor-pointer hover:bg-secondary/30",
+                      )}
+                    >
+                      <Avatar name={displayName} size="sm" />
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-sm font-medium leading-snug truncate">
+                          {displayName}
+                        </span>
+                        <span className="mt-0.5 block text-xs text-muted-foreground truncate">
+                          {c.title ?? "—"}
+                        </span>
                       </span>
-                      <span className="ml-2 text-muted-foreground">{c.title ?? "—"}</span>
-                    </span>
-                    {c.already_imported && <span className="rounded bg-secondary px-1.5 py-0.5 text-[10px] text-muted-foreground">already imported</span>}
-                    {c.unenrichable && <span className="rounded bg-secondary px-1.5 py-0.5 text-[10px] text-muted-foreground">no email available</span>}
-                  </label>
-                );
-              })}
-            </div>
+                      {c.already_imported && (
+                        <span className="shrink-0 rounded bg-secondary px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                          already imported
+                        </span>
+                      )}
+                      {c.unenrichable && (
+                        <span className="shrink-0 rounded bg-secondary px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                          no email available
+                        </span>
+                      )}
+                      {/* Native input — there is no shared Checkbox in this
+                          codebase and one control does not justify adding one. */}
+                      <input
+                        type="checkbox"
+                        className="size-4 shrink-0 accent-primary"
+                        checked={on}
+                        disabled={blocked || (!on && atPickLimit)}
+                        onChange={() => togglePick(c.apollo_id)}
+                      />
+                    </label>
+                  );
+                })}
+              </div>
+
+              <LookupPaginationBar
+                id="company-lookup-contacts-per-page"
+                label="Leads per page"
+                pageSize={contactPageSize}
+                pageSizeOptions={CONTACT_PAGE_SIZE_OPTIONS}
+                onPageSizeChange={setContactPageSize}
+                page={contactPage}
+                totalItems={contacts.length}
+                onPageChange={setContactPage}
+              />
+            </>
           )}
 
-          <p className="text-[11px] text-muted-foreground">
-            Surnames are partly hidden until the email is revealed.{" "}
-            {mock ? (
-              <>Test mode — revealing these costs nothing and produces placeholder emails.</>
-            ) : (
-              <>Revealing costs <strong>1 credit per contact</strong> — {picked.length} selected ={" "}
-              <strong>{picked.length} credit{picked.length === 1 ? "" : "s"}</strong>.</>
-            )}
-          </p>
+          {loadingList !== "people" && (
+            <p className="text-[11px] text-muted-foreground">
+              Surnames show as an initial until the email is revealed.{" "}
+              {mock ? (
+                <>Test mode — revealing these costs nothing and produces placeholder emails.</>
+              ) : (
+                <>Revealing costs <strong>1 credit per contact</strong> — {picked.length} selected ={" "}
+                <strong>{picked.length} credit{picked.length === 1 ? "" : "s"}</strong>.</>
+              )}
+            </p>
+          )}
         </div>
       )}
 
