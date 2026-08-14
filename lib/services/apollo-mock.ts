@@ -173,28 +173,25 @@ export function mockSearchOrganizations(opts: {
 
   const startIndex = (page - 1) * APOLLO_ORG_PER_PAGE;
   const countThisPage = Math.min(APOLLO_ORG_PER_PAGE, totalEntries - startIndex);
-  const countryFilter = opts.locations?.[0]?.trim();
+  const filters = (opts.locations ?? []).map((l) => l.trim()).filter(Boolean);
+  const filterLc = filters.map((f) => f.toLowerCase());
+  const matchesCountry = (c: string) => filterLc.some((f) => c.toLowerCase().includes(f));
+  const filterKey = filters.join(",");
 
-  // Prefer seeds that already match the requested country so cities look real;
+  // Prefer seeds that already match a requested country so cities look real;
   // pad from the rest (relocated) so the page stays full for UI testing.
-  const matchedSeeds = countryFilter
-    ? SEEDS.filter((s) => s.country.toLowerCase().includes(countryFilter.toLowerCase()))
-    : SEEDS;
-  const padSeeds = countryFilter
-    ? SEEDS.filter((s) => !s.country.toLowerCase().includes(countryFilter.toLowerCase()))
-    : [];
-  const geoTemplate = matchedSeeds[0] ?? {
-    country: countryFilter ?? "Unknown",
-    city: countryFilter ?? "Unknown",
-    state: null as string | null,
-  };
+  const matchedSeeds = filters.length ? SEEDS.filter((s) => matchesCountry(s.country)) : SEEDS;
+  const padSeeds = filters.length ? SEEDS.filter((s) => !matchesCountry(s.country)) : [];
+  const geoTemplates = matchedSeeds.length > 0
+    ? matchedSeeds
+    : filters.map((f) => ({ country: f, city: f, state: null as string | null }));
 
   const rows: Record<string, unknown>[] = [];
   for (let i = 0; i < countThisPage; i++) {
     const globalIndex = startIndex + i;
     let seed: Seed;
     let relocated = false;
-    if (!countryFilter) {
+    if (!filters.length) {
       seed = SEEDS[globalIndex % SEEDS.length];
     } else if (globalIndex < matchedSeeds.length) {
       seed = matchedSeeds[globalIndex];
@@ -203,17 +200,18 @@ export function mockSearchOrganizations(opts: {
       relocated = true;
     }
 
-    const tier = countryFilter && globalIndex >= matchedSeeds.length
+    const tier = filters.length && globalIndex >= matchedSeeds.length
       ? Math.floor((globalIndex - matchedSeeds.length) / Math.max(1, padSeeds.length)) + 2
       : 0;
     const name = tier > 0 ? `${query} ${seed.suffix} ${tier}` : `${query} ${seed.suffix}`;
     const domain = `${slug(query)}${slug(seed.suffix)}${tier > 0 ? tier : ""}.${relocated ? "com" : seed.tld}`;
-    const country = relocated ? geoTemplate.country : seed.country;
-    const city = relocated ? geoTemplate.city : seed.city;
-    const state = relocated ? geoTemplate.state : seed.state;
+    const geo = relocated ? geoTemplates[globalIndex % geoTemplates.length] : seed;
+    const country = geo.country;
+    const city = geo.city;
+    const state = geo.state;
 
     rows.push({
-      id: `mock_org_${hash(name + (countryFilter ?? ""))}`,
+      id: `mock_org_${hash(name + filterKey)}`,
       name,
       primary_domain: domain,
       website_url: `https://www.${domain}`,

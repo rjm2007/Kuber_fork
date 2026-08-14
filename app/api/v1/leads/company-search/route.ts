@@ -38,6 +38,7 @@ export async function POST(req: NextRequest) {
   if (!parsed.success) return fail(400, "VALIDATION_ERROR", "Invalid request", parsed.error.flatten());
 
   const { name, country, website, page, advanced } = parsed.data;
+  const locations = country?.length ? country : undefined;
 
   // Mock mode needs no key and no balance — there is nothing to spend.
   if (!mock && !(await getServiceSecret("apollo"))) {
@@ -59,10 +60,10 @@ export async function POST(req: NextRequest) {
   try {
     if (mock) await mockApolloDelay();
     result = mock
-      ? mockSearchOrganizations({ name, locations: country ? [country] : undefined, page })
+      ? mockSearchOrganizations({ name, locations, page })
       : await searchOrganizations({
           name,
-          locations: country ? [country] : undefined,
+          locations,
           // Apollo wants a bare domain here, not a pasted URL.
           domains: website ? [safeDomain(website)] : undefined,
           page,
@@ -99,7 +100,7 @@ export async function POST(req: NextRequest) {
       payload: {
         stage: "company_search",
         query: name,
-        country: country ?? null,
+        country: locations ?? null,
         website: website ?? null,
         page,
         returned: orgs.length,

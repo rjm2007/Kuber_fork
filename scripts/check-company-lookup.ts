@@ -113,6 +113,18 @@ assert.ok(
   "native Kenya seeds should appear first",
 );
 
+const kenyaIndia = mockSearchOrganizations({ name: "ABC", locations: ["Kenya", "India"] });
+assert.equal(kenyaIndia.organizations.length, 48, "multi-country filter must still return a full fixture page");
+assert.ok(
+  kenyaIndia.organizations.every((o) => o.country === "Kenya" || o.country === "India"),
+  "multi-country filter must keep results in the selected countries",
+);
+assert.ok(
+  kenyaIndia.organizations.some((o) => o.country === "Kenya") &&
+    kenyaIndia.organizations.some((o) => o.country === "India"),
+  "multi-country filter must include matches from each selected country",
+);
+
 const people = mockSearchPeople({ organizationIds: [abc.organizations[0].id] });
 assert.ok(people.people.length >= 40, "a company should have enough people for UI pagination");
 assert.ok(people.people.every((p) => p.has_email), "contact_email_status means every result is contactable");

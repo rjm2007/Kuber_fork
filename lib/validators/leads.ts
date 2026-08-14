@@ -133,7 +133,8 @@ const CompanyAdvancedSchema = z.object({
 
 export const CompanySearchSchema = z.object({
   name: z.string().trim().min(1).max(200),
-  country: z.string().trim().max(100).optional(),
+  // Apollo's organization_locations is a list — one or many countries.
+  country: z.array(z.string().trim().min(1).max(100)).max(200).optional(),
   website: z.string().trim().max(200).optional(),
   // Each page is a paid Apollo call. Capped here as well as in the UI so a
   // hand-rolled request cannot walk Apollo's 500-page limit on our credits.

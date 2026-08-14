@@ -1,8 +1,10 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { AlertCircle, Building2, ChevronDown, ChevronRight, Search, Users } from "lucide-react";
+import { AlertCircle, Building2, CalendarIcon, ChevronDown, ChevronRight, Search, Users } from "lucide-react";
+import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
+import { Calendar } from "@/components/ui/calendar";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,6 +16,11 @@ import {
   PaginationPrevious,
 } from "@/components/ui/pagination";
 import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -22,6 +29,8 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Stepper } from "@/components/ui/stepper";
+import { InfoTip } from "@/components/ui/info-tip";
+import { LocationsPicker } from "@/components/ui/locations-picker";
 import { cn } from "@/lib/utils";
 import { Avatar } from "@/components/leads/lead-ui";
 import {
@@ -214,55 +223,125 @@ function formatContactName(firstName: string | null, lastNameMasked: string | nu
 
 /** Every Organization Search filter beyond the three basic fields. Comma-separated
  *  text for list params keeps the panel to one control per filter — these are
- *  power-user inputs, not the common path. */
+ *  power-user inputs, not the common path. Location fields use the shared
+ *  country picker. Tips follow Instantly SuperSearch help-center wording. */
 const ADVANCED_GROUPS: {
   group: string;
-  fields: { key: string; label: string; kind: "list" | "num" | "date"; placeholder?: string }[];
+  fields: {
+    key: string;
+    label: string;
+    kind: "list" | "num" | "date" | "locations";
+    placeholder?: string;
+    tip: string;
+  }[];
 }[] = [
   {
     group: "Company profile",
     fields: [
-      { key: "employeeRanges", label: "Employee ranges", kind: "list", placeholder: "10,200   200,1000" },
-      { key: "keywordTags", label: "Industry keywords", kind: "list", placeholder: "plastics, packaging" },
-      { key: "revenueMin", label: "Revenue min", kind: "num" },
-      { key: "revenueMax", label: "Revenue max", kind: "num" },
-      { key: "technologyUids", label: "Technologies used", kind: "list", placeholder: "shopify, sap" },
+      { key: "employeeRanges", label: "Employee ranges", kind: "list", placeholder: "10,200   200,1000", tip: "Filter leads by employees size." },
+      { key: "keywordTags", label: "Industry keywords", kind: "list", placeholder: "plastics, packaging", tip: "Include or exclude certain industries or keywords." },
+      { key: "revenueMin", label: "Revenue min", kind: "num", tip: "Filter leads by revenue." },
+      { key: "revenueMax", label: "Revenue max", kind: "num", tip: "Filter leads by revenue." },
+      { key: "technologyUids", label: "Technologies used", kind: "list", placeholder: "shopify, sap", tip: "Scan the technologies present on a website. Use it to target companies that use some of your competitor's services." },
     ],
   },
   {
     group: "Location",
-    fields: [{ key: "notLocations", label: "Exclude locations", kind: "list", placeholder: "China, Vietnam" }],
+    fields: [{ key: "notLocations", label: "Exclude locations", kind: "locations", placeholder: "Select countries to exclude…", tip: "Filter leads by location. Companies in the selected countries are excluded from the results." }],
   },
   {
     group: "Funding",
     fields: [
-      { key: "latestFundingAmountMin", label: "Latest funding min", kind: "num" },
-      { key: "latestFundingAmountMax", label: "Latest funding max", kind: "num" },
-      { key: "totalFundingMin", label: "Total funding min", kind: "num" },
-      { key: "totalFundingMax", label: "Total funding max", kind: "num" },
-      { key: "latestFundingDateMin", label: "Latest funding after", kind: "date" },
-      { key: "latestFundingDateMax", label: "Latest funding before", kind: "date" },
+      { key: "latestFundingAmountMin", label: "Latest funding min", kind: "num", tip: "Funding status of the company. Filter by the size of the latest funding round." },
+      { key: "latestFundingAmountMax", label: "Latest funding max", kind: "num", tip: "Funding status of the company. Filter by the size of the latest funding round." },
+      { key: "totalFundingMin", label: "Total funding min", kind: "num", tip: "Funding status of the company. Filter by total funding raised." },
+      { key: "totalFundingMax", label: "Total funding max", kind: "num", tip: "Funding status of the company. Filter by total funding raised." },
+      { key: "latestFundingDateMin", label: "Latest funding after", kind: "date", tip: "Funding status of the company. Filter by when the latest round closed." },
+      { key: "latestFundingDateMax", label: "Latest funding before", kind: "date", tip: "Funding status of the company. Filter by when the latest round closed." },
     ],
   },
   {
     group: "Hiring signals",
     fields: [
-      { key: "jobTitles", label: "Hiring for titles", kind: "list", placeholder: "export manager" },
-      { key: "jobLocations", label: "Job locations", kind: "list", placeholder: "Kenya" },
-      { key: "numJobsMin", label: "Open jobs min", kind: "num" },
-      { key: "numJobsMax", label: "Open jobs max", kind: "num" },
-      { key: "jobPostedAtMin", label: "Job posted after", kind: "date" },
-      { key: "jobPostedAtMax", label: "Job posted before", kind: "date" },
+      { key: "jobTitles", label: "Hiring for titles", kind: "list", placeholder: "export manager", tip: "Search for companies looking to hire specific job roles." },
+      { key: "jobLocations", label: "Job locations", kind: "locations", placeholder: "Select countries where they are hiring…", tip: "Filter leads by location. Only companies hiring in the selected countries are included." },
+      { key: "numJobsMin", label: "Open jobs min", kind: "num", tip: "Search for companies looking to hire. Filter by how many open roles they have." },
+      { key: "numJobsMax", label: "Open jobs max", kind: "num", tip: "Search for companies looking to hire. Filter by how many open roles they have." },
+      { key: "jobPostedAtMin", label: "Job posted after", kind: "date", tip: "Search for companies looking to hire specific job roles. Filter by when the jobs were posted." },
+      { key: "jobPostedAtMax", label: "Job posted before", kind: "date", tip: "Search for companies looking to hire specific job roles. Filter by when the jobs were posted." },
     ],
   },
 ];
 
 const LIST_KEYS = new Set(
-  ADVANCED_GROUPS.flatMap((g) => g.fields.filter((f) => f.kind === "list").map((f) => f.key)),
+  ADVANCED_GROUPS.flatMap((g) => g.fields.filter((f) => f.kind === "list" || f.kind === "locations").map((f) => f.key)),
 );
 const NUM_KEYS = new Set(
   ADVANCED_GROUPS.flatMap((g) => g.fields.filter((f) => f.kind === "num").map((f) => f.key)),
 );
+
+function csvToList(value: string | undefined): string[] {
+  return (value ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+}
+
+function parseYmd(value: string | undefined): Date | undefined {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value?.trim() ?? "");
+  if (!m) return undefined;
+  return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+}
+
+function DateField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const date = parseYmd(value);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          className={cn(
+            "h-8 w-full justify-start px-3 text-xs font-normal bg-background",
+            !date && "text-muted-foreground",
+          )}
+        >
+          <CalendarIcon className="size-3.5 mr-2 shrink-0" />
+          {date ? format(date, "MMM d, yyyy") : "Pick a date"}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-auto p-0" align="start">
+        <Calendar
+          mode="single"
+          selected={date}
+          onSelect={(d) => {
+            onChange(d ? format(d, "yyyy-MM-dd") : "");
+            setOpen(false);
+          }}
+        />
+        <div className="flex items-center justify-between border-t border-border bg-secondary/30 px-2 py-1.5">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-7 px-2 text-xs text-muted-foreground"
+            onClick={() => { onChange(""); setOpen(false); }}
+          >
+            Clear
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-7 px-2 text-xs"
+            onClick={() => { onChange(format(new Date(), "yyyy-MM-dd")); setOpen(false); }}
+          >
+            Today
+          </Button>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
 
 /** Raw text inputs → the typed shape CompanySearchSchema expects. Empty values
  *  are dropped entirely, so an untouched Advanced panel never narrows a search. */
@@ -344,7 +423,7 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
 
   // Step 1 — search inputs
   const [name, setName] = useState("");
-  const [country, setCountry] = useState("");
+  const [countries, setCountries] = useState<string[]>([]);
   const [website, setWebsite] = useState("");
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [advanced, setAdvanced] = useState<Record<string, string>>({});
@@ -380,7 +459,7 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
    *  companies, so re-running one is a credit spent for nothing. */
   const criteria = JSON.stringify({
     name: name.trim().toLowerCase(),
-    country: country.trim().toLowerCase(),
+    country: [...countries].map((c) => c.toLowerCase()).sort().join(","),
     website: website.trim().toLowerCase(),
     advanced: buildAdvanced(advanced) ?? null,
   });
@@ -457,7 +536,7 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
         total_pages: number; credits_spent: number; mock?: boolean;
       }>("/api/v1/leads/company-search", {
         name: name.trim(),
-        country: country.trim() || undefined,
+        country: countries.length ? countries : undefined,
         website: website.trim() || undefined,
         page,
         advanced: buildAdvanced(advanced),
@@ -596,7 +675,10 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
       {step === 0 && (
         <div className="space-y-4">
           <div className="space-y-1.5">
-            <Label>Company name</Label>
+            <div className="flex items-center gap-1">
+              <Label>Company name</Label>
+              <InfoTip side="right" text="Include or exclude certain company names." />
+            </div>
             <Input
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -604,16 +686,20 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
               className="bg-card"
             />
           </div>
-          <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label>Country <span className="text-muted-foreground font-normal">(optional)</span></Label>
-              <Input value={country} onChange={(e) => setCountry(e.target.value)} placeholder="Kenya" className="bg-card" />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Website <span className="text-muted-foreground font-normal">(optional)</span></Label>
+              <div className="flex items-center gap-1">
+                <Label>Website <span className="text-muted-foreground font-normal">(optional)</span></Label>
+                <InfoTip side="right" text="Use the Lookalike domain if you want the results to be similar to the domain you entered." />
+              </div>
               <Input value={website} onChange={(e) => setWebsite(e.target.value)} placeholder="abcplastics.com" className="bg-card" />
             </div>
-          </div>
+            <LocationsPicker
+              label="Country"
+              helpText="Filter leads by location. Select one or more countries to narrow results, or leave empty to search worldwide."
+              placeholder="Any country"
+              selected={countries}
+              onChangeSelected={setCountries}
+            />
 
           <div className="rounded-lg border border-border bg-secondary/30">
             <button
@@ -657,21 +743,49 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
                     <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{g.group}</p>
                     <div className="grid grid-cols-2 gap-2">
                       {g.fields.map((f) => (
-                        <div key={f.key} className="space-y-1">
-                          <Label className="text-[11px] font-normal text-muted-foreground">{f.label}</Label>
-                          <Input
-                            value={advanced[f.key] ?? ""}
-                            onChange={(e) => setAdvanced((a) => ({ ...a, [f.key]: e.target.value }))}
-                            placeholder={f.placeholder}
-                            type={f.kind === "date" ? "date" : f.kind === "num" ? "number" : "text"}
-                            className="h-8 bg-card text-xs"
-                          />
-                        </div>
+                        f.kind === "locations" ? (
+                          <div key={f.key} className="col-span-2">
+                            <LocationsPicker
+                              label={f.label}
+                              helpText={f.tip}
+                              placeholder={f.placeholder ?? "Select countries…"}
+                              selected={csvToList(advanced[f.key])}
+                              onChangeSelected={(v) => setAdvanced((a) => ({ ...a, [f.key]: v.join(", ") }))}
+                              labelClassName="text-[11px] font-normal text-muted-foreground"
+                              triggerClassName="h-8 text-xs"
+                            />
+                          </div>
+                        ) : f.kind === "date" ? (
+                          <div key={f.key} className="space-y-1">
+                            <div className="flex items-center gap-0.5">
+                              <Label className="text-[11px] font-normal text-muted-foreground">{f.label}</Label>
+                              <InfoTip side="right" text={f.tip} />
+                            </div>
+                            <DateField
+                              value={advanced[f.key] ?? ""}
+                              onChange={(v) => setAdvanced((a) => ({ ...a, [f.key]: v }))}
+                            />
+                          </div>
+                        ) : (
+                          <div key={f.key} className="space-y-1">
+                            <div className="flex items-center gap-0.5">
+                              <Label className="text-[11px] font-normal text-muted-foreground">{f.label}</Label>
+                              <InfoTip side="right" text={f.tip} />
+                            </div>
+                            <Input
+                              value={advanced[f.key] ?? ""}
+                              onChange={(e) => setAdvanced((a) => ({ ...a, [f.key]: e.target.value }))}
+                              placeholder={f.placeholder}
+                              type={f.kind === "num" ? "number" : "text"}
+                              className="h-8 bg-background text-xs"
+                            />
+                          </div>
+                        )
                       ))}
                     </div>
                   </div>
                 ))}
-                <p className="text-[10px] text-muted-foreground">Separate multiple values with commas. Filters change which companies come back — they don&apos;t change the cost.</p>
+                <p className="text-[10px] text-muted-foreground">Separate multiple values with commas. Location filters use the country picker. Filters change which companies come back — they don&apos;t change the cost.</p>
               </div>
             )}
           </div>
@@ -710,7 +824,7 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
                   <Building2 className="mx-auto mb-2 size-5 text-muted-foreground" />
                   <p className="text-sm font-medium">No companies matched</p>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Try a shorter name, remove the country, or adjust Advanced search. This search cost nothing.
+                    Try a shorter name, clear countries, or adjust Advanced search. This search cost nothing.
                   </p>
                   <Button type="button" variant="outline" className="mt-3 bg-card" onClick={() => setStep(0)}>Refine search</Button>
                 </div>
