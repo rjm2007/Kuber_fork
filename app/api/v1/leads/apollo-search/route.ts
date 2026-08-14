@@ -34,11 +34,14 @@ const APOLLO_LEADS_PER_PAGE = 100;
  *     round trip plus two dedup queries plus an insert; on a 95%-duplicate
  *     niche an uncapped hunt would blow the 300s function limit and get killed
  *     mid-import, leaving a half-written batch.
- *  3. MAX_BARREN_PAGES — consecutive pages yielding zero new leads mean the
- *     vein is mined out; stop rather than grind to the ceiling.
+ *
+ * There used to be a third: stop after 3 consecutive pages with no new leads.
+ * It was removed on 13 Aug 2026. People search is free, so abandoning a
+ * keyword because three pages happened to be duplicates threw away leads that
+ * were sitting on page 4 — the client asked for 25 and got 8 partly because of
+ * it. Pages of pure duplicates are now simply skipped over.
  */
 const MAX_PAGES_PER_KEYWORD = 10;
-const MAX_BARREN_PAGES = 3;
 
 export async function POST(req: NextRequest) {
   let user: Awaited<ReturnType<typeof requireManager>>;
@@ -136,6 +139,9 @@ export async function POST(req: NextRequest) {
   let inserted = 0;
   let skippedDuplicate = 0;
   let skippedUnenrichable = 0;
+  /** Previously deleted leads brought back rather than skipped — see the
+   *  revive block below for why they cannot just be re-inserted. */
+  let recoveredDeleted = 0;
   let orgsCreated = 0;
   let orgsReused = 0;
   const warnings: string[] = [];
@@ -180,17 +186,13 @@ export async function POST(req: NextRequest) {
     const keywordBudget = Math.min(Math.ceil(budgetLeft / keywordsLeft), max_leads_per_keyword);
 
     let keywordInserted = 0;
-    // Consecutive pages that produced no new leads (all duplicates / no email).
-    let barrenPages = 0;
     // Tightened to Apollo's real result count once page 1 tells us what it is.
     let pageCeiling = MAX_PAGES_PER_KEYWORD;
+    let apolloTotalForKeyword = 0;
+    let pagesRead = 0;
 
     for (let page = 1; page <= pageCeiling; page++) {
       if (overallCapHit || keywordInserted >= keywordBudget) break;
-      if (barrenPages >= MAX_BARREN_PAGES) {
-        warnings.push(`[${label}] stopped after ${MAX_BARREN_PAGES} pages with no new leads — got ${keywordInserted} of ${keywordBudget}`);
-        break;
-      }
       let result;
       try {
         result = await searchPeople({
@@ -206,39 +208,97 @@ export async function POST(req: NextRequest) {
         break;
       }
 
+      pagesRead = page;
+
       if (page === 1) {
         totalEntries += result.total_entries;
+        apolloTotalForKeyword = result.total_entries;
         if (result.total_entries === 0) {
           warnings.push(`[${label}] no results — try removing location filter or changing keyword`);
           break;
         }
-        // Stop condition 1: Apollo cannot give us more than it has. Without
-        // this, a keyword with 250 results and a 100-lead cap would keep
-        // requesting empty pages up to the seatbelt.
+        // Apollo cannot give us more than it has. Without this, a keyword with
+        // 250 results and a 100-lead cap would keep requesting empty pages up
+        // to the seatbelt.
         pageCeiling = Math.min(MAX_PAGES_PER_KEYWORD, Math.ceil(result.total_entries / APOLLO_LEADS_PER_PAGE));
       }
 
       if (!result.people || result.people.length === 0) break;
 
       const people = result.people.filter((p) => p.has_email);
-      if (people.length === 0) { barrenPages++; continue; }
+      // A page of nothing usable is NOT a reason to abandon the keyword — the
+      // next page may be full of new leads. Keep paging until the budget is
+      // met or Apollo runs out.
+      if (people.length === 0) continue;
 
-      // Batch dedup
+      // ── Batch dedup ────────────────────────────────────────────────────
+      // Deleted leads are read too, but they are NOT duplicates: the person is
+      // no longer in the client's list, so they should be findable again. They
+      // cannot simply be re-inserted either — uq_leads_company_apollo covers
+      // (company_id, apollo_id) with no partial predicate, so the deleted row
+      // still owns that key and an insert would be silently swallowed by
+      // ignoreDuplicates. They are revived in place instead.
       const apolloIds = people.map((p) => p.id);
       const { data: existing } = await db
-        .from("leads").select("apollo_id, assigned_to").in("apollo_id", apolloIds);
-      const existingOwners = new Map((existing ?? []).map((r) => [r.apollo_id, r.assigned_to as string | null]));
-      let newPeople = people.filter((p) => !existingOwners.has(p.id));
-      skippedDuplicate += people.length - newPeople.length;
+        .from("leads").select("id, apollo_id, assigned_to, is_deleted, organization_id").in("apollo_id", apolloIds);
+
+      const activeOwners = new Map<string, string | null>();
+      const deletedRows = new Map<string, { id: string; organization_id: string | null }>();
+      for (const r of existing ?? []) {
+        if (r.is_deleted) deletedRows.set(r.apollo_id as string, { id: r.id as string, organization_id: r.organization_id as string | null });
+        else activeOwners.set(r.apollo_id as string, r.assigned_to as string | null);
+      }
+
+      let newPeople = people.filter((p) => !activeOwners.has(p.id) && !deletedRows.has(p.id));
+      skippedDuplicate += people.filter((p) => activeOwners.has(p.id)).length;
       for (const p of people) {
-        if (existingOwners.has(p.id) && duplicateOwners.length < DUPLICATE_SAMPLE_CAP) {
+        if (activeOwners.has(p.id) && duplicateOwners.length < DUPLICATE_SAMPLE_CAP) {
           duplicateOwners.push({
             name: p.first_name || "Unknown",
             company: p.organization?.name ?? "Unknown",
-            assigned_to: existingOwners.get(p.id) ?? null,
+            assigned_to: activeOwners.get(p.id) ?? null,
           });
         }
       }
+
+      // ── Revive previously deleted leads ────────────────────────────────
+      // Counted against the import's budget exactly like a fresh lead, because
+      // that is what they are from the client's point of view. Ones that still
+      // hold an email come back at zero credit cost; the rest re-enter the
+      // normal reveal path.
+      const revivable = people.filter((p) => deletedRows.has(p.id));
+      if (revivable.length > 0) {
+        const roomForRevive = Math.min(keywordBudget - keywordInserted, maxTotalLeads - inserted);
+        const toRevive = revivable.slice(0, Math.max(0, roomForRevive));
+        if (toRevive.length > 0) {
+          const reviveIds = toRevive.map((p) => deletedRows.get(p.id)!.id);
+          const { data: revived, error: reviveErr } = await db
+            .from("leads")
+            .update({ is_deleted: false, import_id: importId, updated_at: new Date().toISOString() })
+            .in("id", reviveIds)
+            .select("id, apollo_id, organization_id");
+          if (reviveErr) {
+            warnings.push(`[${label}] could not restore ${toRevive.length} previously deleted lead(s): ${reviveErr.message}`);
+          } else {
+            const count = revived?.length ?? 0;
+            recoveredDeleted += count;
+            inserted += count;
+            keywordInserted += count;
+            if (inserted >= maxTotalLeads) overallCapHit = true;
+            for (const r of revived ?? []) {
+              const person = toRevive.find((p) => p.id === r.apollo_id);
+              newLeadTargets.push({
+                id: r.id as string,
+                apollo_id: r.apollo_id as string,
+                first_name: person?.first_name ?? null,
+                organization_id: r.organization_id as string | null,
+                org_name: person?.organization?.name ?? null,
+              });
+            }
+          }
+        }
+      }
+      if (overallCapHit || keywordInserted >= keywordBudget) break;
 
       // Don't re-add someone we already asked Apollo about and got no email
       // for — that answer doesn't change, so re-inserting them just re-runs
@@ -254,7 +314,7 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      if (newPeople.length === 0) { barrenPages++; continue; }
+      if (newPeople.length === 0) continue;
 
       // Trim to whatever's left of the per-keyword and overall caps so we
       // never insert (and later pay Apollo to reveal) more than requested,
@@ -337,22 +397,18 @@ export async function POST(req: NextRequest) {
         }];
       });
 
-      if (leadsToInsert.length === 0) { barrenPages++; continue; }
+      if (leadsToInsert.length === 0) continue;
 
       const { data: insertedLeads, error: insertErr } = await db
         .from("leads")
         .upsert(leadsToInsert, { onConflict: "apollo_id", ignoreDuplicates: true })
         .select("id, apollo_id, organization_id");
 
-      if (insertErr) { warnings.push(`Batch lead insert failed: ${insertErr.message}`); barrenPages++; continue; }
+      if (insertErr) { warnings.push(`Batch lead insert failed: ${insertErr.message}`); continue; }
 
       const insertedThisPage = insertedLeads?.length ?? 0;
       inserted += insertedThisPage;
       keywordInserted += insertedThisPage;
-      // A page can still land zero rows here — the upsert ignores conflicts, so
-      // anyone inserted by a concurrent import between the dedup query above
-      // and this write drops out silently.
-      if (insertedThisPage === 0) barrenPages++; else barrenPages = 0;
       if (inserted >= maxTotalLeads) overallCapHit = true;
 
       for (const newLead of insertedLeads ?? []) {
@@ -367,6 +423,18 @@ export async function POST(req: NextRequest) {
           });
         }
       }
+    }
+
+    // Why this keyword stopped short, in the client's terms. Distinguishing
+    // "Apollo has nothing left" from "we hit our own page seatbelt" matters:
+    // the first means change the search, the second means run it again.
+    if (!overallCapHit && keywordInserted < keywordBudget && apolloTotalForKeyword > 0) {
+      const exhausted = pagesRead >= Math.ceil(apolloTotalForKeyword / APOLLO_LEADS_PER_PAGE);
+      warnings.push(
+        exhausted
+          ? `[${label}] exhausted — Apollo has ${apolloTotalForKeyword.toLocaleString()} matching people and every one is already in your list, so only ${keywordInserted} of ${keywordBudget} were new`
+          : `[${label}] page limit reached after ${pagesRead} pages — got ${keywordInserted} of ${keywordBudget}; Apollo holds ${apolloTotalForKeyword.toLocaleString()} matches, so run again to continue`
+      );
     }
   }
 
@@ -412,8 +480,12 @@ export async function POST(req: NextRequest) {
   return ok({
     total_entries: totalEntries,
     inserted,
+    // What the manager actually asked for, echoed back so the UI can say
+    // "25 requested, 8 imported" without having to remember the request.
+    requested: maxTotalLeads,
     skipped: skippedDuplicate,
     skipped_unenrichable: skippedUnenrichable,
+    recovered_deleted: recoveredDeleted,
     orgs_created: orgsCreated,
     orgs_reused: orgsReused,
     enrich_queued: newLeadTargets.length,

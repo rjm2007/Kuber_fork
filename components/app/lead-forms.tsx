@@ -646,13 +646,33 @@ export function ApolloForm({ onImport }: { onImport: (n: number) => void }) {
       if (!response.ok) throw new Error(json?.error?.message ?? `Request failed: ${response.status}`);
       const inserted = json?.data?.inserted ?? 0;
       const warnings: string[] = json?.data?.warnings ?? [];
+      const requested = json?.data?.requested ?? maxTotalLeads;
+      const skipped = json?.data?.skipped ?? 0;
+      const skippedUnenrichable = json?.data?.skipped_unenrichable ?? 0;
+      const recoveredDeleted = json?.data?.recovered_deleted ?? 0;
+
+      // A short import is the normal case on a well-mined niche, and it used to
+      // be reported as a bare lead count with no reason — which is exactly why
+      // "25 requested, 8 imported" looked like a bug during the 13 Aug demo.
+      // The server already knows why it stopped; say so whenever the number
+      // falls short, not only when it is zero.
+      if (inserted > 0 && inserted < requested) {
+        const parts = [`${requested} requested`, `${inserted} imported`];
+        if (skipped > 0) parts.push(`${skipped} already in your list`);
+        if (recoveredDeleted > 0) parts.push(`${recoveredDeleted} restored from deleted`);
+        if (skippedUnenrichable > 0) parts.push(`${skippedUnenrichable} have no email in Apollo`);
+        toast.warning(parts.join(" · "), {
+          description: warnings.length > 0 ? warnings.slice(0, 3).join("  ") : undefined,
+          duration: 12000,
+        });
+      }
+
       if (inserted === 0) {
         // Nothing was saved — don't redirect into an empty batch, tell the user why.
-        setError(
-          warnings.length > 0
-            ? `No leads were imported: ${warnings[0]}`
-            : "No leads matched this search. Try different keywords or locations."
-        );
+        const why = skipped > 0
+          ? `All ${skipped} matching people are already in your list.`
+          : "No leads matched this search. Try different keywords or locations.";
+        setError(warnings.length > 0 ? `No leads were imported: ${warnings[0]}` : why);
         setImporting(false);
         return;
       }
@@ -744,7 +764,10 @@ export function ApolloForm({ onImport }: { onImport: (n: number) => void }) {
             </div>
 
             <p className="text-[11px] text-muted-foreground">
-              You selected <strong>{keywordGroupCount}</strong> keyword group{keywordGroupCount === 1 ? "" : "s"}. The{" "}
+              You selected <strong>{keywords.length}</strong> keyword{keywords.length === 1 ? "" : "s"}
+              {keywordGroupCount !== keywords.length && (
+                <>, which search Apollo as <strong>{keywordGroupCount}</strong> distinct term{keywordGroupCount === 1 ? "" : "s"} (some labels share the same Apollo query)</>
+              )}. The{" "}
               <strong>{maxTotalLeads.toLocaleString()}</strong> leads are split evenly between them —{" "}
               <strong>
                 ~{effectivePerKeyword.toLocaleString()} per keyword
