@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Loader2, RotateCcw, Save, Check, ThumbsDown, Send, Paperclip, Sparkles } from "lucide-react";
+import { Loader2, RotateCcw, Save, Check, ThumbsDown, Send, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { RichTextEditor } from "@/components/ui/rich-text-editor";
+import { ReplyAttachButton, ReplyAttachmentChips } from "@/components/app/reply-attach-controls";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import {
@@ -15,10 +16,10 @@ import {
   rejectReplyDraft,
   sendReplyDraft,
   regenerateReplyDraft,
-  uploadCampaignAttachment,
   type ReplyDraft,
 } from "@/lib/api-client";
 import { normalizeReplyBodyHtml } from "@/lib/reply-body-html";
+import { appendReplyAttachments, type ReplyAttachment } from "@/lib/reply-attachments";
 
 const DRAFT_STATUS_STYLE: Record<string, string> = {
   generating: "bg-secondary text-muted-foreground",
@@ -71,8 +72,7 @@ export function ReplyDraftBox({
   const [regenOpen, setRegenOpen] = useState(false);
   const [regenQuery, setRegenQuery] = useState("");
   const [regenerating, setRegenerating] = useState(false);
-  const [attaching, setAttaching] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [attachments, setAttachments] = useState<ReplyAttachment[]>([]);
   const regenTextareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Toggling "Regenerate" only reveals a small panel right below the button —
@@ -90,6 +90,7 @@ export function ReplyDraftBox({
     setDraftId(draft.id);
     setStatus(draft.status);
     setError(draft.error);
+    setAttachments([]);
     if (replyDraftHasContent(draft)) {
       setSubject(draft.subject ?? "");
       setBody(normalizeReplyBodyHtml(draft.body ?? ""));
@@ -101,22 +102,13 @@ export function ReplyDraftBox({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only when draft row identity changes
   }, [draft.id]);
 
-  // Instantly's reply API has no attachment support, so files are shared as a
-  // hosted download link appended to the reply body.
-  async function handleAttachFile(file: File) {
-    setAttaching(true);
-    try {
-      const up = await uploadCampaignAttachment(token, file);
-      if (!up.attachment_url) throw new Error("Upload succeeded but no link was returned");
-      const link = `<p>📎 <a href="${up.attachment_url}" target="_blank" rel="noopener">${up.attachment_name}</a></p>`;
-      setBody((prev) => `${prev}${link}`);
-      toast.success(`${up.attachment_name} added as a download link — remember to Save`);
-    } catch (e) {
-      toast.error((e as Error).message);
-    } finally {
-      setAttaching(false);
-      if (fileInputRef.current) fileInputRef.current.value = "";
-    }
+  // Bake pending chips into the body as download links. TipTap has no Image
+  // extension, so inline <img> would be stripped on the next editor sync —
+  // Instantly also has no attachment field, so a hosted link is what the lead
+  // actually receives (same as campaign emails).
+  function bodyWithAttachments(current = body): string {
+    if (attachments.length === 0) return current;
+    return appendReplyAttachments(current, attachments, { inlineImages: false });
   }
 
   // Parent thread (Outbox / Unibox) owns the mail-style row after send —
@@ -126,7 +118,10 @@ export function ReplyDraftBox({
   async function handleSave() {
     setSaving(true);
     try {
-      const updated = await editReplyDraft(token, draftId, subject, body);
+      const nextBody = bodyWithAttachments();
+      const updated = await editReplyDraft(token, draftId, subject, nextBody);
+      setBody(nextBody);
+      setAttachments([]);
       setStatus(updated.status);
       toast.success("Reply draft saved");
       onChanged();
@@ -140,7 +135,10 @@ export function ReplyDraftBox({
   async function handleApprove() {
     setSaving(true);
     try {
-      const updated = await approveReplyDraft(token, draftId, subject, body);
+      const nextBody = bodyWithAttachments();
+      const updated = await approveReplyDraft(token, draftId, subject, nextBody);
+      setBody(nextBody);
+      setAttachments([]);
       setStatus(updated.status);
       toast.success("Reply approved");
       onChanged();
@@ -154,6 +152,12 @@ export function ReplyDraftBox({
   async function handleSend() {
     setSending(true);
     try {
+      if (attachments.length > 0) {
+        const nextBody = bodyWithAttachments();
+        await editReplyDraft(token, draftId, subject, nextBody);
+        setBody(nextBody);
+        setAttachments([]);
+      }
       await sendReplyDraft(token, draftId);
       setStatus("sent");
       toast.success("Reply sent");
@@ -197,6 +201,7 @@ export function ReplyDraftBox({
       setStatus(updated.status);
       setError(updated.error);
       setAiUsed(true);
+      setAttachments([]);
       setRegenOpen(false);
       setRegenQuery("");
       toast.success(aiUsed ? "Reply regenerated" : "AI reply generated");
@@ -262,25 +267,18 @@ export function ReplyDraftBox({
       <div className="p-4 space-y-3">
         <Input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Subject" className="text-sm font-medium" />
         <RichTextEditor value={body} onChange={setBody} minHeight={180} />
+        <ReplyAttachmentChips
+          attachments={attachments}
+          onRemove={(i) => setAttachments((prev) => prev.filter((_, idx) => idx !== i))}
+        />
 
         <div className="flex items-center gap-2 flex-wrap">
-          <input
-            ref={fileInputRef}
-            type="file"
-            className="hidden"
-            accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg"
-            onChange={(e) => { const f = e.target.files?.[0]; if (f) void handleAttachFile(f); }}
+          <ReplyAttachButton
+            token={token}
+            disabled={saving || sending}
+            currentCount={attachments.length}
+            onUploaded={(a) => setAttachments((prev) => [...prev, a])}
           />
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={attaching}
-            onClick={() => fileInputRef.current?.click()}
-            className="gap-1.5"
-            title="Insert a file as a download link (Instantly cannot send real attachments)"
-          >
-            {attaching ? <Loader2 className="size-3.5 animate-spin" /> : <Paperclip className="size-3.5" />} Attach link
-          </Button>
           <Button size="sm" variant="outline" disabled={saving} onClick={() => void handleSave()} className="gap-1.5">
             {saving ? <Loader2 className="size-3.5 animate-spin" /> : <Save className="size-3.5" />} Save
           </Button>
