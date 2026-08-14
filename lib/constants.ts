@@ -11,7 +11,18 @@ export const SERVICE_ROLE_USER_ID = "00000000-0000-0000-0000-000000000000";
 // never run against this company's data — it's dev/test only.
 export const DEV_COMPANY_ID = "00000000-0000-0000-0000-00000000000a";
 
+// Widened 2026-08-13 after measuring the real cost of the old list against
+// Apollo's free people-search (docs/apollo-filter-measurement.md). The previous
+// ten titles returned a TOTAL pool of 46 people for "molding"/USA — the client
+// asked for 25 from that, while already owning 566 US leads, and got 8.
+//
+// Widening the list took the same search to 205 (+346%) with relevance intact:
+// Supply Chain Manager @ National Molding, Owner-CEO @ Molding Concepts.
+// Removing the title filter altogether reached 813 but collapsed quality —
+// Group HR Executive, CFO, and people whose title is literally "Molding" at
+// Thermo Fisher — so the filter stays, it is only broader.
 export const APOLLO_TITLES = [
+  // Original ten
   "purchase manager",
   "procurement manager",
   "plant manager",
@@ -22,6 +33,25 @@ export const APOLLO_TITLES = [
   "technical manager",
   "proprietor",
   "founder",
+  // Buying roles the old list missed entirely
+  "buyer",
+  "purchasing manager",
+  "head of purchasing",
+  "head of procurement",
+  "sourcing manager",
+  "supply chain manager",
+  "materials manager",
+  "category manager",
+  // Trade roles — notable omissions for a business selling to exporters
+  "import manager",
+  "export manager",
+  // Decision makers at smaller firms, where one person signs everything
+  "general manager",
+  "operations manager",
+  "owner",
+  "director",
+  "ceo",
+  "partner",
 ];
 
 export const APOLLO_SENIORITIES = [
@@ -224,7 +254,16 @@ export const LOCATION_CATEGORIES: LocationCategory[] = [
   },
 ];
 
-export const EMPLOYEE_RANGES = ["10,200", "200,1000"];
+// Widened 2026-08-13. The old ["10,200","200,1000"] excluded every company
+// under 10 staff and over 1,000 — 44% of the market for this keyword set, and
+// both ends matter here: small trading houses and the large manufacturers
+// worth winning. Widening took "molding"/USA from 46 to 84 (+83%) with the
+// same calibre of company (Polyoak Packaging, Termatec Molding).
+//
+// The "min,max" format is CONFIRMED honoured, not assumed: sending ["7,9"]
+// collapsed a 7,032-result search to 190, and ["1,100000"] restored it to
+// 6,855, which is only possible if Apollo parses the numbers.
+export const EMPLOYEE_RANGES = ["1,10", "11,50", "51,200", "201,1000", "1001,10000"];
 
 export const CONTACT_EMAIL_STATUSES = ["verified", "likely to engage"];
 

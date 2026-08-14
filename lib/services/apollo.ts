@@ -52,11 +52,17 @@ export async function searchPeople(opts: {
 }): Promise<ApolloSearchResult> {
   const body: Record<string, unknown> = {
     person_titles: opts.titles ?? APOLLO_TITLES,
+    // Measured inert: removing person_seniorities changed the result count by
+    // exactly 0 in both test scenarios, because person_titles already implies
+    // the seniority. Kept because it costs nothing; do not expect it to filter.
     person_seniorities: opts.seniorities ?? APOLLO_SENIORITIES,
     q_keywords: opts.keyword,
     organization_num_employees_ranges: EMPLOYEE_RANGES,
     contact_email_status: CONTACT_EMAIL_STATUSES,
-    include_similar_titles: false,
+    // Was false. Apollo's own fuzzy title matching adds ~30% more people at
+    // the same quality — "Head of Purchasing" and "Sr. Procurement Manager"
+    // were being missed by near-literal matching on "purchase manager".
+    include_similar_titles: true,
     per_page: opts.perPage ?? 100,
     page: opts.page,
   };
