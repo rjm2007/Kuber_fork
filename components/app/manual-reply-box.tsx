@@ -7,6 +7,8 @@ import { sendUniboxReply } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { RichTextEditor } from "@/components/ui/rich-text-editor";
+import { ReplyAttachButton, ReplyAttachmentChips } from "@/components/app/reply-attach-controls";
+import { appendReplyAttachments, type ReplyAttachment } from "@/lib/reply-attachments";
 
 /**
  * Plain human-written reply — no AI, no reply_drafts row. Shared by Unibox and
@@ -35,22 +37,28 @@ export function ManualReplyBox({
 }) {
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
+  const [attachments, setAttachments] = useState<ReplyAttachment[]>([]);
   const [sending, setSending] = useState(false);
 
   useEffect(() => {
     setSubject(replyToSubject ? `Re: ${replyToSubject.replace(/^Re:\s*/i, "")}` : "");
     setBody("");
+    setAttachments([]);
   }, [threadId, replyToSubject]);
 
+  const bodyText = body.replace(/<[^>]+>/g, "").replace(/&nbsp;/gi, " ").trim();
+  const canSend = subject.trim() && (bodyText.length > 0 || attachments.length > 0);
+
   async function handleSend() {
-    if (!subject.trim() || !body.trim()) return;
+    if (!canSend) return;
     setSending(true);
     try {
+      const bodyHtml = appendReplyAttachments(body.replace(/\n/g, "<br>"), attachments);
       await sendUniboxReply(token, {
         thread_id: threadId,
         subject,
-        body_html: body.replace(/\n/g, "<br>"),
-        body_text: body.replace(/<[^>]+>/g, ""),
+        body_html: bodyHtml,
+        body_text: [bodyText, ...attachments.map((a) => a.name)].filter(Boolean).join("\n"),
       });
       toast.success("Reply sent");
       onSent();
@@ -97,8 +105,18 @@ export function ManualReplyBox({
       <div className="p-4 space-y-3">
         <Input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Subject" className="text-sm" />
         <RichTextEditor value={body} onChange={setBody} placeholder="Write your reply…" minHeight={120} />
-        <div className="flex justify-end">
-          <Button size="sm" disabled={sending} onClick={() => void handleSend()} className="gap-1.5">
+        <ReplyAttachmentChips
+          attachments={attachments}
+          onRemove={(i) => setAttachments((prev) => prev.filter((_, idx) => idx !== i))}
+        />
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <ReplyAttachButton
+            token={token}
+            disabled={sending}
+            currentCount={attachments.length}
+            onUploaded={(a) => setAttachments((prev) => [...prev, a])}
+          />
+          <Button size="sm" disabled={sending || !canSend} onClick={() => void handleSend()} className="gap-1.5">
             {sending ? <Loader2 className="size-3.5 animate-spin" /> : <Send className="size-3.5" />}
             Send reply
           </Button>
