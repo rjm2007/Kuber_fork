@@ -125,7 +125,12 @@ export interface ApolloOrganization {
   name: string | null;
   primary_domain: string | null;
   website_url: string | null;
+  blog_url: string | null;
+  angellist_url: string | null;
   linkedin_url: string | null;
+  twitter_url: string | null;
+  facebook_url: string | null;
+  crunchbase_url: string | null;
   logo_url: string | null;
   founded_year: number | null;
   phone: string | null;
@@ -138,6 +143,8 @@ export interface ApolloOrganization {
   city: string | null;
   state: string | null;
   industry: string | null;
+  /** Full Apollo row, kept for persistence — not sent to the browser. */
+  raw: Record<string, unknown>;
 }
 
 export interface ApolloOrgSearchResult {
@@ -196,7 +203,12 @@ export function normalizeOrg(row: RawOrg): ApolloOrganization {
     name: firstString(row, ["name"]),
     primary_domain: firstString(row, ["primary_domain", "domain"]),
     website_url: firstString(row, ["website_url", "website"]),
+    blog_url: firstString(row, ["blog_url"]),
+    angellist_url: firstString(row, ["angellist_url"]),
     linkedin_url: firstString(row, ["linkedin_url"]),
+    twitter_url: firstString(row, ["twitter_url"]),
+    facebook_url: firstString(row, ["facebook_url"]),
+    crunchbase_url: firstString(row, ["crunchbase_url"]),
     logo_url: firstString(row, ["logo_url"]),
     founded_year: firstNumber(row, ["founded_year"]),
     phone: firstString(row, ["phone", "primary_phone", "sanitized_phone"]),
@@ -205,6 +217,7 @@ export function normalizeOrg(row: RawOrg): ApolloOrganization {
     city: firstString(row, ["city", "organization_city"]),
     state: firstString(row, ["state", "organization_state"]),
     industry: firstString(row, ["industry"]),
+    raw: row,
   };
 }
 

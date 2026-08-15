@@ -7,6 +7,7 @@ import { getServiceSecret } from "@/lib/services/service-keys";
 import { dbForUser } from "@/lib/supabase/scoped";
 import { companyLookupTitleRank } from "@/lib/constants";
 import { isApolloMockCompany, mockApolloDelay, mockSearchPeople } from "@/lib/services/apollo-mock";
+import { saveApolloRawRecords } from "@/lib/services/apollo-raw";
 
 export const maxDuration = 60;
 
@@ -76,6 +77,12 @@ export async function POST(req: NextRequest) {
   // Belt-and-braces on top of contact_email_status: only people Apollo says it
   // holds an address for are worth a credit.
   const people = (result.people ?? []).filter((p) => p.has_email);
+
+  await saveApolloRawRecords(
+    db,
+    "person",
+    (result.people ?? []).map((p) => ({ apollo_id: p.id, payload: p })),
+  );
 
   // ── Already-known contacts ───────────────────────────────────────────────
   // Keyed on Apollo person id, tenant-scoped. Not on email (unknown until we

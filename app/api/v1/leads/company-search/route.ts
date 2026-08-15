@@ -8,6 +8,7 @@ import { checkApolloCredits } from "@/lib/services/provider-credits";
 import { dbForUser } from "@/lib/supabase/scoped";
 import { normalizeDomain } from "@/lib/utils/domain";
 import { isApolloMockCompany, mockApolloDelay, mockSearchOrganizations } from "@/lib/services/apollo-mock";
+import { saveApolloRawRecords } from "@/lib/services/apollo-raw";
 
 export const maxDuration = 60;
 
@@ -77,6 +78,12 @@ export async function POST(req: NextRequest) {
   }
 
   const orgs = result.organizations;
+
+  await saveApolloRawRecords(
+    db,
+    "organization",
+    orgs.map((o) => ({ apollo_id: o.id, payload: o.raw })),
+  );
 
   // ── Ledger ───────────────────────────────────────────────────────────────
   // Settings > Keys > Usage sums payload.credits_consumed across every
@@ -149,12 +156,18 @@ export async function POST(req: NextRequest) {
       name: o.name,
       domain,
       website: o.website_url,
+      blog_url: o.blog_url,
+      angellist_url: o.angellist_url,
+      linkedin_url: o.linkedin_url,
+      twitter_url: o.twitter_url,
+      facebook_url: o.facebook_url,
+      crunchbase_url: o.crunchbase_url,
+      logo_url: o.logo_url,
       employees: o.estimated_num_employees,
       city: o.city,
       state: o.state,
       country: o.country,
       industry: o.industry,
-      linkedin_url: o.linkedin_url,
       founded_year: o.founded_year,
       // Blocked from selection in V1: Company Lookup exists to bring in a
       // company we do NOT already have. The UI shows it, disabled.

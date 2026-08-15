@@ -84,6 +84,11 @@ assert.ok(abc.organizations.every((o) => o.name?.startsWith("ABC")), "results sh
 // the mock proves it populates the columns the results table renders.
 assert.ok(abc.organizations.every((o) => o.estimated_num_employees != null), "employee count must survive normalizeOrg");
 assert.ok(abc.organizations.every((o) => o.country != null && o.primary_domain != null), "country and domain must survive normalizeOrg");
+assert.ok(abc.organizations.every((o) => o.logo_url), "logo_url must survive normalizeOrg");
+assert.ok(abc.organizations.every((o) => o.website_url && o.linkedin_url), "website and linkedin must survive normalizeOrg");
+assert.ok(abc.organizations.every((o) => o.twitter_url && o.facebook_url && o.crunchbase_url), "twitter, facebook and crunchbase must survive normalizeOrg");
+assert.ok(abc.organizations.some((o) => o.blog_url), "blog_url should appear on some fixtures");
+assert.ok(abc.organizations.some((o) => o.angellist_url), "angellist_url should appear on some fixtures");
 
 // Deterministic: a repeated demo must show the same companies.
 assert.deepEqual(

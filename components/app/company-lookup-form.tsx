@@ -133,14 +133,19 @@ function CompanyTableSkeleton({ rows = 8 }: { rows?: number }) {
             <th className="px-3 py-2 text-left font-medium">Company</th>
             <th className="px-3 py-2 text-left font-medium">Location</th>
             <th className="px-3 py-2 text-right font-medium">Staff</th>
-            <th className="px-3 py-2 text-left font-medium">Website</th>
+            <th className="px-3 py-2 text-left font-medium">Links</th>
             <th className="px-3 py-2" />
           </tr>
         </thead>
         <tbody>
           {Array.from({ length: rows }).map((_, i) => (
             <tr key={i} className="border-t border-border">
-              <td className="px-3 py-2.5"><Skeleton className="h-3.5 w-36" /></td>
+              <td className="px-3 py-2.5">
+                <div className="flex items-center gap-2">
+                  <Skeleton className="size-7 rounded-md" />
+                  <Skeleton className="h-3.5 w-36" />
+                </div>
+              </td>
               <td className="px-3 py-2.5"><Skeleton className="h-3.5 w-24" /></td>
               <td className="px-3 py-2.5"><Skeleton className="ml-auto h-3.5 w-10" /></td>
               <td className="px-3 py-2.5"><Skeleton className="h-3.5 w-28" /></td>
@@ -181,12 +186,18 @@ interface Company {
   name: string | null;
   domain: string | null;
   website: string | null;
+  blog_url: string | null;
+  angellist_url: string | null;
+  linkedin_url: string | null;
+  twitter_url: string | null;
+  facebook_url: string | null;
+  crunchbase_url: string | null;
+  logo_url: string | null;
   employees: number | null;
   city: string | null;
   state: string | null;
   country: string | null;
   industry: string | null;
-  linkedin_url: string | null;
   founded_year: number | null;
   already_in_system: boolean;
 }
@@ -210,8 +221,57 @@ function companyWebsiteHref(c: Company): string | null {
   return /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
 }
 
-function companyWebsiteLabel(c: Company): string {
-  return c.domain?.trim() || c.website?.replace(/^https?:\/\//i, "").replace(/\/$/, "") || "—";
+function CompanyLogo({ src, name }: { src: string | null; name: string | null }) {
+  const [broken, setBroken] = useState(false);
+  if (!src || broken) {
+    return (
+      <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-secondary text-muted-foreground" aria-hidden>
+        <Building2 className="size-3.5" />
+      </span>
+    );
+  }
+  return (
+    // Fixture logos are data-URIs; live Apollo search already returns logo_url
+    // on the same page we paid for — no extra credit.
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={src}
+      alt={name ? `${name} logo` : ""}
+      className="size-7 shrink-0 rounded-md bg-secondary object-cover"
+      onError={() => setBroken(true)}
+    />
+  );
+}
+
+function CompanyLinks({ company }: { company: Company }) {
+  const items = [
+    { href: companyWebsiteHref(company), label: "Website" },
+    { href: company.linkedin_url, label: "LinkedIn" },
+    { href: company.twitter_url, label: "Twitter" },
+    { href: company.facebook_url, label: "Facebook" },
+    { href: company.crunchbase_url, label: "Crunchbase" },
+    { href: company.blog_url, label: "Blog" },
+    { href: company.angellist_url, label: "AngelList" },
+  ].filter((l): l is { href: string; label: string } => typeof l.href === "string" && l.href.trim() !== "");
+
+  if (items.length === 0) return <span className="text-muted-foreground">—</span>;
+
+  return (
+    <div className="flex flex-wrap gap-1">
+      {items.map((l) => (
+        <a
+          key={l.label}
+          href={l.href}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="rounded border border-border bg-background px-1.5 py-0.5 text-[10px] font-medium text-foreground hover:border-primary/40 hover:text-primary"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {l.label}
+        </a>
+      ))}
+    </div>
+  );
 }
 
 /** Apollo returns surnames obfuscated (e.g. "Sh***a"). Show "Kavish S." instead. */
@@ -837,14 +897,13 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
                           <th className="px-3 py-2 text-left font-medium">Company</th>
                           <th className="px-3 py-2 text-left font-medium">Location</th>
                           <th className="px-3 py-2 text-right font-medium">Staff</th>
-                          <th className="px-3 py-2 text-left font-medium">Website</th>
+                          <th className="px-3 py-2 text-left font-medium">Links</th>
                           <th className="px-3 py-2" />
                         </tr>
                       </thead>
                       <tbody>
                         {visibleCompanies.map((c) => {
                           const unavailable = c.already_in_system || busy;
-                          const websiteHref = companyWebsiteHref(c);
                           return (
                             <tr
                               key={c.apollo_org_id}
@@ -864,12 +923,17 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
                               }}
                             >
                               <td className="px-3 py-2.5">
-                                <span className="font-medium">{c.name ?? "—"}</span>
-                                {c.already_in_system && (
-                                  <span className="ml-2 rounded bg-secondary px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                                    Already in system
+                                <div className="flex min-w-0 items-center gap-2">
+                                  <CompanyLogo src={c.logo_url} name={c.name} />
+                                  <span className="min-w-0">
+                                    <span className="font-medium">{c.name ?? "—"}</span>
+                                    {c.already_in_system && (
+                                      <span className="ml-2 rounded bg-secondary px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                                        Already in system
+                                      </span>
+                                    )}
                                   </span>
-                                )}
+                                </div>
                               </td>
                               <td className="px-3 py-2.5 text-muted-foreground">
                                 {[c.city, c.country].filter(Boolean).join(", ") || "—"}
@@ -878,19 +942,7 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
                                 {c.employees?.toLocaleString() ?? "—"}
                               </td>
                               <td className="px-3 py-2.5">
-                                {websiteHref ? (
-                                  <a
-                                    href={websiteHref}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="text-blue-400 hover:underline"
-                                    onClick={(e) => e.stopPropagation()}
-                                  >
-                                    {companyWebsiteLabel(c)}
-                                  </a>
-                                ) : (
-                                  <span className="text-muted-foreground">—</span>
-                                )}
+                                <CompanyLinks company={c} />
                               </td>
                               <td className="w-10 px-2 py-2.5 text-right">
                                 <span

@@ -148,6 +148,21 @@ function slug(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, "");
 }
 
+/** Apollo returns logo_url as a hosted image. Fixtures use a data-URI so the
+ *  table can render logos without hitting Apollo (or any other network). */
+function mockLogoDataUri(name: string, seed: number): string {
+  const initials = name
+    .replace(/[^A-Za-z0-9 ]/g, " ")
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0]!.toUpperCase())
+    .join("") || "?";
+  const hue = seed % 360;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="hsl(${hue} 42% 38%)"/><text x="32" y="40" text-anchor="middle" fill="#fff" font-size="22" font-family="system-ui,sans-serif" font-weight="600">${initials}</text></svg>`;
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+}
+
 export function mockSearchOrganizations(opts: {
   name: string;
   locations?: string[];
@@ -210,16 +225,25 @@ export function mockSearchOrganizations(opts: {
     const city = geo.city;
     const state = geo.state;
 
+    const h = hash(name);
+    const handle = slug(name).slice(0, 18) || "company";
     rows.push({
       id: `mock_org_${hash(name + filterKey)}`,
       name,
       primary_domain: domain,
+      // Field names match Apollo's Organization Search response
+      // (docs.apollo.io/reference/organization-search).
       website_url: `https://www.${domain}`,
-      linkedin_url: `https://www.linkedin.com/company/${slug(name)}`,
-      logo_url: null,
-      founded_year: 1985 + (hash(name) % 35),
+      blog_url: h % 5 === 0 ? `https://blog.${domain}` : null,
+      angellist_url: h % 7 === 0 ? `https://angel.co/company/${handle}` : null,
+      linkedin_url: `https://www.linkedin.com/company/${handle}`,
+      twitter_url: `https://twitter.com/${handle}`,
+      facebook_url: `https://facebook.com/${handle}`,
+      crunchbase_url: `https://www.crunchbase.com/organization/${handle}`,
+      logo_url: mockLogoDataUri(name, h),
+      founded_year: 1985 + (h % 35),
       phone: null,
-      estimated_num_employees: seed.employees + (hash(name) % 40),
+      estimated_num_employees: seed.employees + (h % 40),
       country,
       city,
       state,
