@@ -32,7 +32,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     .select(
       `*, attachment_path, attachment_name, attachment_mime, attachment_size, attachment_url,
        email_drafts(id, subject, body, status, created_at, step_number),
-       leads!inner(first_name, last_name, email, title, country, assigned_to, organizations(name))`,
+       leads!inner(first_name, last_name, email, title, country, assigned_to, organization_id, organizations(id, name, domain, country, city, website))`,
       { count: "exact" }
     )
     .eq("campaign_id", id);
@@ -73,12 +73,36 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
   function mapLeadRow(
     raw: Record<string, unknown> | null,
-  ): { first_name: string | null; last_name: string | null; email: string | null; title: string | null; country: string | null; company_name: string | null } | null {
+  ): {
+    first_name: string | null;
+    last_name: string | null;
+    email: string | null;
+    title: string | null;
+    country: string | null;
+    company_name: string | null;
+    org_id: string | null;
+    company_domain: string | null;
+    company_country: string | null;
+    company_city: string | null;
+    company_website: string | null;
+  } | null {
     if (!raw) return null;
-    const org = raw.organizations as { name?: string | null } | { name?: string | null }[] | null | undefined;
-    const company_name = (Array.isArray(org) ? org[0]?.name : org?.name) ?? null;
-    const { organizations: _org, ...lead } = raw;
-    return { ...lead, company_name } as ReturnType<typeof mapLeadRow>;
+    const org = raw.organizations as
+      | { id?: string | null; name?: string | null; domain?: string | null; country?: string | null; city?: string | null; website?: string | null }
+      | { id?: string | null; name?: string | null; domain?: string | null; country?: string | null; city?: string | null; website?: string | null }[]
+      | null
+      | undefined;
+    const orgRow = Array.isArray(org) ? org[0] : org;
+    const { organizations: _org, organization_id: _organizationId, ...lead } = raw;
+    return {
+      ...lead,
+      company_name: orgRow?.name ?? null,
+      org_id: orgRow?.id ?? (typeof raw.organization_id === "string" ? raw.organization_id : null),
+      company_domain: orgRow?.domain ?? null,
+      company_country: orgRow?.country ?? null,
+      company_city: orgRow?.city ?? null,
+      company_website: orgRow?.website ?? null,
+    } as ReturnType<typeof mapLeadRow>;
   }
 
   // Compute resolved attachment per lead

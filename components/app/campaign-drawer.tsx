@@ -5,6 +5,7 @@ import {
   Megaphone, Users, Send, MessageSquare, Clock, Gauge, ArrowUp,
   Globe, Calendar, ExternalLink, Loader2, CheckCircle2, RotateCcw, RefreshCw, Check, Save, History, ChevronDown, ArrowLeft,
   List, LayoutGrid, BarChart2, Flame, Snowflake, ThumbsDown, Layers, Paperclip, X, Sparkles, Pencil, Reply, AlertTriangle,
+  Building2, MapPin,
 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
@@ -168,7 +169,19 @@ type CampaignLead = {
   crm_status: string;
   lead_temperature: string | null;
   created_at: string;
-  leads: { first_name: string | null; last_name: string | null; email: string | null; title: string | null; country: string | null; company_name: string | null } | null;
+  leads: {
+    first_name: string | null;
+    last_name: string | null;
+    email: string | null;
+    title: string | null;
+    country: string | null;
+    company_name: string | null;
+    org_id?: string | null;
+    company_domain?: string | null;
+    company_country?: string | null;
+    company_city?: string | null;
+    company_website?: string | null;
+  } | null;
   email_drafts: { id: string; subject: string | null; body: string | null; status: string; step_number?: number | null; created_at?: string } | null;
   /**
    * Set by the leads API when a step-1 draft row is mid-generation. It cannot be
@@ -205,6 +218,40 @@ function sortCampaignLeads(leads: CampaignLead[], sort: CampaignLeadsSort): Camp
     const bName = [b.leads?.first_name, b.leads?.last_name].filter(Boolean).join(" ");
     return aName.localeCompare(bName);
   });
+}
+
+/** Stub for LeadDrawer — it refetches full lead details by id. */
+function campaignLeadToDrawerLead(cl: CampaignLead): Lead {
+  const l = cl.leads;
+  return {
+    id: cl.lead_id,
+    firstName: l?.first_name ?? "",
+    lastName: l?.last_name ?? "",
+    email: l?.email ?? "",
+    company: l?.company_name ?? "",
+    domain: l?.company_domain ?? "",
+    domainSource: null,
+    phone: "",
+    jobTitle: l?.title ?? "",
+    country: l?.country ?? "",
+    status: "Enriched",
+    score: "—",
+    source: "Apollo",
+    campaign: "",
+    campaigns: [],
+    createdAt: cl.created_at,
+    orgId: l?.org_id ?? null,
+    enrichmentStage: null,
+    companyDescription: null,
+    sellsTo: null,
+    lastError: null,
+    hasScraped: false,
+    importId: null,
+    batchLabel: null,
+    batchColor: null,
+    assignedTo: null,
+    orgShared: null,
+  };
 }
 
 type EmailDraftRow = NonNullable<CampaignLead["email_drafts"]>;
@@ -475,7 +522,9 @@ export function CampaignDetail({
   const [drawerLead, setDrawerLead] = useState<Lead | null>(null);
   const [drawerOrgId, setDrawerOrgId] = useState<string | null>(null);
   const [threads, setThreads] = useState<CampaignReplyThread[]>([]);
-  const [outboxFilter, setOutboxFilter] = useState<"all" | "action" | "certified" | "sent" | "replied">("all");
+  const [outboxFilter, setOutboxFilter] = useState<
+    "all" | "action" | "certified" | "sending" | "sent" | "replied" | "bounced"
+  >("all");
   const [outboxExpandOverrides, setOutboxExpandOverrides] = useState<Set<string>>(new Set());
   const [outboxReplyOpen, setOutboxReplyOpen] = useState(false);
   const [outboxReplyStartBlank, setOutboxReplyStartBlank] = useState(true);
@@ -972,6 +1021,10 @@ export function CampaignDetail({
   function getDisplayStatus(cl: CampaignLead): string {
     const activity = getDraftActivity(cl);
     if (activity) return DRAFT_ACTIVITY_LABEL[activity];
+    // Prefer delivery outcome over draft status once mail has left (or bounced) —
+    // otherwise a bounced lead still reads as "Sent" because email_drafts stays sent.
+    const delivery = deliveryBucket(cl);
+    if (delivery !== "not_queued") return DELIVERY_BUCKET_LABELS[delivery];
     if (cl.email_drafts?.status) return DRAFT_STATUS_LABEL[cl.email_drafts.status] ?? cl.crm_status;
     if (cl.crm_status === "new" || cl.crm_status === "enriched") return isGenerating ? "Pending" : "No draft";
     return cl.crm_status;
@@ -979,6 +1032,8 @@ export function CampaignDetail({
 
   function getStatusStyle(cl: CampaignLead): string {
     if (getDraftActivity(cl)) return DRAFT_STATUS_STYLE.generating;
+    const delivery = deliveryBucket(cl);
+    if (delivery !== "not_queued") return DELIVERY_PILL_CLS[delivery];
     const ds = cl.email_drafts?.status;
     if (ds && DRAFT_STATUS_STYLE[ds]) return DRAFT_STATUS_STYLE[ds];
     return "bg-secondary text-muted-foreground";
@@ -1585,25 +1640,48 @@ export function CampaignDetail({
     { id: "all",       label: "All" },
     { id: "action",    label: "Needs action" },
     { id: "certified", label: "Certified" },
+    { id: "sending",   label: "Sending" },
     { id: "sent",      label: "Sent" },
     { id: "replied",   label: "Replied" },
+    { id: "bounced",   label: "Bounced" },
   ];
 
-  const outboxFilteredLeads = sortCampaignLeads(campaignLeads.filter((cl) => {
-    if (outboxFilter === "all") return true;
+  function matchesOutboxFilter(
+    cl: CampaignLead,
+    filter: typeof outboxFilter,
+  ): boolean {
+    if (filter === "all") return true;
     const thread = outboxThreadByLeadId.get(cl.id) ?? null;
-    if (outboxFilter === "replied") return !!thread;
-    if (outboxFilter === "action") {
+    const delivery = deliveryBucket(cl);
+    // Delivery filters share the same buckets as the Leads tab so Sent never
+    // swallows Bounced / Replied (draft status stays "sent" after those outcomes).
+    if (filter === "sending") return delivery === "sending";
+    if (filter === "sent") return delivery === "sent";
+    if (filter === "bounced") return delivery === "bounced";
+    if (filter === "replied") return delivery === "replied" || !!thread;
+    if (filter === "action") {
       if (thread) {
         const latestMsg = thread.messages[thread.messages.length - 1];
         return latestMsg?.reply_drafts[latestMsg.reply_drafts.length - 1]?.status === "draft";
       }
       return cl.email_drafts?.status === "draft";
     }
-    if (outboxFilter === "certified") return cl.email_drafts?.status === "approved";
-    if (outboxFilter === "sent") return cl.email_drafts?.status === "sent";
+    if (filter === "certified") return cl.email_drafts?.status === "approved";
     return true;
-  }), leadsSort);
+  }
+
+  // Counts from the full outbox set so chip numbers stay stable while filtering.
+  const outboxFilterCounts = OUTBOX_FILTERS.reduce((acc, { id }) => {
+    acc[id] = id === "all"
+      ? campaignLeads.length
+      : campaignLeads.filter((cl) => matchesOutboxFilter(cl, id)).length;
+    return acc;
+  }, {} as Record<typeof outboxFilter, number>);
+
+  const outboxFilteredLeads = sortCampaignLeads(
+    campaignLeads.filter((cl) => matchesOutboxFilter(cl, outboxFilter)),
+    leadsSort,
+  );
 
   const outboxSelectableFilteredLeads = outboxFilteredLeads.filter((cl) => {
     if (outboxThreadByLeadId.get(cl.id)) return false;
@@ -2206,7 +2284,9 @@ export function CampaignDetail({
                   </SelectTrigger>
                   <SelectContent>
                     {OUTBOX_FILTERS.map(({ id, label }) => (
-                      <SelectItem key={id} value={id} className="text-[11px]">{label}</SelectItem>
+                      <SelectItem key={id} value={id} className="text-[11px]">
+                        {label} ({outboxFilterCounts[id]})
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -2416,6 +2496,7 @@ export function CampaignDetail({
 
                 const activity = getDraftActivity(cl);
                 const status = cl.email_drafts?.status ?? "none";
+                const delivery = deliveryBucket(cl);
                 const inFlightCls = "bg-yellow-500/15 text-yellow-500 border-yellow-500/25";
                 const statusConfig: Record<string, { label: string; cls: string }> = {
                   generating: { label: "Generating", cls: inFlightCls },
@@ -2429,10 +2510,15 @@ export function CampaignDetail({
                 // during a regeneration that's the superseded ('rejected') version,
                 // which has no entry here and would otherwise fall through to
                 // "No draft" — exactly the blink this is meant to remove.
+                // Once mail has a delivery outcome, prefer that pill (Bounced /
+                // Sending / Sent / Replied) over draft status — drafts stay
+                // "sent" after a bounce, which hid the red Bounced pill here.
                 const sc = activity
                   ? { label: DRAFT_ACTIVITY_LABEL[activity], cls: inFlightCls }
-                  : statusConfig[status] ?? statusConfig.none;
-                const showCheckbox = status !== "sent";
+                  : delivery !== "not_queued"
+                    ? { label: DELIVERY_BUCKET_LABELS[delivery], cls: DELIVERY_PILL_CLS[delivery] }
+                    : statusConfig[status] ?? statusConfig.none;
+                const showCheckbox = status !== "sent" && delivery === "not_queued";
                 const canCheck = showCheckbox;
                 return (
                   <div
@@ -2486,32 +2572,137 @@ export function CampaignDetail({
               </div>
             ) : (
               <div className="w-full max-w-[1400px] mx-auto p-6 space-y-4">
-                {/* Lead header */}
-                <div className="flex items-center justify-between gap-3 pb-2 border-b border-border">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <Avatar name={[selected.leads?.first_name, selected.leads?.last_name].filter(Boolean).join(" ") || "?"} size="sm" />
-                    <div className="min-w-0">
-                      <p className="font-display text-sm font-semibold text-foreground truncate">{[selected.leads?.first_name, selected.leads?.last_name].filter(Boolean).join(" ") || "Unknown"}</p>
-                      <p className="font-mono text-xs text-muted-foreground truncate">{selected.leads?.email}</p>
+                {/* Lead + org cards — half width each; click opens Lead / Org drawers */}
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="flex w-full items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 shadow-sm transition-colors hover:border-primary/40 hover:bg-secondary/20">
+                    <button
+                      type="button"
+                      onClick={() => setDrawerLead(campaignLeadToDrawerLead(selected))}
+                      className="shrink-0 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      title="Open lead details"
+                      aria-label="Open lead details"
+                    >
+                      <Avatar name={[selected.leads?.first_name, selected.leads?.last_name].filter(Boolean).join(" ") || "?"} size="sm" />
+                    </button>
+                    <div className="min-w-0 flex-1">
+                      <button
+                        type="button"
+                        onClick={() => setDrawerLead(campaignLeadToDrawerLead(selected))}
+                        className="block w-full min-w-0 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+                        title="Open lead details"
+                      >
+                        <p className="eyebrow text-muted-foreground">Lead</p>
+                        <p className="font-display text-sm font-semibold text-foreground truncate">
+                          {[selected.leads?.first_name, selected.leads?.last_name].filter(Boolean).join(" ") || "Unknown"}
+                        </p>
+                      </button>
+                      {selected.leads?.email ? (
+                        <a
+                          href={`mailto:${selected.leads.email}`}
+                          className="font-mono text-xs text-blue-500 hover:text-blue-600 hover:underline truncate block max-w-full"
+                          title={`Email ${selected.leads.email}`}
+                        >
+                          {selected.leads.email}
+                        </a>
+                      ) : (
+                        <p className="font-mono text-xs text-muted-foreground truncate">No email</p>
+                      )}
+                      {selected.leads?.title && (
+                        <p className="text-xs text-muted-foreground truncate">{selected.leads.title}</p>
+                      )}
                     </div>
+                    <button
+                      type="button"
+                      onClick={() => setDrawerLead(campaignLeadToDrawerLead(selected))}
+                      className="flex shrink-0 flex-col items-end gap-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+                      title="Open lead details"
+                    >
+                      {(selected.email_drafts || getDraftActivity(selected)) && (
+                        <DraftStatusBadge
+                          label={getDisplayStatus(selected)}
+                          styleClass={getStatusStyle(selected)}
+                        />
+                      )}
+                      {selectedThread && (() => {
+                        const temp = selectedThread.latest_temperature ?? "neutral";
+                        const badge = TEMP_BADGE[temp] ?? TEMP_BADGE.neutral;
+                        return (
+                          <span className={cn("font-mono text-[10px] font-semibold uppercase tracking-wider px-2 py-1 rounded-md border inline-flex items-center gap-1", badge.cls)}>
+                            {badge.icon}{badge.label}
+                          </span>
+                        );
+                      })()}
+                    </button>
                   </div>
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    {(selected.email_drafts || getDraftActivity(selected)) && (
-                      <DraftStatusBadge
-                        label={getDisplayStatus(selected)}
-                        styleClass={getStatusStyle(selected)}
-                      />
-                    )}
-                    {selectedThread && (() => {
-                      const temp = selectedThread.latest_temperature ?? "neutral";
-                      const badge = TEMP_BADGE[temp] ?? TEMP_BADGE.neutral;
+
+                  {selected.leads?.org_id ? (
+                    (() => {
+                      const org = selected.leads!;
+                      const websiteRaw = (org.company_website || org.company_domain || "").trim();
+                      const websiteHref = websiteRaw
+                        ? (/^https?:\/\//i.test(websiteRaw) ? websiteRaw : `https://${websiteRaw}`)
+                        : null;
+                      const websiteLabel = websiteRaw.replace(/^https?:\/\//i, "").replace(/\/$/, "") || null;
+                      const location = [org.company_city, org.company_country].filter(Boolean).join(", ");
                       return (
-                        <span className={cn("font-mono text-[10px] font-semibold uppercase tracking-wider px-2 py-1 rounded-md border inline-flex items-center gap-1", badge.cls)}>
-                          {badge.icon}{badge.label}
-                        </span>
+                        <div className="flex w-full items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 shadow-sm transition-colors hover:border-primary/40 hover:bg-secondary/20">
+                          <button
+                            type="button"
+                            onClick={() => setDrawerOrgId(org.org_id!)}
+                            className="flex size-8 shrink-0 items-center justify-center rounded-md bg-secondary text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            title="Open organization details"
+                            aria-label="Open organization details"
+                          >
+                            <Building2 className="size-4" />
+                          </button>
+                          <div className="min-w-0 flex-1">
+                            <button
+                              type="button"
+                              onClick={() => setDrawerOrgId(org.org_id!)}
+                              className="block w-full min-w-0 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+                              title="Open organization details"
+                            >
+                              <p className="eyebrow text-muted-foreground">Organization</p>
+                              <p className="font-display text-sm font-semibold text-foreground truncate">
+                                {org.company_name || "Untitled organization"}
+                              </p>
+                            </button>
+                            {websiteHref && websiteLabel && (
+                              <a
+                                href={websiteHref}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="font-mono text-xs text-blue-500 hover:text-blue-600 hover:underline truncate block max-w-full"
+                                title={websiteHref}
+                              >
+                                {websiteLabel}
+                              </a>
+                            )}
+                            {location ? (
+                              <p className="flex items-center gap-1 text-[11px] text-muted-foreground truncate">
+                                <MapPin className="size-3 shrink-0" aria-hidden />
+                                <span className="truncate">{location}</span>
+                              </p>
+                            ) : !websiteHref ? (
+                              <p className="font-mono text-xs text-muted-foreground truncate">No website</p>
+                            ) : null}
+                          </div>
+                        </div>
                       );
-                    })()}
-                  </div>
+                    })()
+                  ) : (
+                    <div className="flex w-full items-center gap-3 rounded-xl border border-dashed border-border bg-card/60 px-4 py-3 text-left shadow-sm">
+                      <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-secondary text-muted-foreground" aria-hidden>
+                        <Building2 className="size-4" />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="eyebrow text-muted-foreground">Organization</p>
+                        <p className="text-sm text-muted-foreground italic">
+                          {selected.leads?.company_name || "No organization linked"}
+                        </p>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Initial email — editor while pending, bubble once sent */}
