@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { RichTextEditor } from "@/components/ui/rich-text-editor";
 import { ReplyAttachButton, ReplyAttachmentChips } from "@/components/app/reply-attach-controls";
+import { ReplyCcBccFields, normalizeReplyEmails, validateCcBcc } from "@/components/app/reply-cc-bcc-fields";
 import { appendReplyAttachments, type ReplyAttachment } from "@/lib/reply-attachments";
 
 /**
@@ -37,12 +38,16 @@ export function ManualReplyBox({
 }) {
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
+  const [cc, setCc] = useState<string[]>([]);
+  const [bcc, setBcc] = useState<string[]>([]);
   const [attachments, setAttachments] = useState<ReplyAttachment[]>([]);
   const [sending, setSending] = useState(false);
 
   useEffect(() => {
     setSubject(replyToSubject ? `Re: ${replyToSubject.replace(/^Re:\s*/i, "")}` : "");
     setBody("");
+    setCc([]);
+    setBcc([]);
     setAttachments([]);
   }, [threadId, replyToSubject]);
 
@@ -51,6 +56,13 @@ export function ManualReplyBox({
 
   async function handleSend() {
     if (!canSend) return;
+    const ccN = normalizeReplyEmails(cc);
+    const bccN = normalizeReplyEmails(bcc);
+    const listErr = validateCcBcc(ccN, bccN);
+    if (listErr) {
+      toast.error(listErr);
+      return;
+    }
     setSending(true);
     try {
       const bodyHtml = appendReplyAttachments(body.replace(/\n/g, "<br>"), attachments);
@@ -59,6 +71,8 @@ export function ManualReplyBox({
         subject,
         body_html: bodyHtml,
         body_text: [bodyText, ...attachments.map((a) => a.name)].filter(Boolean).join("\n"),
+        ...(ccN.length ? { cc: ccN } : {}),
+        ...(bccN.length ? { bcc: bccN } : {}),
       });
       toast.success("Reply sent");
       onSent();
@@ -104,6 +118,14 @@ export function ManualReplyBox({
       </div>
       <div className="p-4 space-y-3">
         <Input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Subject" className="text-sm" />
+        <ReplyCcBccFields
+          token={token}
+          cc={cc}
+          bcc={bcc}
+          onCcChange={setCc}
+          onBccChange={setBcc}
+          disabled={sending}
+        />
         <RichTextEditor value={body} onChange={setBody} placeholder="Write your reply…" minHeight={120} />
         <ReplyAttachmentChips
           attachments={attachments}

@@ -13,6 +13,7 @@ import {
   replyToInstantlyEmail,
   updateLeadInterestStatus,
 } from "@/lib/services/instantly";
+import { rememberReplyAddresses } from "@/lib/services/reply-mailing-list";
 
 const SYNC_STATE_KEY = "unibox_sync_state";
 const HYDRATE_COOLDOWN_MS = 10 * 60 * 1000;
@@ -262,6 +263,14 @@ export async function sendThreadReply(
     campaignLeadId: opts.campaignLeadId ?? undefined,
     sentBy: opts.sentBy ?? null,
   });
+
+  // Remember CC/BCC for this sender's autocomplete (failures are logged inside).
+  if (opts.sentBy) {
+    void rememberReplyAddresses(db, opts.sentBy, [
+      ...(opts.cc ?? []),
+      ...(opts.bcc ?? []),
+    ]);
+  }
 
   const now = new Date().toISOString();
 

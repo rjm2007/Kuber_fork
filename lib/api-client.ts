@@ -1430,8 +1430,16 @@ export async function approveReplyDraft(token: string, id: string, subject?: str
 export async function rejectReplyDraft(token: string, id: string, reason?: string): Promise<ReplyDraft> {
   return apiFetch(`/api/v1/reply-drafts/${id}`, { method: "PATCH", body: JSON.stringify({ action: "reject", rejection_reason: reason }) }, token);
 }
-export async function sendReplyDraft(token: string, id: string): Promise<{ sent: boolean }> {
-  return apiFetch(`/api/v1/reply-drafts/${id}/send`, { method: "POST" }, token);
+export async function sendReplyDraft(
+  token: string,
+  id: string,
+  opts?: { cc?: string[]; bcc?: string[] },
+): Promise<{ sent: boolean }> {
+  return apiFetch(
+    `/api/v1/reply-drafts/${id}/send`,
+    { method: "POST", body: JSON.stringify(opts ?? {}) },
+    token,
+  );
 }
 export async function regenerateReplyDraft(token: string, id: string, instruction?: string): Promise<ReplyDraft> {
   return apiFetch(`/api/v1/reply-drafts/${id}/regenerate`, { method: "POST", body: JSON.stringify({ instruction }) }, token);
@@ -1517,9 +1525,28 @@ export async function fetchUniboxThread(token: string, threadId: string, hydrate
 
 export async function sendUniboxReply(
   token: string,
-  body: { thread_id: string; subject: string; body_html: string; body_text?: string; reply_draft_id?: string },
+  body: {
+    thread_id: string;
+    subject: string;
+    body_html: string;
+    body_text?: string;
+    reply_draft_id?: string;
+    cc?: string[];
+    bcc?: string[];
+  },
 ) {
   return apiFetch("/api/v1/unibox/reply", { method: "POST", body: JSON.stringify(body) }, token);
+}
+
+export async function fetchReplyMailingList(
+  token: string,
+  opts?: { q?: string; limit?: number },
+): Promise<{ emails: string[] }> {
+  const qs = new URLSearchParams();
+  if (opts?.q) qs.set("q", opts.q);
+  if (opts?.limit) qs.set("limit", String(opts.limit));
+  const suffix = qs.toString() ? `?${qs}` : "";
+  return apiFetch(`/api/v1/reply-mailing-list${suffix}`, {}, token);
 }
 
 export async function setThreadStatus(token: string, threadId: string, interest_value: number | null, lead_email?: string) {

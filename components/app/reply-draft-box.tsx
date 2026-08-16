@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { RichTextEditor } from "@/components/ui/rich-text-editor";
 import { ReplyAttachButton, ReplyAttachmentChips } from "@/components/app/reply-attach-controls";
+import { ReplyCcBccFields, normalizeReplyEmails, validateCcBcc } from "@/components/app/reply-cc-bcc-fields";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import {
@@ -73,6 +74,8 @@ export function ReplyDraftBox({
   const [regenQuery, setRegenQuery] = useState("");
   const [regenerating, setRegenerating] = useState(false);
   const [attachments, setAttachments] = useState<ReplyAttachment[]>([]);
+  const [cc, setCc] = useState<string[]>([]);
+  const [bcc, setBcc] = useState<string[]>([]);
   const regenTextareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Toggling "Regenerate" only reveals a small panel right below the button —
@@ -91,6 +94,8 @@ export function ReplyDraftBox({
     setStatus(draft.status);
     setError(draft.error);
     setAttachments([]);
+    setCc([]);
+    setBcc([]);
     if (replyDraftHasContent(draft)) {
       setSubject(draft.subject ?? "");
       setBody(normalizeReplyBodyHtml(draft.body ?? ""));
@@ -150,6 +155,13 @@ export function ReplyDraftBox({
   }
 
   async function handleSend() {
+    const ccN = normalizeReplyEmails(cc);
+    const bccN = normalizeReplyEmails(bcc);
+    const listErr = validateCcBcc(ccN, bccN);
+    if (listErr) {
+      toast.error(listErr);
+      return;
+    }
     setSending(true);
     try {
       if (attachments.length > 0) {
@@ -158,7 +170,10 @@ export function ReplyDraftBox({
         setBody(nextBody);
         setAttachments([]);
       }
-      await sendReplyDraft(token, draftId);
+      await sendReplyDraft(token, draftId, {
+        ...(ccN.length ? { cc: ccN } : {}),
+        ...(bccN.length ? { bcc: bccN } : {}),
+      });
       setStatus("sent");
       toast.success("Reply sent");
       onChanged();
@@ -266,6 +281,14 @@ export function ReplyDraftBox({
       </div>
       <div className="p-4 space-y-3">
         <Input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Subject" className="text-sm font-medium" />
+        <ReplyCcBccFields
+          token={token}
+          cc={cc}
+          bcc={bcc}
+          onCcChange={setCc}
+          onBccChange={setBcc}
+          disabled={saving || sending || regenerating}
+        />
         <RichTextEditor value={body} onChange={setBody} minHeight={180} />
         <ReplyAttachmentChips
           attachments={attachments}
