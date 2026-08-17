@@ -36,7 +36,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     .from("campaign_leads")
     .select(`
       id, campaign_id, crm_status, first_sent_at, lead_id,
-      leads!inner ( email, assigned_to, country, organization_id, organizations ( name, unsubscribed ) )
+      leads!lead_id!inner ( email, assigned_to, country, organization_id, organizations ( name, unsubscribed ) )
     `)
     .eq("id", id)
     .maybeSingle();
