@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { Fragment, useState, type ReactNode } from "react";
 import { AlertCircle, Building2, CalendarIcon, ChevronDown, ChevronRight, Search, Users } from "lucide-react";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
@@ -133,7 +133,7 @@ function CompanyTableSkeleton({ rows = 8 }: { rows?: number }) {
             <th className="px-3 py-2 text-left font-medium">Company</th>
             <th className="px-3 py-2 text-left font-medium">Location</th>
             <th className="px-3 py-2 text-right font-medium">Staff</th>
-            <th className="px-3 py-2 text-left font-medium">Links</th>
+            <th className="px-3 py-2 text-left font-medium">Website</th>
             <th className="px-3 py-2" />
           </tr>
         </thead>
@@ -243,9 +243,31 @@ function CompanyLogo({ src, name }: { src: string | null; name: string | null })
   );
 }
 
-function CompanyLinks({ company }: { company: Company }) {
-  const items = [
-    { href: companyWebsiteHref(company), label: "Website" },
+function companyWebsiteLabel(c: Company): string | null {
+  const raw = c.website?.trim() || c.domain?.trim();
+  return raw || null;
+}
+
+function CompanyWebsiteLink({ company }: { company: Company }) {
+  const href = companyWebsiteHref(company);
+  const label = companyWebsiteLabel(company);
+  if (!href || !label) return <span className="text-muted-foreground">—</span>;
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="block max-w-60 truncate font-medium text-blue-500 hover:text-blue-600 hover:underline"
+      title={label}
+      onClick={(e) => e.stopPropagation()}
+    >
+      {label}
+    </a>
+  );
+}
+
+function companySocialItems(company: Company): { href: string; label: string }[] {
+  return [
     { href: company.linkedin_url, label: "LinkedIn" },
     { href: company.twitter_url, label: "Twitter" },
     { href: company.facebook_url, label: "Facebook" },
@@ -253,8 +275,11 @@ function CompanyLinks({ company }: { company: Company }) {
     { href: company.blog_url, label: "Blog" },
     { href: company.angellist_url, label: "AngelList" },
   ].filter((l): l is { href: string; label: string } => typeof l.href === "string" && l.href.trim() !== "");
+}
 
-  if (items.length === 0) return <span className="text-muted-foreground">—</span>;
+function CompanySocialLinks({ company }: { company: Company }) {
+  const items = companySocialItems(company);
+  if (items.length === 0) return null;
 
   return (
     <div className="flex flex-wrap gap-1">
@@ -270,6 +295,48 @@ function CompanyLinks({ company }: { company: Company }) {
           {l.label}
         </a>
       ))}
+    </div>
+  );
+}
+
+function DetailFact({ label, value }: { label: string; value: ReactNode }) {
+  if (value == null || value === "") return null;
+  return (
+    <div className="min-w-0">
+      <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{label}</p>
+      <p className="mt-0.5 truncate text-xs text-foreground">{value}</p>
+    </div>
+  );
+}
+
+function CompanyPreview({ company }: { company: Company }) {
+  const location = [company.city, company.state, company.country].filter(Boolean).join(", ");
+  const socials = companySocialItems(company);
+  const hasFacts = !!(company.industry || company.founded_year || company.domain || location || socials.length);
+  return (
+    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <DetailFact label="Industry" value={company.industry} />
+      <DetailFact label="Founded" value={company.founded_year} />
+      <DetailFact label="Domain" value={company.domain} />
+      <DetailFact label="Full location" value={location || null} />
+      {socials.length > 0 && (
+        <div className="min-w-0 sm:col-span-2">
+          <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Also on</p>
+          <div className="mt-1">
+            <CompanySocialLinks company={company} />
+          </div>
+        </div>
+      )}
+      {!hasFacts && (
+        <p className="sm:col-span-2 lg:col-span-4 text-[11px] text-muted-foreground">
+          No extra details from Apollo for this company.
+        </p>
+      )}
+      {company.already_in_system && (
+        <p className="sm:col-span-2 lg:col-span-4 text-[11px] text-muted-foreground">
+          Already tracked — Company Lookup only adds companies that are not yet in the system.
+        </p>
+      )}
     </div>
   );
 }
@@ -498,6 +565,7 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
   // Set by the server when this workspace runs on fixtures instead of Apollo.
   const [mock, setMock] = useState(cached?.mock ?? false);
   const [selectedCompany, setSelectedCompany] = useState<Company | null>(cached?.selectedCompany ?? null);
+  const [previewId, setPreviewId] = useState<string | null>(null);
 
   // Step 3 — contacts
   const [contacts, setContacts] = useState<Contact[]>(cached?.contacts ?? []);
@@ -572,6 +640,7 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
       setMock(cached.mock);
       setCompanyPage(1);
       setError("");
+      setPreviewId(null);
       setStep(1);
       return;
     }
@@ -586,6 +655,7 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
       setCompanies([]);
       setCompanyPage(1);
       setSelectedCompany(null);
+      setPreviewId(null);
       setContacts([]);
       setPicked([]);
       setStep(1);
@@ -877,6 +947,7 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
                 Showing <strong>{visibleCompanies.length === 0 ? 0 : companyStart + 1}–{companyStart + visibleCompanies.length}</strong> of{" "}
                 <strong>{companies.length}</strong> retrieved · <strong>{totalEntries.toLocaleString()}</strong> match in Apollo ·{" "}
                 <strong>{creditsSpent}</strong> credit{creditsSpent === 1 ? "" : "s"} spent
+                {" "}· click a row for details, the arrow to select
               </p>
 
               {companies.length === 0 ? (
@@ -897,30 +968,25 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
                           <th className="px-3 py-2 text-left font-medium">Company</th>
                           <th className="px-3 py-2 text-left font-medium">Location</th>
                           <th className="px-3 py-2 text-right font-medium">Staff</th>
-                          <th className="px-3 py-2 text-left font-medium">Links</th>
+                          <th className="px-3 py-2 text-left font-medium">Website</th>
                           <th className="px-3 py-2" />
                         </tr>
                       </thead>
                       <tbody>
                         {visibleCompanies.map((c) => {
                           const unavailable = c.already_in_system || busy;
+                          const open = previewId === c.apollo_org_id;
                           return (
+                            <Fragment key={c.apollo_org_id}>
                             <tr
-                              key={c.apollo_org_id}
                               className={cn(
-                                "border-t border-border transition-colors",
-                                unavailable
-                                  ? "opacity-60"
-                                  : "cursor-pointer hover:bg-secondary/30",
+                                "border-t border-border transition-colors cursor-pointer",
+                                open ? "bg-secondary/30" : "hover:bg-secondary/30",
+                                c.already_in_system && "opacity-60",
                               )}
-                              title={
-                                c.already_in_system
-                                  ? "This company is already tracked — Company Lookup adds companies that aren't yet in the system"
-                                  : `Select ${c.name ?? "company"}`
-                              }
-                              onClick={() => {
-                                if (!unavailable) void loadPeople(c);
-                              }}
+                              title={`View details for ${c.name ?? "company"}`}
+                              aria-expanded={open}
+                              onClick={() => setPreviewId(open ? null : c.apollo_org_id)}
                             >
                               <td className="px-3 py-2.5">
                                 <div className="flex min-w-0 items-center gap-2">
@@ -942,24 +1008,37 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
                                 {c.employees?.toLocaleString() ?? "—"}
                               </td>
                               <td className="px-3 py-2.5">
-                                <CompanyLinks company={c} />
+                                <CompanyWebsiteLink company={c} />
                               </td>
                               <td className="w-10 px-2 py-2.5 text-right">
-                                <span
+                                <button
+                                  type="button"
+                                  disabled={unavailable}
                                   className={cn(
                                     "ml-auto flex size-7 items-center justify-center rounded-full",
                                     c.already_in_system
                                       ? "bg-secondary text-muted-foreground/40"
-                                      : "bg-primary/10 text-primary",
+                                      : "bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground",
                                   )}
+                                  title={c.already_in_system ? "Already in system" : `Select ${c.name ?? "company"}`}
+                                  aria-label={c.already_in_system ? "Unavailable" : `Select ${c.name ?? "company"}`}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (!unavailable) void loadPeople(c);
+                                  }}
                                 >
                                   <ChevronRight className="size-3.5" aria-hidden />
-                                </span>
-                                <span className="sr-only">
-                                  {c.already_in_system ? "Unavailable" : "Select"}
-                                </span>
+                                </button>
                               </td>
                             </tr>
+                            {open && (
+                              <tr className="border-t border-border bg-secondary/30">
+                                <td colSpan={5} className="px-3 py-3">
+                                  <CompanyPreview company={c} />
+                                </td>
+                              </tr>
+                            )}
+                            </Fragment>
                           );
                         })}
                       </tbody>
@@ -971,10 +1050,16 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
                     label="Companies per page"
                     pageSize={companyPageSize}
                     pageSizeOptions={COMPANY_PAGE_SIZE_OPTIONS}
-                    onPageSizeChange={setCompanyPageSize}
+                    onPageSizeChange={(size) => {
+                      setCompanyPageSize(size);
+                      setPreviewId(null);
+                    }}
                     page={companyPage}
                     totalItems={companies.length}
-                    onPageChange={setCompanyPage}
+                    onPageChange={(page) => {
+                      setCompanyPage(page);
+                      setPreviewId(null);
+                    }}
                     middle={
                       canBuyMorePages ? (
                         <Button

@@ -529,7 +529,7 @@ export type UniboxScope = { assigned_to: string };
  * than wrapped in a helper, because a generic query-builder wrapper makes
  * tsc give up with "type instantiation is excessively deep".
  */
-const SCOPE_EMBED = "campaign_leads!inner(leads!inner(assigned_to, is_deleted))";
+const SCOPE_EMBED = "campaign_leads!inner(leads!lead_id!inner(assigned_to, is_deleted))";
 
 const scopeSelect = (cols: string, scope: UniboxScope | undefined) =>
   scope ? `${cols}, ${SCOPE_EMBED}` : cols;

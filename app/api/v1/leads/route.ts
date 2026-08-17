@@ -98,8 +98,9 @@ export async function GET(req: NextRequest) {
     db
       .from("leads")
       .select(
+        // !lead_id: campaign_leads also FKs to leads via replaced_by_lead_id.
         `*, organizations(id, name, domain, domain_source, unsubscribed, has_scraped, enrichment_stage, company_description, sells_to, last_error),
-         campaign_leads(crm_status, interest_status, created_at, campaigns(id, name)),
+         campaign_leads!lead_id(crm_status, interest_status, created_at, campaigns(id, name)),
          imports(id, label, color)`,
         { count: "exact" }
       )

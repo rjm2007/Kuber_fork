@@ -2,9 +2,11 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { mapDbLead, type DbLead } from "@/lib/mappers";
 import { onlyRevealedLeads } from "@/lib/server/lead-visibility";
 
+// campaign_leads has two FKs to leads (lead_id, and replaced_by_lead_id for
+// bounce replacements). PostgREST will not embed unless we hint which one.
 const LEAD_SELECT = `*, organizations(id, name, domain, unsubscribed, has_scraped,
   enrichment_stage, company_description, sells_to, last_error),
-  campaign_leads(crm_status, interest_status, created_at, campaigns(id, name)),
+  campaign_leads!lead_id(crm_status, interest_status, created_at, campaigns(id, name)),
   imports(id, label, color)`;
 
 export async function getLeads(

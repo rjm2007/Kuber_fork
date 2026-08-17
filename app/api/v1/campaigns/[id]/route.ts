@@ -36,7 +36,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   // full campaign-wide 7/7/2/29% stats).
   let membershipsQuery = db
     .from("campaign_leads")
-    .select("id, crm_status, first_sent_at, lead_id, draft_id, interest_status, lead_temperature, email_drafts(status), leads!inner(assigned_to)")
+    .select("id, crm_status, first_sent_at, lead_id, draft_id, interest_status, lead_temperature, email_drafts(status), leads!lead_id!inner(assigned_to)")
     .eq("campaign_id", id);
   if (user.role === "employee") membershipsQuery = membershipsQuery.eq("leads.assigned_to", user.id);
   const { data: memberships } = await membershipsQuery;

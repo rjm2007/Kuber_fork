@@ -32,7 +32,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     .select(
       `*, attachment_path, attachment_name, attachment_mime, attachment_size, attachment_url,
        email_drafts(id, subject, body, status, created_at, step_number),
-       leads!inner(first_name, last_name, email, title, country, assigned_to, organization_id, organizations(id, name, domain, country, city, website))`,
+       leads!lead_id!inner(first_name, last_name, email, title, country, assigned_to, organization_id, organizations(id, name, domain, country, city, website))`,
       { count: "exact" }
     )
     .eq("campaign_id", id);

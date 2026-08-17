@@ -165,7 +165,7 @@ export async function getEmployeeDashboard(db: SupabaseClient, userId: string): 
   // inner-join filter the campaigns route already uses.
   {
     const { data } = await db.from("campaign_leads")
-      .select("id, lead_temperature, campaign_id, leads!inner(assigned_to)")
+      .select("id, lead_temperature, campaign_id, leads!lead_id!inner(assigned_to)")
       .eq("leads.assigned_to", userId);
     for (const r of data ?? []) clById.set(r.id as string, r as never);
   }

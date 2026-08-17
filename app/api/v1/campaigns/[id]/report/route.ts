@@ -44,7 +44,7 @@ export async function GET(
   // seeing the full campaign-wide funnel/draft-generation numbers).
   let rowsQuery = db
     .from("campaign_leads")
-    .select("id, crm_status, first_sent_at, draft_id, email_drafts(status), leads!inner(assigned_to)")
+    .select("id, crm_status, first_sent_at, draft_id, email_drafts(status), leads!lead_id!inner(assigned_to)")
     .eq("campaign_id", id);
   if (user.role === "employee") rowsQuery = rowsQuery.eq("leads.assigned_to", user.id);
   const { data: rows } = await rowsQuery;
