@@ -61,6 +61,17 @@ export const PatchCampaignLeadSchema = z.object({
   ]),
 });
 
+// Replacing a bounced contact. `first_name` is required and doubles as the desk
+// label for a shared inbox ("Sales Team") — the drafter greets off first_name,
+// so leaving it blank is what produces "Dear Sir/Ma'am". Everything else about
+// the new lead (company, country, owner) is inherited from the bounced one.
+export const ReplaceBouncedLeadSchema = z.object({
+  email: z.string().email(),
+  first_name: z.string().trim().min(1).max(80),
+  last_name: z.string().trim().max(80).optional(),
+  title: z.string().trim().max(120).optional(),
+});
+
 export const CampaignStepInput = z.object({
   step_order: z.number().int().min(1),
   delay: z.number().int().min(0),

@@ -5,7 +5,7 @@ import {
   Megaphone, Users, Send, MessageSquare, Clock, Gauge, ArrowUp,
   Globe, Calendar, ExternalLink, Loader2, CheckCircle2, RotateCcw, RefreshCw, Check, Save, History, ChevronDown, ArrowLeft,
   List, LayoutGrid, BarChart2, Flame, Snowflake, ThumbsDown, Layers, Paperclip, X, Sparkles, Pencil, Reply, AlertTriangle,
-  Building2, MapPin,
+  Building2, MapPin, ReplyAll, CornerDownRight, UserPlus,
 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
@@ -15,6 +15,7 @@ import { emailPreview, splitQuotedBody } from "@/lib/email-display";
 import { convertResidualMarkdownInHtml } from "@/lib/utils/email-html";
 import { Avatar } from "@/components/leads/lead-ui";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { StatTile } from "@/components/ui/stat-tile";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -56,18 +57,30 @@ import {
   regenerateCampaignDrafts,
   fetchRegenerationJob,
   cancelRegenerationJob,
+  replaceBouncedLead,
   type CampaignReplyThread,
   type CampaignComment,
   type ReplyDraft,
   type RegenerationJobStatus,
   type RegenerationSkipped,
+  addThreadParticipantAsLead,
 } from "@/lib/api-client";
 import { RegenerateDraftsModal } from "@/components/app/regenerate-drafts-modal";
+import { ReplaceLeadModal, type ReplaceLeadTarget } from "@/components/app/replace-lead-modal";
 import { DiscussionComment } from "@/components/app/discussion-comment";
 import { CampaignKanban } from "@/components/app/campaign-kanban";
 import { CampaignReportView, type CampaignReportData } from "@/components/app/campaign-report";
 import { ReplyDraftBox, replyDraftHasContent } from "@/components/app/reply-draft-box";
-import { ManualReplyBox } from "@/components/app/manual-reply-box";
+import { ManualReplyBox, type ReplyRecipientContext } from "@/components/app/manual-reply-box";
+import { AddParticipantLeadDialog } from "@/components/app/add-participant-lead-dialog";
+import {
+  latestInboundMessage,
+  ourAddresses,
+  parseAddressList,
+  replyRecipients,
+  threadParticipants,
+  unansweredInbound,
+} from "@/lib/thread-participants";
 import { LeadDrawer } from "@/components/app/lead-drawer";
 import { OrgDrawer } from "@/components/app/org-drawer";
 import { supabase } from "@/lib/supabase";
@@ -193,6 +206,10 @@ type CampaignLead = {
   /** Set by Instantly's email_sent webhook — the mail actually went out. NULL
    *  while crm_status='sent' means queued in the drip, not yet delivered. */
   first_sent_at?: string | null;
+  /** Set once someone answered this bounce by adding another contact at the same
+   *  company. The row stays bounced (and still counts as one) — this only marks
+   *  it as dealt with, so nobody redoes the work. */
+  replaced_by_lead_id?: string | null;
   attachment?: AttachmentInfo;
 };
 
@@ -381,6 +398,15 @@ function OutboxQuotedBlock({ quoted, isHtml }: { quoted: string; isHtml: boolean
 function OutboxMessageRow({
   senderName,
   toLabel,
+  ccLabel,
+  fromThirdParty,
+  isUnanswered,
+  isReplyTarget,
+  inReplyToLabel,
+  onReplyTo,
+  onReplyAll,
+  onAddAsLead,
+  addingLead,
   timestamp,
   bodyHtml,
   bodyText,
@@ -389,6 +415,20 @@ function OutboxMessageRow({
 }: {
   senderName: string;
   toLabel: string;
+  ccLabel: string;
+  /** Inbound from someone other than the lead — needs saying out loud. */
+  fromThirdParty: boolean;
+  /** Nobody has replied to this person since they wrote. */
+  isUnanswered: boolean;
+  isReplyTarget: boolean;
+  /** For our own replies: who wrote the message this one answered. */
+  inReplyToLabel: string | null;
+  /** Set for inbound messages that can be answered directly. */
+  onReplyTo: (() => void) | null;
+  onReplyAll: (() => void) | null;
+  /** Set only for a third participant who is not already a lead. */
+  onAddAsLead: (() => void) | null;
+  addingLead: boolean;
   timestamp: string | null;
   bodyHtml: string | null;
   bodyText: string | null;
@@ -411,6 +451,17 @@ function OutboxMessageRow({
         <span className="shrink-0 max-w-[160px] truncate text-sm font-medium text-foreground/90">
           {senderName}
         </span>
+        {fromThirdParty && (
+          <Badge variant="outline" className="shrink-0 rounded font-mono text-[9px] px-1.5 py-0 text-muted-foreground">
+            via cc
+          </Badge>
+        )}
+        {/* Same reason as the Unibox: the collapsed row is the glanceable one. */}
+        {isUnanswered && (
+          <Badge variant="outline" className="shrink-0 rounded font-mono text-[9px] px-1.5 py-0 border-amber-500/40 text-amber-500">
+            Not answered
+          </Badge>
+        )}
         <span className="flex-1 min-w-0 truncate text-xs text-muted-foreground">
           {snippet || "(empty message)"}
         </span>
@@ -433,8 +484,34 @@ function OutboxMessageRow({
       >
         <Avatar name={senderName} size="sm" />
         <div className="flex-1 min-w-0">
-          <span className="font-semibold text-sm">{senderName}</span>
-          <p className="text-xs text-muted-foreground truncate">to {toLabel}</p>
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-semibold text-sm">{senderName}</span>
+            {fromThirdParty && (
+              <Badge variant="outline" className="rounded font-mono text-[9px] px-1.5 py-0.5 text-muted-foreground">
+                not the lead
+              </Badge>
+            )}
+            {isUnanswered && (
+              <Badge variant="outline" className="rounded font-mono text-[9px] px-1.5 py-0.5 border-amber-500/40 text-amber-500">
+                Not answered
+              </Badge>
+            )}
+            {isReplyTarget && (
+              <Badge variant="selected" className="rounded font-mono text-[9px] px-1.5 py-0.5">
+                Replying to this
+              </Badge>
+            )}
+          </div>
+          {inReplyToLabel && (
+            <p className="flex items-center gap-1 font-mono text-[11px] text-primary/80 truncate">
+              <CornerDownRight className="size-3 shrink-0" />
+              in reply to {inReplyToLabel}
+            </p>
+          )}
+          <p className="font-mono text-xs text-muted-foreground truncate">
+            to {toLabel || "—"}
+            {ccLabel && ` · cc ${ccLabel}`}
+          </p>
         </div>
         {timestamp && (
           <span className="shrink-0 font-mono text-[11px] text-muted-foreground tabular-nums">
@@ -456,6 +533,52 @@ function OutboxMessageRow({
           <p className="text-muted-foreground italic">(empty message)</p>
         )}
         {quoted && <OutboxQuotedBlock quoted={quoted} isHtml={isHtml} />}
+        {/* Picking the message decides the recipient: Instantly addresses a
+            reply to the sender of whatever it answers, so without this the
+            composer can only ever reach whoever happened to write last. */}
+        {onReplyTo && (
+          <div className="mt-2 flex items-center gap-1">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={onReplyTo}
+              className="h-7 gap-1.5 px-2 text-[11px] text-primary hover:text-primary"
+            >
+              <Reply className="size-3" />
+              Reply to {senderName}
+            </Button>
+            {onReplyAll && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={onReplyAll}
+                className="h-7 gap-1.5 px-2 text-[11px] text-muted-foreground hover:text-foreground"
+                title="Answer this message with everyone on the thread in the To line"
+              >
+                <ReplyAll className="size-3" />
+                Reply all
+              </Button>
+            )}
+            {/* Same action as the Unibox — a stakeholder who joins the thread
+                should be promotable from wherever the rep is standing. */}
+            {onAddAsLead && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={addingLead}
+                onClick={onAddAsLead}
+                className="h-7 gap-1.5 px-2 text-[11px] text-muted-foreground hover:text-foreground"
+                title="Add this person as a lead in the same organization"
+              >
+                {addingLead ? <Loader2 className="size-3 animate-spin" /> : <UserPlus className="size-3" />}
+                Add as lead
+              </Button>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -521,6 +644,9 @@ export function CampaignDetail({
   const [retryingAll, setRetryingAll] = useState(false);
   const [drawerLead, setDrawerLead] = useState<Lead | null>(null);
   const [drawerOrgId, setDrawerOrgId] = useState<string | null>(null);
+  const [replaceTarget, setReplaceTarget] = useState<ReplaceLeadTarget | null>(null);
+  const [replaceSubmitting, setReplaceSubmitting] = useState(false);
+  const [replaceError, setReplaceError] = useState("");
   const [threads, setThreads] = useState<CampaignReplyThread[]>([]);
   const [outboxFilter, setOutboxFilter] = useState<
     "all" | "action" | "certified" | "sending" | "sent" | "replied" | "bounced"
@@ -528,6 +654,13 @@ export function CampaignDetail({
   const [outboxExpandOverrides, setOutboxExpandOverrides] = useState<Set<string>>(new Set());
   const [outboxReplyOpen, setOutboxReplyOpen] = useState(false);
   const [outboxReplyStartBlank, setOutboxReplyStartBlank] = useState(true);
+  /** Which message the Outbox composer answers. null = newest inbound. */
+  const [outboxReplyTargetId, setOutboxReplyTargetId] = useState<string | null>(null);
+  /** Reply all seeds every participant into To; plain Reply seeds just one. */
+  const [outboxReplyAll, setOutboxReplyAll] = useState(true);
+  /** Participant the Add-as-lead dialog is open for, and its in-flight state. */
+  const [outboxAddLeadFor, setOutboxAddLeadFor] = useState<string | null>(null);
+  const [outboxSavingLead, setOutboxSavingLead] = useState(false);
   const [outboxNewReplyLoading, setOutboxNewReplyLoading] = useState(false);
   const [syncingReplies, setSyncingReplies] = useState(false);
   const syncHitTimesRef = useRef<number[]>([]);
@@ -775,6 +908,8 @@ export function CampaignDetail({
   useEffect(() => {
     setOutboxReplyOpen(false);
     setOutboxReplyStartBlank(true);
+    setOutboxReplyTargetId(null);
+    setOutboxReplyAll(true);
   }, [selectedId]);
 
   // Clicking "Regenerate" only reveals a collapsed panel below the button —
@@ -1461,6 +1596,56 @@ export function CampaignDetail({
     setViewTab("outbox");
   }
 
+  /** The contact added to answer this bounce, if there is one. It was put into
+   *  THIS campaign and inherits the bounced lead's owner, so it is always
+   *  already in `campaignLeads` — no extra fetch to name it. */
+  function replacementFor(cl: CampaignLead): CampaignLead | null {
+    if (!cl.replaced_by_lead_id) return null;
+    return campaignLeads.find((c) => c.lead_id === cl.replaced_by_lead_id) ?? null;
+  }
+
+  function replacedTooltip(cl: CampaignLead): string {
+    const r = replacementFor(cl);
+    const who = r?.leads?.email
+      ?? [r?.leads?.first_name, r?.leads?.last_name].filter(Boolean).join(" ");
+    return who ? `Replaced by ${who}` : "A replacement contact was added at this company";
+  }
+
+  /** A bounce cost us a door into that company, not the company itself — this
+   *  opens the dialog that adds another address there. */
+  function openReplace(cl: CampaignLead) {
+    setReplaceError("");
+    setReplaceTarget({
+      campaignLeadId: cl.id,
+      bouncedName: [cl.leads?.first_name, cl.leads?.last_name].filter(Boolean).join(" ") || "This contact",
+      bouncedEmail: cl.leads?.email ?? null,
+      companyName: cl.leads?.company_name ?? null,
+      companyWebsite: cl.leads?.company_website ?? cl.leads?.company_domain ?? null,
+    });
+  }
+
+  async function handleReplaceConfirm(input: { email: string; first_name: string; last_name?: string; title?: string }) {
+    if (!replaceTarget) return;
+    setReplaceSubmitting(true);
+    setReplaceError("");
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+      const { campaign_lead_id } = await replaceBouncedLead(session.access_token, replaceTarget.campaignLeadId, input);
+      setReplaceTarget(null);
+      toast.success("Replacement added — writing their email now");
+      await loadData();
+      // Land the user on the new contact: their draft is what needs certifying.
+      handleOpenInOutbox(campaign_lead_id);
+    } catch (e) {
+      // Stays open with the message — most failures here are fixable in place
+      // (address already a lead, held by a colleague, company unsubscribed).
+      setReplaceError((e as Error).message);
+    } finally {
+      setReplaceSubmitting(false);
+    }
+  }
+
   const checkedSendCount = campaignLeads.filter(
     (cl) => checkedIds.has(cl.id) && sendReadyLeads.some((s) => s.id === cl.id)
   ).length;
@@ -1511,17 +1696,109 @@ export function CampaignDetail({
     id: string;
     sender: string;
     to: string;
+    cc: string;
+    /** Inbound message from someone other than the lead (joined via CC). */
+    fromThirdParty: boolean;
+    /** Instantly id — set only for inbound messages, which alone can be answered. */
+    replyTargetId: string | null;
+    isUnanswered: boolean;
+    /** Sender of the message this reply answered, for our own sent mail. */
+    inReplyToLabel: string | null;
+    /** Third participant not yet a lead — the address to promote. */
+    promotableEmail: string | null;
     timestamp: string | null;
     bodyHtml: string | null;
     bodyText: string | null;
   };
+
+  const outboxLeadAddress = parseAddressList(selectedThread?.lead_email ?? null)[0] ?? null;
+  /** The lead's name only when the message really is from the lead — otherwise
+   *  the raw address. The Outbox used to label every inbound message with the
+   *  lead's name, so a CC'd third party's reply was indistinguishable from the
+   *  prospect's own. */
+  const outboxSenderName = (fromEmail: string | null): { name: string; thirdParty: boolean } => {
+    const from = parseAddressList(fromEmail)[0] ?? null;
+    if (!from) return { name: outboxReplyName, thirdParty: false };
+    if (outboxLeadAddress && from === outboxLeadAddress) return { name: outboxReplyName, thirdParty: false };
+    return { name: from, thirdParty: true };
+  };
+
+  // Participant view of the thread, shared with the Unibox so both surfaces
+  // agree on who is owed a reply.
+  const outboxParticipantMessages = selectedThread
+    ? [
+        ...selectedThread.messages.map((m) => ({
+          instantly_email_id: m.instantly_email_id,
+          direction: "received",
+          from_email: m.from_email,
+          to_emails: m.to_emails,
+          cc_emails: m.cc_emails,
+          timestamp_email: m.received_at,
+        })),
+        ...selectedThread.sent_messages.map((m) => ({
+          instantly_email_id: m.instantly_email_id,
+          direction: "sent_manual",
+          from_email: m.from_email,
+          to_emails: m.to_emails,
+          cc_emails: m.cc_emails,
+          timestamp_email: m.sent_at,
+        })),
+      ]
+    : [];
+  const outboxOurEmails = ourAddresses(outboxParticipantMessages, [selectedThread?.eaccount ?? null]);
+  const outboxUnansweredIds = new Set(
+    unansweredInbound(outboxParticipantMessages, outboxOurEmails).map((m) => m.instantly_email_id),
+  );
+  // The message the composer answers — an explicit pick, else the newest
+  // inbound one. Restricted to inbound: replying to our own sent mail would
+  // address it straight back at us.
+  const outboxActiveTarget =
+    outboxParticipantMessages.find(
+      (m) => m.direction === "received" && m.instantly_email_id === outboxReplyTargetId,
+    ) ?? latestInboundMessage(outboxParticipantMessages);
+  const outboxActiveTargetId = outboxActiveTarget?.instantly_email_id ?? null;
+  // Sender of each message, so a sent reply can name what it answered.
+  async function handleOutboxConfirmAddLead(firstName: string, lastName: string) {
+    if (!outboxAddLeadFor || !selectedThread) return;
+    setOutboxSavingLead(true);
+    try {
+      await addThreadParticipantAsLead(appSession?.access_token ?? "", selectedThread.thread_key, {
+        email: outboxAddLeadFor,
+        first_name: firstName,
+        last_name: lastName || undefined,
+      });
+      toast.success(`${firstName} added as a lead`);
+      setOutboxAddLeadFor(null);
+      void loadReplies();
+    } catch (e) {
+      const err = e as Error & { code?: string };
+      toast.error(err.code === "DUPLICATE" ? "This person is already a lead" : err.message);
+    } finally {
+      setOutboxSavingLead(false);
+    }
+  }
+
+  const outboxKnownLeadSet = new Set(
+    (selectedThread?.known_lead_emails ?? []).map((e) => e.trim().toLowerCase()),
+  );
+  const outboxSenderByEmailId = new Map<string, string>(
+    outboxParticipantMessages
+      .map((m) => [m.instantly_email_id, parseAddressList(m.from_email)[0]] as const)
+      .filter((pair): pair is readonly [string, string] => !!pair[1]),
+  );
 
   const outboxMessageItems: OutboxMessageItem[] = [];
   if (selected?.email_drafts?.status === "sent") {
     outboxMessageItems.push({
       id: `initial-${selected.email_drafts.id}`,
       sender: "You",
-      to: outboxReplyName,
+      to: selectedThread?.lead_email ?? outboxReplyName,
+      cc: "",
+      fromThirdParty: false,
+      replyTargetId: null,
+      isUnanswered: false,
+      inReplyToLabel: null,
+      promotableEmail: null,
       timestamp: selected.email_drafts.created_at ?? null,
       bodyHtml: selectedThread?.original_email?.body ?? selected.email_drafts.body ?? "",
       bodyText: null,
@@ -1529,30 +1806,47 @@ export function CampaignDetail({
   }
   if (selectedThread) {
     for (const msg of selectedThread.messages) {
+      const { name, thirdParty } = outboxSenderName(msg.from_email);
+      const from = parseAddressList(msg.from_email)[0] ?? null;
       outboxMessageItems.push({
         id: msg.id,
-        sender: outboxReplyName,
-        to: "You",
+        sender: name,
+        to: parseAddressList(msg.to_emails).join(", "),
+        cc: parseAddressList(msg.cc_emails).join(", "),
+        fromThirdParty: thirdParty,
+        replyTargetId: msg.instantly_email_id,
+        isUnanswered: outboxUnansweredIds.has(msg.instantly_email_id),
+        inReplyToLabel: null,
+        promotableEmail:
+          thirdParty && from && !outboxKnownLeadSet.has(from) && !outboxOurEmails.has(from) ? from : null,
         timestamp: msg.received_at,
         bodyHtml: null,
         bodyText: stripQuotedLines(msg.reply_body) ?? "",
       });
-      // Show every sent reply — not only the latest draft. A newer draft/regen
-      // must not hide earlier outbound mail from the thread.
-      for (const draft of msg.reply_drafts) {
-        if (draft.status !== "sent") continue;
-        outboxMessageItems.push({
-          // Scoped to the message it answers: a draft id alone is not unique across
-          // the thread, and a repeated key makes React drop a message row.
-          id: `${msg.id}:${draft.id}`,
-          sender: "You",
-          to: outboxReplyName,
-          timestamp: draft.sent_at,
-          bodyHtml: draft.body,
-          bodyText: null,
-        });
-      }
     }
+    // Sent replies come from the mirrored mail, not from reply_drafts: a draft
+    // records what we wrote, only the sent message records who received it —
+    // and Instantly addresses a reply to the sender of the message it answers,
+    // which is frequently NOT the lead.
+    for (const sent of selectedThread.sent_messages) {
+      outboxMessageItems.push({
+        id: `sent-${sent.id}`,
+        sender: sent.sent_by_name ?? "You",
+        to: parseAddressList(sent.to_emails).join(", "),
+        cc: parseAddressList(sent.cc_emails).join(", "),
+        fromThirdParty: false,
+        replyTargetId: null,
+        isUnanswered: false,
+        inReplyToLabel: sent.in_reply_to_email_id
+          ? outboxSenderByEmailId.get(sent.in_reply_to_email_id) ?? null
+          : null,
+        promotableEmail: null,
+        timestamp: sent.sent_at,
+        bodyHtml: sent.body_html,
+        bodyText: sent.body_text,
+      });
+    }
+    outboxMessageItems.sort((a, b) => (a.timestamp ?? "").localeCompare(b.timestamp ?? ""));
   }
   const outboxLastItemId = outboxMessageItems.length > 0 ? outboxMessageItems[outboxMessageItems.length - 1].id : null;
 
@@ -2253,6 +2547,31 @@ export function CampaignDetail({
                                   </span>
                                 ));
                               })()}
+                              {/* The only action a bounce allows: try another
+                                  address at the same company — until someone
+                                  has, at which point it reads as handled so the
+                                  next person doesn't do it twice. */}
+                              {deliveryBucket(cl) === "bounced" && (
+                                cl.replaced_by_lead_id ? (
+                                  <span
+                                    title={replacedTooltip(cl)}
+                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-green-500/15 border border-green-500/30 font-mono text-[10px] font-semibold uppercase tracking-wide text-green-600"
+                                  >
+                                    <Check className="size-3" />
+                                    Replaced
+                                  </span>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); openReplace(cl); }}
+                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md border border-border bg-background font-mono text-[10px] font-semibold uppercase tracking-wide text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
+                                    title="Add another contact at this company"
+                                  >
+                                    <UserPlus className="size-3" />
+                                    Replace
+                                  </button>
+                                )
+                              )}
                             </div>
                           </td>
                           <td className="px-6 py-3 text-xs text-muted-foreground">
@@ -2633,6 +2952,35 @@ export function CampaignDetail({
                         );
                       })()}
                     </button>
+                    {/* Sits outside the card's open-lead button so the click
+                        opens the replace dialog, not the lead drawer. */}
+                    {deliveryBucket(selected) === "bounced" && (
+                      selected.replaced_by_lead_id ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const r = replacementFor(selected);
+                            if (r) handleOpenInOutbox(r.id);
+                          }}
+                          title={`${replacedTooltip(selected)} — open them`}
+                          className="shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-green-500/15 border border-green-500/30 font-mono text-[10px] font-semibold uppercase tracking-wider text-green-600 transition-colors hover:bg-green-500/25"
+                        >
+                          <Check className="size-3.5" />
+                          Replaced
+                        </button>
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="shrink-0 gap-1.5"
+                          onClick={() => openReplace(selected)}
+                          title="Add another contact at this company"
+                        >
+                          <UserPlus className="size-3.5" />
+                          Replace
+                        </Button>
+                      )
+                    )}
                   </div>
 
                   {selected.leads?.org_id ? (
@@ -2920,11 +3268,43 @@ export function CampaignDetail({
                   </div>
                 ) : outboxMessageItems.length > 0 ? (
                   <div className="rounded-xl border border-border bg-card overflow-hidden">
+                    <AddParticipantLeadDialog
+                      open={!!outboxAddLeadFor}
+                      email={outboxAddLeadFor}
+                      organizationName={selectedThread?.lead_organization_name ?? null}
+                      ownerName={selectedThread?.lead_owner_name ?? null}
+                      saving={outboxSavingLead}
+                      onCancel={() => setOutboxAddLeadFor(null)}
+                      onConfirm={(f, l) => void handleOutboxConfirmAddLead(f, l)}
+                    />
                     {outboxMessageItems.map((item) => (
                       <OutboxMessageRow
                         key={item.id}
                         senderName={item.sender}
                         toLabel={item.to}
+                        ccLabel={item.cc}
+                        fromThirdParty={item.fromThirdParty}
+                        isUnanswered={item.isUnanswered}
+                        isReplyTarget={outboxReplyOpen && !!item.replyTargetId && item.replyTargetId === outboxActiveTargetId}
+                        inReplyToLabel={item.inReplyToLabel}
+                        addingLead={outboxSavingLead && outboxAddLeadFor === item.promotableEmail}
+                        onAddAsLead={item.promotableEmail
+                          ? () => setOutboxAddLeadFor(item.promotableEmail)
+                          : null}
+                        onReplyTo={item.replyTargetId
+                          ? () => {
+                              setOutboxReplyTargetId(item.replyTargetId);
+                              setOutboxReplyAll(false);
+                              setOutboxReplyOpen(true);
+                            }
+                          : null}
+                        onReplyAll={item.replyTargetId
+                          ? () => {
+                              setOutboxReplyTargetId(item.replyTargetId);
+                              setOutboxReplyAll(true);
+                              setOutboxReplyOpen(true);
+                            }
+                          : null}
                         timestamp={item.timestamp}
                         bodyHtml={item.bodyHtml}
                         bodyText={item.bodyText}
@@ -2950,6 +3330,27 @@ export function CampaignDetail({
                   const hasDraftReady = !!latestDraft && latestDraft.status !== "generating" && latestDraft.status !== "sent" && latestDraft.status !== "rejected";
                   const isGenerating = latestDraft?.status === "generating" || outboxNewReplyLoading;
                   const campaignLeadId = selectedThread.campaign_lead_id;
+
+                  // Same participant model as the Unibox: reply-all by default,
+                  // recipients shown literally, and the target chosen per
+                  // message. Without this the composer answers whoever spoke
+                  // last and silently drops everyone else, the lead included.
+                  const outboxParticipants = threadParticipants(outboxParticipantMessages, {
+                    ourEmails: outboxOurEmails,
+                    leadEmail: selectedThread.lead_email,
+                  });
+                  // Reply all puts every participant in To (Instantly's
+                  // additional_recipients); plain Reply addresses only the
+                  // sender of the message being answered.
+                  const outboxTo = replyRecipients(outboxActiveTarget, outboxParticipants);
+                  const outboxRecipientsCtx: ReplyRecipientContext = {
+                    to: outboxReplyAll ? [...outboxTo.to, ...outboxTo.cc] : outboxTo.to,
+                    lockedTo: outboxTo.to[0] ?? null,
+                    participants: outboxParticipants.map((p) => p.email),
+                    leadEmail: selectedThread.lead_email,
+                    leadName: outboxReplyName,
+                    replyToUuid: outboxActiveTargetId,
+                  };
 
                   function handleReplyClick() {
                     if (outboxReplyOpen) {
@@ -3001,6 +3402,7 @@ export function CampaignDetail({
                               startBlank={outboxReplyStartBlank && !replyDraftHasContent(latestDraft)}
                               onNewAiDraft={campaignLeadId ? handleAiDraftClick : undefined}
                               newAiDraftPending={isGenerating}
+                              recipients={outboxRecipientsCtx}
                             />
                           ) : (
                             <ManualReplyBox
@@ -3011,6 +3413,7 @@ export function CampaignDetail({
                               onCancel={() => setOutboxReplyOpen(false)}
                               onNewAiDraft={campaignLeadId ? handleAiDraftClick : undefined}
                               newAiDraftPending={isGenerating}
+                              recipients={outboxRecipientsCtx}
                             />
                           )}
                         </div>
@@ -3306,6 +3709,16 @@ export function CampaignDetail({
           submitting={bulkRegenSubmitting}
           onConfirm={(instruction) => void submitBulkRegenerate(instruction)}
           onCancel={() => setBulkRegenPreview(null)}
+        />
+      )}
+
+      {replaceTarget && (
+        <ReplaceLeadModal
+          target={replaceTarget}
+          submitting={replaceSubmitting}
+          error={replaceError}
+          onConfirm={(input) => void handleReplaceConfirm(input)}
+          onCancel={() => { setReplaceTarget(null); setReplaceError(""); }}
         />
       )}
 

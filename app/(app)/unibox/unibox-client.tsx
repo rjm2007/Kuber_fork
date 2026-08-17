@@ -318,6 +318,12 @@ export function UniboxClient() {
                   canReply={!!threadDetail?.reply_to_uuid}
                   latestDraft={latestDraft}
                   replyToSubject={threadDetail?.messages?.find((m) => m.direction === "received")?.subject ?? null}
+                  // Our mailbox on this thread — keeps it out of the CC list we
+                  // build from the thread's participants.
+                  eaccount={threadDetail?.eaccount ?? null}
+                  knownLeadEmails={threadDetail?.known_lead_emails ?? []}
+                  organizationName={threadDetail?.lead_organization_name ?? null}
+                  ownerName={threadDetail?.lead_owner_name ?? null}
                   onChanged={() => { void loadThreads(false); void loadDetail(selectedId!, { silent: true }); }}
                 />
               </div>

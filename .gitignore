@@ -17,3 +17,6 @@ verify-ui.mjs
 # Local QA handoff notes — contains team PII, must never hit this public repo
 TESTING_HANDOFF.md
 .vercel
+
+# Playwright run artifacts
+scripts/e2e-shots/

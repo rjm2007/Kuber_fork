@@ -4,6 +4,20 @@ import sanitizeHtml from "sanitize-html";
 import { INTEREST_TO_TEMPERATURE } from "@/lib/constants";
 import { emailPreview, stripQuotedText, ueTypeToDirection } from "@/lib/email-display";
 import { pickDraftsForInboundMessage } from "@/lib/reply-draft-pick";
+import {
+  ourAddresses,
+  parseAddressList,
+  unansweredInbound,
+  type ParticipantMessage,
+} from "@/lib/thread-participants";
+import {
+  campaignMatches,
+  matchesInterestFilter,
+  matchesReadState,
+  matchesTab,
+  type UniboxReadState,
+  type UniboxTab,
+} from "@/lib/unibox-filters";
 import { findActiveLeadIdByEmail } from "@/lib/services/lead-lookup";
 import {
   type InstantlyEmail,
@@ -19,8 +33,8 @@ const SYNC_STATE_KEY = "unibox_sync_state";
 const HYDRATE_COOLDOWN_MS = 10 * 60 * 1000;
 const hydrateCooldown = new Map<string, number>();
 
-export type UniboxTab = "primary" | "others";
-export type UniboxReadState = "unread" | "read" | "replied" | "needs_reply" | "no_reply";
+// Re-exported so existing importers (the threads route) keep working.
+export type { UniboxTab, UniboxReadState } from "@/lib/unibox-filters";
 
 export type UniboxThreadSummary = {
   thread_id: string;
@@ -34,6 +48,10 @@ export type UniboxThreadSummary = {
   latest_direction: string;
   /** False for threads we sent into that the lead has never answered. */
   has_reply: boolean;
+  /** Someone on this thread asked something we have not answered THEM. */
+  needs_reply: boolean;
+  /** Their addresses — a thread can be answered for one person and not another. */
+  awaiting_reply_from: string[];
   unread_count: number;
   message_count: number;
   interest_status: number | null;
@@ -60,6 +78,8 @@ export type UniboxMessage = {
   // through our own reply endpoints, not messages synced from Instantly.
   sent_by: string | null;
   sent_by_name: string | null;
+  /** Which message this reply answered — only set on mail we sent. */
+  in_reply_to_email_id: string | null;
 };
 
 type Db = SupabaseClient;
@@ -104,6 +124,7 @@ function emailToRow(email: InstantlyEmail, opts: {
   campaignLeadId?: string | null;
   replyEventId?: string | null;
   sentBy?: string | null;
+  inReplyToEmailId?: string | null;
 }) {
   const bodyText = email.body?.text ?? null;
   const bodyHtml = email.body?.html ?? null;
@@ -133,6 +154,9 @@ function emailToRow(email: InstantlyEmail, opts: {
     // Only meaningful for outbound replies WE just sent (review §4.2) — never
     // set on resync/webhook ingestion, and never overwritten on update below.
     sent_by: opts.sentBy ?? null,
+    // Only ever known for mail we send ourselves — Instantly's sync carries no
+    // such link, so a resync must never blank it (see the update below).
+    in_reply_to_email_id: opts.inReplyToEmailId ?? null,
     step: email.step != null ? String(email.step) : null,
     is_unread: email.ue_type === 2 ? boolish(email.is_unread) : false,
     is_auto_reply: boolish(email.is_auto_reply),
@@ -185,7 +209,13 @@ async function backfillInterestFromEmail(
 export async function ingestInstantlyEmail(
   db: Db,
   email: InstantlyEmail,
-  opts?: { replyEventId?: string; masterCampaignId?: string | null; campaignLeadId?: string | null; sentBy?: string | null },
+  opts?: {
+    replyEventId?: string;
+    masterCampaignId?: string | null;
+    campaignLeadId?: string | null;
+    sentBy?: string | null;
+    inReplyToEmailId?: string | null;
+  },
 ): Promise<void> {
   const masterId = opts?.masterCampaignId ?? await resolveMasterCampaignId(db, email.campaign_id);
   const leadEmail = normEmail(email.lead ?? email.from_address_email);
@@ -195,6 +225,7 @@ export async function ingestInstantlyEmail(
     campaignLeadId,
     replyEventId: opts?.replyEventId,
     sentBy: opts?.sentBy,
+    inReplyToEmailId: opts?.inReplyToEmailId,
   });
 
   const { data: existing } = await db
@@ -204,8 +235,9 @@ export async function ingestInstantlyEmail(
     .maybeSingle();
 
   if (existing) {
-    // sent_by is deliberately excluded here — a later resync/webhook re-ingest
-    // of the same message must never overwrite the original sender (review §4.2).
+    // sent_by and in_reply_to_email_id are deliberately excluded here — a later
+    // resync/webhook re-ingest of the same message carries neither, so listing
+    // them would blank the ones we recorded at send time (review §4.2).
     await db.from("unibox_emails").update({
       thread_id: row.thread_id,
       campaign_id: row.campaign_id,
@@ -234,6 +266,8 @@ export async function sendThreadReply(
     subject: string;
     bodyHtml: string;
     bodyText?: string;
+    /** Extra To recipients beyond the answered message's sender (reply-all). */
+    additionalTo?: string[];
     cc?: string[];
     bcc?: string[];
     campaignLeadId?: string | null;
@@ -253,6 +287,7 @@ export async function sendThreadReply(
     subject: opts.subject,
     bodyHtml: opts.bodyHtml,
     bodyText: opts.bodyText,
+    additionalTo: opts.additionalTo,
     cc: opts.cc,
     bcc: opts.bcc,
   });
@@ -262,11 +297,16 @@ export async function sendThreadReply(
     masterCampaignId: opts.campaignId ?? undefined,
     campaignLeadId: opts.campaignLeadId ?? undefined,
     sentBy: opts.sentBy ?? null,
+    // Recorded, not inferred: with several To addresses possible, the recipient
+    // list no longer identifies which message this answered.
+    inReplyToEmailId: opts.replyToUuid,
   });
 
-  // Remember CC/BCC for this sender's autocomplete (failures are logged inside).
+  // Remember every address this reply reached for the sender's autocomplete
+  // (failures are logged inside).
   if (opts.sentBy) {
     void rememberReplyAddresses(db, opts.sentBy, [
+      ...(opts.additionalTo ?? []),
       ...(opts.cc ?? []),
       ...(opts.bcc ?? []),
     ]);
@@ -457,46 +497,10 @@ async function loadCampaignLeadStatusMap(
   return map;
 }
 
-function matchesTab(tab: UniboxTab, row: { is_focused: boolean; is_auto_reply: boolean }): boolean {
-  if (tab === "primary") return row.is_focused && !row.is_auto_reply;
-  return !row.is_focused || row.is_auto_reply;
-}
-
-function matchesReadState(
-  state: UniboxReadState,
-  summary: { unread_count: number; latest_direction: string; has_reply: boolean },
-): boolean {
-  switch (state) {
-    case "unread": return summary.unread_count > 0;
-    case "read": return summary.unread_count === 0;
-    // "Replied" means WE answered a lead who wrote in — a campaign thread the
-    // lead never answered is "no_reply", not "replied", even though its last
-    // message is also outbound.
-    case "replied": return summary.has_reply && summary.latest_direction !== "received";
-    case "needs_reply": return summary.latest_direction === "received";
-    case "no_reply": return !summary.has_reply;
-    default: return true;
-  }
-}
-
-function matchesInterestFilter(
-  filter: number | "lead",
-  interestStatus: number | null,
-): boolean {
-  if (filter === "lead") return interestStatus === null;
-  return interestStatus === filter;
-}
-
-function campaignMatches(
-  rowCampaignId: string | null | undefined,
-  filters: { campaign_id?: string; campaign_ids?: string[] },
-): boolean {
-  if (filters.campaign_ids && filters.campaign_ids.length > 0) {
-    return !!rowCampaignId && filters.campaign_ids.includes(rowCampaignId);
-  }
-  if (filters.campaign_id) return rowCampaignId === filters.campaign_id;
-  return true;
-}
+// Filter predicates live in lib/unibox-filters.ts — pure, importable without a
+// database, and covered case by case in unibox-filters.test.ts. They decide
+// which conversations a user can see, which is too important to leave in a
+// module no test can load.
 
 /**
  * The employee visibility boundary (spec §7): a message is in scope ONLY when
@@ -695,6 +699,12 @@ export async function getThreads(db: Db, filters: {
 
     const campaign: { id: string; name: string } | null = (latest.campaign_id && campaignById.get(latest.campaign_id)) || null;
 
+    // Per-person outstanding questions, not "is the last message inbound".
+    const outstanding = unansweredInbound(
+      msgs as unknown as ParticipantMessage[],
+      ourAddresses(msgs as unknown as ParticipantMessage[], [latest.eaccount]),
+    );
+
     const summary: UniboxThreadSummary = {
       thread_id: threadId,
       lead_email: leadEmail,
@@ -706,6 +716,10 @@ export async function getThreads(db: Db, filters: {
       latest_at: latest.timestamp_email,
       latest_direction: latest.direction,
       has_reply: hasReceived,
+      needs_reply: outstanding.length > 0,
+      awaiting_reply_from: [
+        ...new Set(outstanding.map((m) => parseAddressList(m.from_email)[0]).filter(Boolean)),
+      ] as string[],
       unread_count: unreadInbound.length,
       message_count: msgs.length,
       interest_status: interest?.interest_status ?? null,
@@ -739,8 +753,10 @@ export async function getThreads(db: Db, filters: {
     visible.sort((a, b) => b.latest_at.localeCompare(a.latest_at));
   } else {
     visible.sort((a, b) => {
-      const aNeeds = a.latest_direction === "received";
-      const bNeeds = b.latest_direction === "received";
+      // Same per-person rule as the filter, so the default order and the
+      // "Needs reply" tab can never disagree about what is outstanding.
+      const aNeeds = a.needs_reply;
+      const bNeeds = b.needs_reply;
       if (aNeeds && !bNeeds) return -1;
       if (!aNeeds && bNeeds) return 1;
       if (aNeeds && bNeeds) return a.latest_at.localeCompare(b.latest_at);
@@ -770,6 +786,12 @@ export async function getThreadMessages(db: Db, threadId: string): Promise<{
   campaign_lead_id: string | null;
   interest_status: number | null;
   lead_temperature: string | null;
+  /** Addresses on this thread that are already live leads — so the UI never
+   *  offers to add someone who is one, and never hides that they are. */
+  known_lead_emails: string[];
+  /** Organisation and owner a promoted participant would inherit. */
+  lead_organization_name: string | null;
+  lead_owner_name: string | null;
 }> {
   const { data: rows } = await db
     .from("unibox_emails")
@@ -793,9 +815,22 @@ export async function getThreadMessages(db: Db, threadId: string): Promise<{
 
   const leadEmail = msgs.find((m) => m.lead_email)?.lead_email ?? null;
   let lead: Record<string, unknown> | null = null;
+  // Where a promoted participant would land. Resolved here rather than embedded,
+  // because a PostgREST embed on assigned_to depends on an FK name this table
+  // has changed before.
+  let lead_organization_name: string | null = null;
+  let lead_owner_name: string | null = null;
   if (leadEmail) {
     const { data: l } = await db.from("leads").select("*").eq("email", leadEmail).maybeSingle();
     lead = l;
+    if (l?.organization_id) {
+      const { data: org } = await db.from("organizations").select("name").eq("id", l.organization_id).maybeSingle();
+      lead_organization_name = (org?.name as string | null) ?? null;
+    }
+    if (l?.assigned_to) {
+      const { data: owner } = await db.from("profiles").select("full_name, email").eq("id", l.assigned_to).maybeSingle();
+      lead_owner_name = (owner?.full_name as string | null) || (owner?.email as string | null) || null;
+    }
   }
 
   const campaignId = msgs.find((m) => m.campaign_id)?.campaign_id ?? null;
@@ -812,6 +847,26 @@ export async function getThreadMessages(db: Db, threadId: string): Promise<{
   if (senderIds.length > 0) {
     const { data: senders } = await db.from("profiles").select("id, full_name, email").in("id", senderIds);
     for (const s of senders ?? []) senderNames.set(s.id, s.full_name || s.email);
+  }
+
+  // Which of this thread's participants are already leads. One query over the
+  // addresses actually present, rather than a per-participant lookup from the
+  // client.
+  const participantEmails = [...new Set(
+    msgs.flatMap((m) => [
+      ...parseAddressList(m.from_email),
+      ...parseAddressList(m.to_emails),
+      ...parseAddressList(m.cc_emails),
+    ]),
+  )];
+  let known_lead_emails: string[] = [];
+  if (participantEmails.length > 0) {
+    const { data: knownLeads } = await db
+      .from("leads")
+      .select("email")
+      .in("email", participantEmails)
+      .eq("is_deleted", false);
+    known_lead_emails = (knownLeads ?? []).map((l) => (l.email as string).toLowerCase());
   }
 
   let interest_status: number | null = null;
@@ -845,6 +900,7 @@ export async function getThreadMessages(db: Db, threadId: string): Promise<{
       reply_event_id: m.reply_event_id as string | null,
       sent_by: (m.sent_by as string | null) ?? null,
       sent_by_name: m.sent_by ? (senderNames.get(m.sent_by as string) ?? null) : null,
+      in_reply_to_email_id: (m.in_reply_to_email_id as string | null) ?? null,
     })),
     reply_drafts,
     lead,
@@ -854,7 +910,55 @@ export async function getThreadMessages(db: Db, threadId: string): Promise<{
     campaign_lead_id: campaignLeadId,
     interest_status,
     lead_temperature,
+    known_lead_emails,
+    lead_organization_name,
+    lead_owner_name,
   };
+}
+
+/**
+ * Validate a caller-supplied reply target against the thread it claims to be on.
+ *
+ * NEVER trust this id from the client. reply_to_uuid is the only thing that
+ * decides who actually receives the mail (Instantly has no To field — it
+ * addresses the reply to the sender of this message), so an unchecked id would
+ * let any authenticated user drop a reply into somebody else's conversation.
+ * `db` is the caller's scoped client, so company scoping is enforced too.
+ *
+ * Returns null unless the id is an INBOUND message on `threadId` — replying to
+ * one of our own sent messages would just address it back at ourselves.
+ */
+export async function resolveReplyTarget(
+  db: Db,
+  threadId: string,
+  instantlyEmailId: string,
+): Promise<{ instantlyEmailId: string; eaccount: string | null } | null> {
+  const { data } = await db
+    .from("unibox_emails")
+    .select("instantly_email_id, eaccount, direction")
+    .eq("thread_id", threadId)
+    .eq("instantly_email_id", instantlyEmailId)
+    .maybeSingle();
+  if (!data || data.direction !== "received") return null;
+  return {
+    instantlyEmailId: data.instantly_email_id as string,
+    eaccount: (data.eaccount as string | null) ?? null,
+  };
+}
+
+/** Thread a given Instantly message belongs to. reply_drafts rows carry a
+ *  reply_to_uuid but no thread id, so retargeting a draft has to find its
+ *  thread this way before resolveReplyTarget can check the new target. */
+export async function threadIdForInstantlyEmail(
+  db: Db,
+  instantlyEmailId: string,
+): Promise<string | null> {
+  const { data } = await db
+    .from("unibox_emails")
+    .select("thread_id")
+    .eq("instantly_email_id", instantlyEmailId)
+    .maybeSingle();
+  return (data?.thread_id as string | null) ?? null;
 }
 
 export async function hydrateThreadIfStale(db: Db, threadId: string): Promise<void> {
@@ -1045,9 +1149,35 @@ export async function getCampaignReplyThreads(db: Db, campaignId: string) {
         received_at: m.timestamp_email,
         lead_email: t.lead_email,
         campaign_lead_id: t.campaign_lead_id,
+        // Real headers. Anyone CC'd onto a thread can reply into it, so the
+        // sender is NOT always the lead — the Outbox used to caption every
+        // inbound message with the lead's name and every outbound one as going
+        // to the lead, which is false the moment a third party joins.
+        instantly_email_id: m.instantly_email_id,
+        from_email: m.from_email,
+        to_emails: m.to_emails,
+        cc_emails: m.cc_emails,
         reply_drafts: drafts,
       });
     }
+
+    // Outbound replies read from the mirrored mail itself rather than
+    // reconstructed from reply_drafts: a draft records what we composed, only
+    // the sent message records who actually received it.
+    const sentMessages = detail.messages
+      .filter((m) => m.direction === "sent_manual")
+      .map((m) => ({
+        id: m.id,
+        instantly_email_id: m.instantly_email_id,
+        from_email: m.from_email,
+        to_emails: m.to_emails,
+        cc_emails: m.cc_emails,
+        body_html: m.body_html,
+        body_text: m.body_text,
+        sent_at: m.timestamp_email,
+        sent_by_name: m.sent_by_name,
+        in_reply_to_email_id: m.in_reply_to_email_id,
+      }));
 
     out.push({
       thread_key: t.thread_id,
@@ -1058,6 +1188,13 @@ export async function getCampaignReplyThreads(db: Db, campaignId: string) {
       latest_temperature: t.lead_temperature,
       latest_received_at: t.latest_at,
       messages,
+      sent_messages: sentMessages,
+      // Our mailbox on this thread, so the composer can keep it out of the CC
+      // list it builds from the thread's participants.
+      eaccount: detail.eaccount,
+      known_lead_emails: detail.known_lead_emails,
+      lead_organization_name: detail.lead_organization_name,
+      lead_owner_name: detail.lead_owner_name,
     });
   }
 

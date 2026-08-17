@@ -624,6 +624,14 @@ export async function replyToInstantlyEmail(opts: {
   subject: string;
   bodyHtml: string;
   bodyText?: string;
+  /**
+   * Extra To recipients. There is no to_address_email_list on this endpoint —
+   * the sender of `replyToUuid` is always addressed automatically, and these are
+   * added ALONGSIDE them in the To line (Instantly: "extra recipient email
+   * addresses to include in the reply, in addition to the default recipient").
+   * This is what makes a real reply-all possible instead of one To + CC.
+   */
+  additionalTo?: string[];
   cc?: string[];
   bcc?: string[];
 }): Promise<InstantlyEmail> {
@@ -635,8 +643,13 @@ export async function replyToInstantlyEmail(opts: {
       eaccount: opts.eaccount,
       subject: opts.subject,
       body: { html: opts.bodyHtml, ...(opts.bodyText ? { text: opts.bodyText } : {}) },
-      ...(opts.cc?.length ? { cc_address_email_list: opts.cc } : {}),
-      ...(opts.bcc?.length ? { bcc_address_email_list: opts.bcc } : {}),
+      ...(opts.additionalTo?.length ? { additional_recipients: opts.additionalTo } : {}),
+      // Documented as a comma-separated STRING (additional_recipients is the one
+      // array field here). We sent JSON arrays and Instantly coerced them, so it
+      // worked — but off-contract input is exactly what stops working without
+      // warning on an API update, with no error we would ever see.
+      ...(opts.cc?.length ? { cc_address_email_list: opts.cc.join(",") } : {}),
+      ...(opts.bcc?.length ? { bcc_address_email_list: opts.bcc.join(",") } : {}),
     }),
   });
   return iJson<InstantlyEmail>(res);

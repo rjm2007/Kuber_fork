@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "watchdog": "node scripts/watchdog.js"
+    "watchdog": "node scripts/watchdog.js",
+    "e2e": "node scripts/e2e-cc-thread.mjs"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.16",

@@ -10,6 +10,7 @@ import {
   getGenericTemplate,
 } from "@/lib/services/settings";
 import { logLeadEvent } from "@/lib/services/lead-events";
+import { splitInstruction, customerProducts } from "@/lib/services/revision-input";
 import { PROVIDER_UNAVAILABLE, isProviderOutage } from "@/lib/services/provider-errors";
 
 /** Activity-timeline wording for a finished draft. */
@@ -59,6 +60,11 @@ type OrgData = {
   company_description?: string | null;
   sells_to?: string | null;
   keywords?: string[] | null;
+  industry?: string | null;
+  website?: string | null;
+  employees?: number | null;
+  city?: string | null;
+  country?: string | null;
 };
 
 type LeadRow = {
@@ -69,6 +75,7 @@ type LeadRow = {
   title: string | null;
   headline: string | null;
   seniority: string | null;
+  city: string | null;
   country: string | null;
   assigned_to: string | null;
   organizations: OrgData | OrgData[] | null;
@@ -195,47 +202,141 @@ export type PreviousDraftContent = {
 };
 
 // When the user regenerates with an instruction ("remove the last paragraph"),
-// the CURRENT email is the base — not a fresh write from lead data. Without this
-// the model treats "Additional instruction" as a style hint and rewrites everything.
+// the CURRENT email is the base — not a fresh write from lead data.
+//
+// The blocks are named because the user's one textarea carries two different
+// things (a change and, often, a whole example email) and the model could not
+// tell them apart. It resolved the ambiguity by copying the example's prospect:
+// "Astral Ltd" reached 97 of 100 emails in one campaign. Naming the blocks and
+// stating which one is authoritative for facts is the fix; see splitInstruction.
 const REVISION_SYSTEM_PREFIX = [
-  "REVISION MODE — you are editing an existing cold email, not writing a new one.",
-  "Apply ONLY the user's Instruction to the Current subject, Current body, and Current signature/footer below.",
-  "Preserve wording, structure, tone, facts, product mentions, and length everywhere the Instruction does not touch.",
-  "Example: if the Instruction is \"remove the last paragraph\", delete that paragraph and leave every other sentence identical.",
-  "The signature/footer IS editable. If the Instruction asks to change, rewrite, shorten, or remove the footer/signature/closing sign-off, put the result in the \"signature\" JSON field (use an empty string to remove it).",
-  "If the Instruction does not mention the footer/signature, return signature as \"unchanged\" (or omit it) and leave Current signature exactly as-is.",
-  "Do NOT invent a new pitch, rephrase for style, or restructure the email unless the Instruction explicitly asks for that.",
+  "REVISION MODE — you are rewriting one existing cold email for one named prospect.",
+  "",
+  "═══ HOW TO READ THE USER MESSAGE ═══",
+  "It contains labelled blocks:",
+  "  [THEIR COMPANY]  who we are writing to. The ONLY source of facts about them.",
+  "  [OLD EMAIL]      the current draft. Your starting point.",
+  "  [EXAMPLE EMAIL]  optional. A FORMAT SAMPLE, not a source of facts.",
+  "  [THE CHANGE]     what the user wants done. Highest priority.",
+  "Two more blocks are below this line: [OUR COMPANY] is the \"ABOUT KUBER POLYPLAST\"",
+  "section, and [OUR PRODUCTS] is the \"PRODUCT REFERENCE LIBRARY\" section.",
+  "",
+  "═══ HARD RULES ═══",
+  "1. The recipient's company is the name in [THEIR COMPANY]. Nothing else is.",
+  "2. [EXAMPLE EMAIL] is formatting only. Any company name, contact name, product or",
+  "   detail inside it belongs to a DIFFERENT prospect. Never copy those. Replace",
+  "   every one with the matching value from [THEIR COMPANY].",
+  "3. Never take a company name from a campaign title, a customer/reference list, a",
+  "   subject line, or your own knowledge.",
+  "4. Placeholders — \"(write about the customer's company)\", \"(client name)\",",
+  "   \"[Company]\", \"Dear Chris\" — must never appear in the output. Replace each with",
+  "   the real value.",
+  "5. If a fact is missing from [THEIR COMPANY], omit the claim. Never guess what they",
+  "   make. Never write \"your website\" as a substitute for their name.",
+  "6. If [THEIR COMPANY] says \"Not available\", write a correct generic email that still",
+  "   addresses them by company name, and pick the closest fit from [OUR PRODUCTS].",
+  "",
+  "═══ WHAT [THE CHANGE] MEANS ═══",
+  "EDIT (\"remove the last paragraph\", \"shorter\", \"add a line about X\"): apply only",
+  "that; preserve all other wording, structure, tone, facts and length. If the",
+  "Instruction is \"remove the last paragraph\", delete it and leave every other",
+  "sentence identical.",
+  "FORMAT ([EXAMPLE EMAIL] is present): reproduce its structure, wording and",
+  "formatting exactly, filling every customer-specific slot from [THEIR COMPANY].",
+  "",
+  "═══ EVERY EMAIL MUST ═══",
+  "- Name the prospect's company at least once, spelled as in [THEIR COMPANY].",
+  "- State what they actually make, grounded in [THEIR COMPANY].",
+  "- Tie it to ONE item from [OUR PRODUCTS]; set product_match to its exact name",
+  "  (or \"unchanged\" if [THE CHANGE] does not ask to change the product).",
+  "- Open with the greeting as the first line of body.",
+  "- Contain no em dashes.",
+  "",
+  "═══ BODY vs SIGNATURE ═══",
+  "\"body\" is the greeting plus the message. It must NOT contain a sign-off, sender",
+  "name, job title, phone, WhatsApp, email address or postal address — those are",
+  "appended separately and would otherwise appear twice. If [EXAMPLE EMAIL] ends",
+  "with such a block, it belongs in \"signature\", not \"body\".",
+  "The signature IS editable: when [THE CHANGE] asks to alter the footer, put the",
+  "result in \"signature\" (empty string to remove it). Otherwise return \"unchanged\".",
+  "",
   "Return STRICT JSON: {\"subject\": string, \"body\": string, \"signature\": string, \"product_match\": string}.",
-  "\"body\" is the email WITH greeting but WITHOUT the signature/footer block.",
-  "\"signature\" is the footer block appended after the body (name, title, company, contact, etc.).",
-  "Set product_match to \"unchanged\" unless the Instruction asks to change the product.",
   "",
 ].join("\n");
 
+function attachmentNote(name?: string | null): string {
+  return name
+    ? `a brochure file "${name}" is included with this email, so mention "brochure" once in the closing`
+    : "No attachment, so do NOT mention any attachment or brochure anywhere in the body";
+}
+
+/** Everything known about the prospect. Absent facts say so rather than being
+ *  omitted, so a gap never reads as an invitation to invent one. */
+function buildProspectBlock(lead: LeadRow, attachment: string): string {
+  const org = unwrapOrg(lead.organizations);
+  const v = (x: string | number | null | undefined) => {
+    const s = x === null || x === undefined ? "" : String(x).trim();
+    return s || "Not available";
+  };
+  const website = org?.website?.trim() || (org?.domain ? `https://${org.domain}` : "");
+  return [
+    "[THEIR COMPANY]",
+    `Contact:          ${v([lead.first_name, lead.last_name].filter(Boolean).join(" "))}`,
+    `Job title:        ${v(lead.title ?? lead.headline)}`,
+    `Location:         ${v([lead.city, lead.country].filter(Boolean).join(", "))}`,
+    `Company name:     ${v(org?.name)}`,
+    `Website:          ${v(website)}`,
+    `Industry:         ${v(org?.industry)}`,
+    `Size:             ${org?.employees ? `${org.employees} employees` : "Not available"}`,
+    `Headquarters:     ${v([org?.city, org?.country].filter(Boolean).join(", "))}`,
+    `What they make:   ${v(customerProducts(org))}`,
+    `About them:       ${v(org?.company_description)}`,
+    `They sell to:     ${v(org?.sells_to)}`,
+    `Attachment:       ${attachment}`,
+  ].join("\n");
+}
+
+// The campaign NAME is deliberately absent. It used to be the first line here,
+// and with no company name in the prompt the model read it as the prospect:
+// 23 emails opened "I came across Apollo" from `Campaign: "APOLLO CAMPAIGN 5"`,
+// addressed to Pipeco Tanks, Hamilton Tanks and others. Only the campaign's
+// ai_prompt_context survives, labelled so it cannot be mistaken for a company.
 function buildRevisionUserPrompt(
   lead: LeadRow,
-  campaignName: string,
-  customInstruction: string,
+  change: string,
+  example: string,
   previous: { subject: string; body: string; signature: string },
   stepNumber: number,
+  attachmentName?: string | null,
+  aiPromptContext?: string,
 ): string {
-  const name = [lead.first_name, lead.last_name].filter(Boolean).join(" ") || "Unknown";
-  return [
-    `Campaign: "${campaignName}"`,
-    `Email step: ${stepNumber}`,
-    `Recipient: ${name}`,
+  const parts = [`Email step: ${stepNumber} of 3`];
+  if (aiPromptContext?.trim()) parts.push(`Campaign context: ${aiPromptContext.trim()}`);
+
+  parts.push(
     "",
-    "Current subject:",
-    previous.subject || "(empty)",
+    buildProspectBlock(lead, attachmentNote(attachmentName)),
     "",
-    "Current body (without signature/footer):",
+    "[OLD EMAIL]",
+    `Subject: ${previous.subject || "(empty)"}`,
+    "Body:",
     previous.body,
-    "",
-    "Current signature / footer (editable — change this when the Instruction asks about the footer, signature, or closing sign-off):",
+    "Signature:",
     previous.signature || "(none)",
-    "",
-    `Instruction: ${customInstruction.trim()}`,
-  ].join("\n");
+  );
+
+  if (example) {
+    parts.push(
+      "",
+      "[EXAMPLE EMAIL] — format sample only. Any company name, contact name or detail",
+      "inside it belongs to a DIFFERENT prospect and must be replaced with the values",
+      "in [THEIR COMPANY].",
+      example,
+    );
+  }
+
+  parts.push("", "[THE CHANGE]", change);
+  return parts.join("\n");
 }
 
 function resolveRevisedSignature(returned: string | undefined, original: string): string {
@@ -295,7 +396,7 @@ function buildUserPrompt(
     `What they do: ${org?.company_description ?? "Not available"}`,
     `Their end markets / customers: ${org?.sells_to ?? "Not available"}`,
     `Keywords: ${(org?.keywords ?? []).join(", ") || "Not available"}`,
-    `Attachment: ${attachmentName ? `a brochure file "${attachmentName}" is included with this email, so mention "brochure" once in the closing` : "No attachment, so do NOT mention any attachment or brochure anywhere in the body"}`,
+    `Attachment: ${attachmentNote(attachmentName)}`,
   ];
   if (aiPromptContext?.trim()) lines.push(`Campaign context: ${aiPromptContext.trim()}`);
   if (customInstruction?.trim()) {
@@ -539,17 +640,23 @@ export async function generateOneDraft(
         + buildCompanyBlock(companyContext)
         + buildProductReferenceBlock(products);
 
+    // One textarea carries both "what to change" and, often, a whole example
+    // email. Separating them is what stops the example's prospect being copied.
+    const { change, example } = splitInstruction(revisionInstruction);
+
     const userPrompt = isRevision
       ? buildRevisionUserPrompt(
           lead,
-          campaignName,
-          revisionInstruction,
+          change,
+          example,
           {
             subject: previousDraft?.subject?.trim() || "",
             body: previousPlainBody,
             signature: signatureBlock,
           },
           stepNumber,
+          effectiveAttachmentName,
+          aiPromptContext ?? campaign?.ai_prompt_context ?? undefined,
         )
       : buildUserPrompt(lead, campaignName, customInstruction, aiPromptContext, stepNumber, effectiveAttachmentName);
 
@@ -596,6 +703,13 @@ export async function generateOneDraft(
         /\n+\s*(best regards|regards|sincerely|warm regards|thanks|thank you|cheers)[.,]?\s*$/i,
         "",
       );
+    } else {
+      // A pasted example email usually ends with its own sign-off block, and the
+      // model tends to keep it in `body` even though the signature is appended
+      // below. That put "Ashish Sharma" twice into 99 of 100 emails in one
+      // campaign (and his WhatsApp number into all 100). Same helper the
+      // previous body is normalised with, so it only cuts a real repeat.
+      aiBody = stripTrailingSignature(aiBody, effectiveSignature);
     }
     aiBody = aiBody
       .replace(/\s*[—–]\s*/g, ", ")
@@ -744,8 +858,8 @@ export async function fetchDraftTargets(
         id, lead_id,
         attachment_path, attachment_name, attachment_mime, attachment_size, attachment_url,
         leads!inner(
-          id, first_name, last_name, email, title, headline, seniority, country, assigned_to,
-          organizations(name, domain, company_description, sells_to, keywords)
+          id, first_name, last_name, email, title, headline, seniority, city, country, assigned_to,
+          organizations(name, domain, website, industry, employees, city, country, company_description, sells_to, keywords)
         )
       `)
       .eq("campaign_id", campaignId)
@@ -776,8 +890,8 @@ export async function fetchDraftTargets(
       id, lead_id,
       attachment_path, attachment_name, attachment_mime, attachment_size, attachment_url,
       leads!inner(
-        id, first_name, last_name, email, title, headline, seniority, country, assigned_to,
-        organizations(name, domain, company_description, sells_to, keywords)
+        id, first_name, last_name, email, title, headline, seniority, city, country, assigned_to,
+        organizations(name, domain, website, industry, employees, city, country, company_description, sells_to, keywords)
       )
     `)
     .eq("campaign_id", campaignId)
