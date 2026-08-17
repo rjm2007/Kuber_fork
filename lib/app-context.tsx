@@ -72,7 +72,20 @@ type AppContextValue = {
   setDeleteLeadLoading: React.Dispatch<React.SetStateAction<boolean>>;
 };
 
-const AppContext = createContext<AppContextValue | null>(null);
+// Persist the context object across Fast Refresh. This file imports
+// lib/api-client, so any edit there re-evaluates the module and would
+// otherwise mint a new createContext() — AppProvider would still be on
+// the old one, useApp() would read the new one, and SSR throws
+// "useApp must be used within AppProvider" (Next then recovers client-side).
+const AppContext = (() => {
+  if (process.env.NODE_ENV === "production") {
+    return createContext<AppContextValue | null>(null);
+  }
+  const g = globalThis as typeof globalThis & {
+    __kuberAppContext?: ReturnType<typeof createContext<AppContextValue | null>>;
+  };
+  return (g.__kuberAppContext ??= createContext<AppContextValue | null>(null));
+})();
 
 export function useApp(): AppContextValue {
   const ctx = useContext(AppContext);
