@@ -11,7 +11,7 @@ export async function GET(req: NextRequest) {
   // Employees only count hot leads assigned to them; managers see all.
   const q = user.role === "employee"
     ? db.from("campaign_leads")
-        .select("id, leads!inner(assigned_to)", { count: "exact", head: true })
+        .select("id, leads!lead_id!inner(assigned_to)", { count: "exact", head: true })
         .eq("lead_temperature", "hot")
         .eq("leads.assigned_to", user.id)
     : db.from("campaign_leads")

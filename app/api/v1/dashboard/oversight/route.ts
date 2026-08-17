@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
     // campaign_leads joined to their lead's owner — the basis for BOTH the
     // lead→campaign fan-out and the "campaigns containing this employee's
     // leads" count (spec §6).
-    db.from("campaign_leads").select("campaign_id, leads!inner(assigned_to, is_deleted)").eq("leads.is_deleted", false),
+    db.from("campaign_leads").select("campaign_id, leads!lead_id!inner(assigned_to, is_deleted)").eq("leads.is_deleted", false),
   ]);
 
   if (campaignsError) return fail(500, "INTERNAL", campaignsError.message);

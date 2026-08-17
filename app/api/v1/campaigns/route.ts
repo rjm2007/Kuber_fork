@@ -36,7 +36,7 @@ export async function GET(req: NextRequest) {
     // scoped to this employee and overlay onto each row before returning.
     const { data: ownRows } = await db
       .from("campaign_leads")
-      .select("campaign_id, crm_status, first_sent_at, lead_temperature, email_drafts(status), leads!inner(assigned_to)")
+      .select("campaign_id, crm_status, first_sent_at, lead_temperature, email_drafts(status), leads!lead_id!inner(assigned_to)")
       .in("campaign_id", ids)
       .eq("leads.assigned_to", user.id);
 

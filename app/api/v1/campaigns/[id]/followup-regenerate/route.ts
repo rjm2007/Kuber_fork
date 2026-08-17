@@ -25,7 +25,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const { data: cl } = await db
     .from("campaign_leads")
-    .select("id, lead_id, campaign_id, leads(first_name)")
+    .select("id, lead_id, campaign_id, leads!lead_id(first_name)")
     .eq("id", parsed.data.campaign_lead_id)
     .eq("campaign_id", id)
     .maybeSingle();

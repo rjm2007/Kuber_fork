@@ -743,7 +743,7 @@ export async function fetchDraftTargets(
       .select(`
         id, lead_id,
         attachment_path, attachment_name, attachment_mime, attachment_size, attachment_url,
-        leads!inner(
+        leads!lead_id!inner(
           id, first_name, last_name, email, title, headline, seniority, country, assigned_to,
           organizations(name, domain, company_description, sells_to, keywords)
         )
@@ -775,7 +775,7 @@ export async function fetchDraftTargets(
     .select(`
       id, lead_id,
       attachment_path, attachment_name, attachment_mime, attachment_size, attachment_url,
-      leads!inner(
+      leads!lead_id!inner(
         id, first_name, last_name, email, title, headline, seniority, country, assigned_to,
         organizations(name, domain, company_description, sells_to, keywords)
       )

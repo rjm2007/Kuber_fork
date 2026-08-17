@@ -66,7 +66,7 @@ export async function resolveRegenerationTargets(
     .from("campaign_leads")
     .select(`
       id,
-      leads!inner(id, assigned_to),
+      leads!lead_id!inner(id, assigned_to),
       email_drafts(id, status, step_number)
     `)
     .eq("campaign_id", campaignId)

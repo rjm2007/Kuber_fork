@@ -4,6 +4,10 @@ import type { AuthedUser } from "@/lib/auth/api-auth";
 
 type Db = ReturnType<typeof createAdminClient>;
 
+// !lead_id on every campaign_leads -> leads embed below: campaign_leads also
+// FKs to leads via replaced_by_lead_id (bounce replacement), so PostgREST
+// refuses a bare `leads(...)` embed as ambiguous.
+
 // Access model (spec §5 / §7 — the multi-employee campaign container):
 //   • Managers / super-admins see everything.
 //   • A campaign is a CONTAINER that may hold leads owned by several
@@ -30,7 +34,7 @@ type Db = ReturnType<typeof createAdminClient>;
 export async function employeeCampaignIds(db: Db, userId: string): Promise<string[]> {
   const [{ data: owned }, { data: viaLeads }] = await Promise.all([
     db.from("campaigns").select("id").eq("is_deleted", false).or(`created_by.eq.${userId},assigned_to.eq.${userId}`),
-    db.from("campaign_leads").select("campaign_id, leads!inner(assigned_to, is_deleted)")
+    db.from("campaign_leads").select("campaign_id, leads!lead_id!inner(assigned_to, is_deleted)")
       .eq("leads.assigned_to", userId).eq("leads.is_deleted", false),
   ]);
 
@@ -63,7 +67,7 @@ export async function assertCampaignAccess(db: Db, user: AuthedUser, campaignId:
   // Otherwise: accessible only if it holds at least one lead assigned to them.
   const { data: cl } = await db
     .from("campaign_leads")
-    .select("id, leads!inner(assigned_to, is_deleted)")
+    .select("id, leads!lead_id!inner(assigned_to, is_deleted)")
     .eq("campaign_id", campaignId)
     .eq("leads.assigned_to", user.id)
     .eq("leads.is_deleted", false)
@@ -96,7 +100,7 @@ export async function campaignEmployeeOwners(
   const [{ data: camps }, { data: cls }] = await Promise.all([
     db.from("campaigns").select("id, created_by, assigned_to").in("id", campaignIds),
     db.from("campaign_leads")
-      .select("campaign_id, leads!inner(assigned_to, is_deleted)")
+      .select("campaign_id, leads!lead_id!inner(assigned_to, is_deleted)")
       .in("campaign_id", campaignIds)
       .eq("leads.is_deleted", false),
   ]);
@@ -179,7 +183,7 @@ export async function assertCampaignSettingsAccess(
 async function ownsCampaignLead(db: Db, userId: string, campaignLeadId: string): Promise<boolean> {
   const { data } = await db
     .from("campaign_leads")
-    .select("id, leads!inner(assigned_to)")
+    .select("id, leads!lead_id!inner(assigned_to)")
     .eq("id", campaignLeadId)
     .eq("leads.assigned_to", userId)
     .maybeSingle();
