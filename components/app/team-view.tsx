@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { UserPlus, RefreshCw, Eye, EyeOff, Users, ShieldCheck, MapPinOff, Radio, Pencil, X, ChevronDown } from "lucide-react";
 import { useApp } from "@/lib/app-context";
 import { cn } from "@/lib/utils";
+import { AppRadio } from "@/components/ui/app-radio";
 import { Avatar } from "@/components/leads/lead-ui";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -667,24 +668,20 @@ function HandoverBeforeDeactivateModal({
         <div className="grid gap-2">
           {HANDOVER_OPTIONS.map((o) => {
             const disabled = o.needsEligible && eligible.length === 0;
+            const checked = strategy === o.value;
             return (
               <label
                 key={o.value}
+                onClick={() => { if (!disabled && !saving) onStrategyChange(o.value); }}
                 className={cn(
-                  "flex items-start gap-3 rounded-lg border border-border p-3",
+                  "flex items-start gap-3 rounded-lg border border-border p-3 bg-field",
                   disabled
                     ? "opacity-50 cursor-not-allowed"
-                    : "cursor-pointer hover:bg-secondary/40 has-[:checked]:border-primary has-[:checked]:bg-primary/5",
+                    : "cursor-pointer hover:bg-field",
+                  checked && !disabled && "border-primary bg-primary/5",
                 )}
               >
-                <input
-                  type="radio"
-                  name="handover-strategy"
-                  className="mt-1"
-                  disabled={disabled || saving}
-                  checked={strategy === o.value}
-                  onChange={() => onStrategyChange(o.value)}
-                />
+                <AppRadio checked={checked} disabled={disabled || saving} className="mt-1" />
                 <div>
                   <p className="text-sm font-medium">{o.label}</p>
                   <p className="text-xs text-muted-foreground">

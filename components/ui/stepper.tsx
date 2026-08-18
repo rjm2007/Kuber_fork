@@ -27,11 +27,17 @@ export function Stepper({ steps, current, className }: StepperProps) {
             >
               <span
                 className={cn(
-                  "flex items-center justify-center size-5 rounded-full font-mono text-[10px] font-bold shrink-0",
+                  "flex items-center justify-center size-5 rounded-full text-[10px] leading-none font-bold tabular-nums shrink-0",
                   active || done ? "bg-primary text-primary-foreground" : "bg-secondary text-muted-foreground",
                 )}
               >
-                {done ? <Check className="size-3" strokeWidth={3} /> : i + 1}
+                {done ? (
+                  <Check className="size-3" strokeWidth={3} />
+                ) : (
+                  // Digits have no descender, so a mathematically centered line box
+                  // reads as sitting visibly high — nudge down to its optical center.
+                  <span className="translate-y-px">{i + 1}</span>
+                )}
               </span>
               <span
                 className={cn(

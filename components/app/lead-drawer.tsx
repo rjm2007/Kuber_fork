@@ -395,12 +395,12 @@ function EnrichStageBadge({ stage, hasData }: { stage: EnrichmentStage | null; h
   };
   const c = configs[stage];
   return (
-    <span className={cn("inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full font-mono text-[10px] uppercase tracking-wider border font-semibold", c.cls)}>
+    <span className={cn("inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full font-mono text-[10px] leading-none uppercase tracking-wider border font-semibold", c.cls)}>
       {stage === "done"     && <CheckCircle2 className="size-2.5" />}
       {stage === "failed"   && <AlertCircle  className="size-2.5" />}
       {stage === "queued"   && <Clock        className="size-2.5" />}
       {stage === "scraping" && <Loader2      className="size-2.5 animate-spin" />}
-      {c.label}
+      <span className="translate-y-px">{c.label}</span>
     </span>
   );
 }
@@ -564,6 +564,87 @@ function ActivityItem({ event, isLast, onCampaignClick }: {
   );
 }
 
+// ── Skeleton loading state ────────────────────────────────────────────────────
+
+function Bone({ className }: { className?: string }) {
+  return <div className={cn("animate-pulse rounded bg-secondary", className)} />;
+}
+
+function LeadDrawerSkeleton() {
+  return (
+    <>
+      {/* Left column */}
+      <div className="flex-1 min-w-0 flex flex-col min-h-0">
+        {/* Header */}
+        <div className="flex items-center gap-3 px-6 pt-10 pb-4 shrink-0">
+          <Bone className="size-10 rounded-full shrink-0" />
+          <div className="flex-1 space-y-2">
+            <Bone className="h-5 w-48" />
+          </div>
+        </div>
+
+        {/* Property rows */}
+        <div className="flex-1 px-6 pb-5 space-y-0">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="grid grid-cols-2 gap-x-12 border-b border-border/40 last:border-0">
+              <div className="flex items-center gap-2 py-3">
+                <Bone className="size-3.5 rounded shrink-0" />
+                <Bone className="h-3 w-16" />
+                <Bone className="h-4 w-28 ml-auto" />
+              </div>
+              <div className="flex items-center gap-2 py-3">
+                <Bone className="size-3.5 rounded shrink-0" />
+                <Bone className="h-3 w-16" />
+                <Bone className="h-4 w-36 ml-auto" />
+              </div>
+            </div>
+          ))}
+
+          {/* Company enrichment skeleton */}
+          <div className="border-t border-border pt-4 mt-4 space-y-3">
+            <div className="flex items-center gap-2">
+              <Bone className="size-3 rounded" />
+              <Bone className="h-3 w-32" />
+              <Bone className="h-5 w-20 rounded-full" />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Bone className="h-3 w-20" />
+                <Bone className="h-4 w-full" />
+                <Bone className="h-4 w-3/4" />
+              </div>
+              <div className="space-y-2">
+                <Bone className="h-3 w-24" />
+                <Bone className="h-4 w-full" />
+                <Bone className="h-4 w-2/3" />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Right rail */}
+      <div className="w-[340px] max-lg:w-[280px] max-sm:hidden shrink-0 border-l border-border bg-secondary/20 flex flex-col min-h-0">
+        <div className="flex items-center px-3 py-2.5 border-b border-border shrink-0">
+          <Bone className="h-7 w-48 rounded-lg" />
+          <Bone className="size-7 rounded-lg ml-auto" />
+        </div>
+        <div className="flex-1 p-5 space-y-4">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="flex gap-2.5">
+              <Bone className="size-5 rounded-full shrink-0" />
+              <div className="flex-1 space-y-1.5">
+                <Bone className="h-3.5 w-3/4" />
+                <Bone className="h-2.5 w-1/3" />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </>
+  );
+}
+
 // ── Main drawer ───────────────────────────────────────────────────────────────
 
 export function LeadDrawer({ lead, onClose, onLeadUpdated, onOrgClick }: {
@@ -578,6 +659,7 @@ export function LeadDrawer({ lead, onClose, onLeadUpdated, onOrgClick }: {
   const [loadingLead, setLoadingLead] = useState(false);
   const [enrichData,  setEnrichData ] = useState<EnrichStatus | null>(null);
   const [activity,    setActivity   ] = useState<LeadActivityEvent[]>([]);
+  const [loadingActivity, setLoadingActivity] = useState(false);
   const [railMode,    setRailMode   ] = useState<"activity" | "discussion">("activity");
   const [comments,    setComments   ] = useState<LeadComment[]>([]);
   const [commentBody, setCommentBody] = useState("");
@@ -629,6 +711,7 @@ export function LeadDrawer({ lead, onClose, onLeadUpdated, onOrgClick }: {
   }, []);
 
   const fetchActivity = useCallback(async (leadId: string) => {
+    setLoadingActivity(true);
     try {
       const tok = await getToken();
       if (!tok) return;
@@ -636,6 +719,7 @@ export function LeadDrawer({ lead, onClose, onLeadUpdated, onOrgClick }: {
       if (activeLeadIdRef.current !== leadId) return;
       setActivity(events);
     } catch { /* non-fatal */ }
+    finally { if (activeLeadIdRef.current === leadId) setLoadingActivity(false); }
   }, []);
 
   const loadComments = useCallback(async (leadId: string, quiet = false) => {
@@ -843,6 +927,9 @@ export function LeadDrawer({ lead, onClose, onLeadUpdated, onOrgClick }: {
         "flex transition-all duration-200 ease-out",
         open ? "opacity-100 scale-100" : "opacity-0 scale-95 pointer-events-none",
       )}>
+        {!display && open && (
+          <LeadDrawerSkeleton />
+        )}
         {display && (
           <>
             {/* ── Left column: header + details ── */}
@@ -1173,7 +1260,19 @@ export function LeadDrawer({ lead, onClose, onLeadUpdated, onOrgClick }: {
 
               {railMode === "activity" ? (
                 <div className="flex-1 overflow-y-auto p-5">
-                  {activity.length === 0 ? (
+                  {loadingActivity ? (
+                    <div className="space-y-4">
+                      {Array.from({ length: 5 }).map((_, i) => (
+                        <div key={i} className="flex gap-2.5">
+                          <Bone className="size-5 rounded-full shrink-0" />
+                          <div className="flex-1 space-y-1.5">
+                            <Bone className="h-3.5 w-3/4" />
+                            <Bone className="h-2.5 w-1/3" />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : activity.length === 0 ? (
                     <p className="text-xs text-muted-foreground py-1">No activity yet.</p>
                   ) : (
                     <div>
@@ -1195,8 +1294,16 @@ export function LeadDrawer({ lead, onClose, onLeadUpdated, onOrgClick }: {
                 <>
                   <div className="flex-1 overflow-y-auto p-4">
                     {loadingComments ? (
-                      <div className="h-full flex items-center justify-center text-muted-foreground">
-                        <Loader2 className="size-4 animate-spin" />
+                      <div className="space-y-4 pt-2">
+                        {Array.from({ length: 4 }).map((_, i) => (
+                          <div key={i} className={cn("flex gap-2.5", i % 2 === 0 ? "" : "flex-row-reverse")}>
+                            <Bone className="size-7 rounded-full shrink-0" />
+                            <div className="space-y-1.5 max-w-[70%]">
+                              <Bone className="h-3 w-16" />
+                              <Bone className="h-12 w-44 rounded-xl" />
+                            </div>
+                          </div>
+                        ))}
                       </div>
                     ) : comments.length === 0 ? (
                       <div className="h-full flex flex-col items-center justify-center text-center px-5">
@@ -1220,8 +1327,8 @@ export function LeadDrawer({ lead, onClose, onLeadUpdated, onOrgClick }: {
                             <div key={comment.id} className="space-y-3">
                               {showDate && (
                                 <div className="flex items-center justify-center py-1">
-                                  <span className="rounded-full border border-border bg-card px-3 py-1 text-[10px] font-medium text-muted-foreground shadow-sm">
-                                    {formatChatDate(comment.created_at)}
+                                  <span className="rounded-full border border-border bg-card px-3 py-1 text-[10px] leading-none font-medium text-muted-foreground shadow-sm">
+                                    <span className="translate-y-px inline-block">{formatChatDate(comment.created_at)}</span>
                                   </span>
                                 </div>
                               )}

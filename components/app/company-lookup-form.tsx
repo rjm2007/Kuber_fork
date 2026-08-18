@@ -1,10 +1,11 @@
 "use client";
 
-import { Fragment, useState, type ReactNode } from "react";
-import { AlertCircle, Building2, CalendarIcon, ChevronDown, ChevronRight, Search, Users } from "lucide-react";
+import { Fragment, useState, type ComponentType, type ReactNode, type SVGProps } from "react";
+import { AlertCircle, Building2, ChevronDown, ChevronRight, Globe, Rocket, Search, Users } from "lucide-react";
 import { format } from "date-fns";
+import { AppCheckbox } from "@/components/ui/app-checkbox";
 import { Button } from "@/components/ui/button";
-import { Calendar } from "@/components/ui/calendar";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,11 +16,6 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from "@/components/ui/pagination";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
 import {
   Select,
   SelectContent,
@@ -45,7 +41,7 @@ import { COMPANY_LOOKUP_MAX_CONTACTS, COMPANY_LOOKUP_MAX_PAGES } from "@/lib/con
 
 const STEPS = ["Find company", "Select company", "Select people", "Batch & assign"];
 
-const COMPANY_PAGE_SIZE_OPTIONS = [10, 20] as const;
+const COMPANY_PAGE_SIZE_OPTIONS = [10, 20, 50, 100] as const;
 const CONTACT_PAGE_SIZE_OPTIONS = [10, 20, 30] as const;
 const DEFAULT_COMPANY_PAGE_SIZE = 20;
 const DEFAULT_CONTACT_PAGE_SIZE = 10;
@@ -85,7 +81,7 @@ function LookupPaginationBar({
             onPageChange(1);
           }}
         >
-          <SelectTrigger className="h-8 w-20 text-xs bg-card" id={id}>
+          <SelectTrigger className="h-8 w-20 text-xs" id={id}>
             <SelectValue />
           </SelectTrigger>
           <SelectContent align="start">
@@ -126,7 +122,7 @@ function LookupPaginationBar({
 /** Mirrors the company results table so loading does not jump once data arrives. */
 function CompanyTableSkeleton({ rows = 8 }: { rows?: number }) {
   return (
-    <div className="overflow-hidden rounded-lg border border-border bg-card" aria-busy="true" aria-label="Loading companies">
+    <div className="overflow-hidden rounded-lg border border-border bg-field dark:bg-card" aria-busy="true" aria-label="Loading companies">
       <table className="w-full text-xs">
         <thead className="bg-secondary/30 text-muted-foreground">
           <tr>
@@ -163,7 +159,7 @@ function CompanyTableSkeleton({ rows = 8 }: { rows?: number }) {
 /** Mirrors the people checklist rows. */
 function PeopleListSkeleton({ rows = 8 }: { rows?: number }) {
   return (
-    <div className="overflow-hidden rounded-lg border border-border bg-card" aria-busy="true" aria-label="Loading people">
+    <div className="overflow-hidden rounded-lg border border-border bg-field dark:bg-card" aria-busy="true" aria-label="Loading people">
       {Array.from({ length: rows }).map((_, i) => (
         <div
           key={i}
@@ -266,15 +262,48 @@ function CompanyWebsiteLink({ company }: { company: Company }) {
   );
 }
 
-function companySocialItems(company: Company): { href: string; label: string }[] {
-  return [
-    { href: company.linkedin_url, label: "LinkedIn" },
-    { href: company.twitter_url, label: "Twitter" },
-    { href: company.facebook_url, label: "Facebook" },
-    { href: company.crunchbase_url, label: "Crunchbase" },
-    { href: company.blog_url, label: "Blog" },
-    { href: company.angellist_url, label: "AngelList" },
-  ].filter((l): l is { href: string; label: string } => typeof l.href === "string" && l.href.trim() !== "");
+function LinkedInIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" {...props}>
+      <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 1 1 0-4.124 2.062 2.062 0 0 1 0 4.124zM7.114 20.452H3.558V9h3.556v11.452z" />
+    </svg>
+  );
+}
+
+function TwitterIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" {...props}>
+      <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+    </svg>
+  );
+}
+
+function FacebookIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" {...props}>
+      <path d="M22 12c0-5.523-4.477-10-10-10S2 6.477 2 12c0 4.991 3.657 9.128 8.438 9.878v-6.987h-2.54V12h2.54V9.797c0-2.506 1.492-3.89 3.777-3.89 1.094 0 2.238.195 2.238.195v2.46h-1.26c-1.243 0-1.63.771-1.63 1.562V12h2.773l-.443 2.89h-2.33v6.987C18.343 21.128 22 16.991 22 12z" />
+    </svg>
+  );
+}
+
+function CrunchbaseIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" {...props}>
+      <path d="M2 2h20v20H2V2zm9.5 14.7c1.4 0 2.5-.6 3.2-1.5l1.6 1.5c-1.1 1.4-2.8 2.2-4.8 2.2-3.4 0-6-2.5-6-5.9s2.6-5.9 6-5.9c2 0 3.7.8 4.8 2.2l-1.6 1.5c-.7-.9-1.8-1.5-3.2-1.5-2.1 0-3.6 1.6-3.6 3.7s1.5 3.7 3.6 3.7zm7.9-1.9c0 .9.5 1.5 1.3 1.5.6 0 1-.2 1.3-.6l1.2 1.3c-.6.7-1.5 1.1-2.6 1.1-2 0-3.3-1.4-3.3-3.3V6h2.1v2.9h2.4v1.9h-2.4v3z" />
+    </svg>
+  );
+}
+
+function companySocialItems(company: Company): { href: string; label: string; icon: ComponentType<SVGProps<SVGSVGElement>> }[] {
+  const items: { href: string | null; label: string; icon: ComponentType<SVGProps<SVGSVGElement>> }[] = [
+    { href: company.linkedin_url, label: "LinkedIn", icon: LinkedInIcon },
+    { href: company.twitter_url, label: "Twitter", icon: TwitterIcon },
+    { href: company.facebook_url, label: "Facebook", icon: FacebookIcon },
+    { href: company.crunchbase_url, label: "Crunchbase", icon: CrunchbaseIcon },
+    { href: company.blog_url, label: "Blog", icon: Globe },
+    { href: company.angellist_url, label: "AngelList", icon: Rocket },
+  ];
+  return items.filter((l): l is { href: string; label: string; icon: ComponentType<SVGProps<SVGSVGElement>> } => typeof l.href === "string" && l.href.trim() !== "");
 }
 
 function CompanySocialLinks({ company }: { company: Company }) {
@@ -282,17 +311,19 @@ function CompanySocialLinks({ company }: { company: Company }) {
   if (items.length === 0) return null;
 
   return (
-    <div className="flex flex-wrap gap-1">
+    <div className="flex flex-wrap gap-1.5">
       {items.map((l) => (
         <a
           key={l.label}
           href={l.href}
           target="_blank"
           rel="noopener noreferrer"
-          className="rounded border border-border bg-background px-1.5 py-0.5 text-[10px] font-medium text-foreground hover:border-primary/40 hover:text-primary"
+          title={l.label}
+          aria-label={l.label}
+          className="flex size-6 items-center justify-center rounded-full border border-border bg-background text-muted-foreground hover:border-primary/40 hover:text-primary"
           onClick={(e) => e.stopPropagation()}
         >
-          {l.label}
+          <l.icon className="size-3.5" aria-hidden />
         </a>
       ))}
     </div>
@@ -309,7 +340,7 @@ function DetailFact({ label, value }: { label: string; value: ReactNode }) {
   );
 }
 
-function CompanyPreview({ company }: { company: Company }) {
+function CompanyPreview({ company, actions }: { company: Company; actions?: ReactNode }) {
   const location = [company.city, company.state, company.country].filter(Boolean).join(", ");
   const socials = companySocialItems(company);
   const hasFacts = !!(company.industry || company.founded_year || company.domain || location || socials.length);
@@ -319,12 +350,19 @@ function CompanyPreview({ company }: { company: Company }) {
       <DetailFact label="Founded" value={company.founded_year} />
       <DetailFact label="Domain" value={company.domain} />
       <DetailFact label="Full location" value={location || null} />
-      {socials.length > 0 && (
-        <div className="min-w-0 sm:col-span-2">
-          <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Also on</p>
-          <div className="mt-1">
-            <CompanySocialLinks company={company} />
+      {(socials.length > 0 || actions) && (
+        <div className="sm:col-span-2 lg:col-span-4 flex flex-wrap items-end justify-between gap-3">
+          <div className="min-w-0">
+            {socials.length > 0 && (
+              <>
+                <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Also on</p>
+                <div className="mt-1">
+                  <CompanySocialLinks company={company} />
+                </div>
+              </>
+            )}
           </div>
+          {actions}
         </div>
       )}
       {!hasFacts && (
@@ -418,55 +456,14 @@ function parseYmd(value: string | undefined): Date | undefined {
 }
 
 function DateField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const [open, setOpen] = useState(false);
-  const date = parseYmd(value);
-
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button
-          type="button"
-          variant="outline"
-          className={cn(
-            "h-8 w-full justify-start px-3 text-xs font-normal bg-background",
-            !date && "text-muted-foreground",
-          )}
-        >
-          <CalendarIcon className="size-3.5 mr-2 shrink-0" />
-          {date ? format(date, "MMM d, yyyy") : "Pick a date"}
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-auto p-0" align="start">
-        <Calendar
-          mode="single"
-          selected={date}
-          onSelect={(d) => {
-            onChange(d ? format(d, "yyyy-MM-dd") : "");
-            setOpen(false);
-          }}
-        />
-        <div className="flex items-center justify-between border-t border-border bg-secondary/30 px-2 py-1.5">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="h-7 px-2 text-xs text-muted-foreground"
-            onClick={() => { onChange(""); setOpen(false); }}
-          >
-            Clear
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="h-7 px-2 text-xs"
-            onClick={() => { onChange(format(new Date(), "yyyy-MM-dd")); setOpen(false); }}
-          >
-            Today
-          </Button>
-        </div>
-      </PopoverContent>
-    </Popover>
+    <DatePicker
+      date={parseYmd(value)}
+      onChangeDate={(d) => onChange(d ? format(d, "yyyy-MM-dd") : "")}
+      displayFormat="MMM d, yyyy"
+      size="sm"
+      showQuickActions
+    />
   );
 }
 
@@ -813,7 +810,6 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="ABC Plastics"
-              className="bg-card"
             />
           </div>
             <div className="space-y-1.5">
@@ -821,7 +817,7 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
                 <Label>Website <span className="text-muted-foreground font-normal">(optional)</span></Label>
                 <InfoTip side="right" text="Use the Lookalike domain if you want the results to be similar to the domain you entered." />
               </div>
-              <Input value={website} onChange={(e) => setWebsite(e.target.value)} placeholder="abcplastics.com" className="bg-card" />
+              <Input value={website} onChange={(e) => setWebsite(e.target.value)} placeholder="abcplastics.com" />
             </div>
             <LocationsPicker
               label="Country"
@@ -831,11 +827,11 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
               onChangeSelected={setCountries}
             />
 
-          <div className="rounded-lg border border-border bg-secondary/30">
+          <div>
             <button
               type="button"
               onClick={() => setAdvancedOpen((o) => !o)}
-              className="flex w-full items-center justify-between px-3 py-2.5 text-left"
+              className="flex w-full items-center justify-between py-1.5 text-left"
             >
               <span className="text-xs font-medium">
                 Advanced search
@@ -851,13 +847,13 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
             {/* Active filters stay visible when collapsed — results must never be
                 narrowed by something the user can't see. */}
             {!advancedOpen && activeAdvanced.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 px-3 pb-2.5">
+              <div className="flex flex-wrap gap-1.5 pb-2.5">
                 {activeAdvanced.map(([k, v]) => (
                   <button
                     key={k}
                     type="button"
                     onClick={() => setAdvanced((a) => ({ ...a, [k]: "" }))}
-                    className="rounded border border-border bg-card px-1.5 py-0.5 text-[10px] text-muted-foreground hover:text-foreground"
+                    className="rounded border border-border bg-field px-1.5 py-0.5 text-[10px] text-muted-foreground hover:text-foreground"
                     title="Remove filter"
                   >
                     {k}: {v} ✕
@@ -867,7 +863,7 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
             )}
 
             {advancedOpen && (
-              <div className="space-y-3 border-t border-border px-3 py-3">
+              <div className="space-y-3 border-t border-border pt-3 pb-1">
                 {ADVANCED_GROUPS.map((g) => (
                   <div key={g.group} className="space-y-2">
                     <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{g.group}</p>
@@ -907,7 +903,7 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
                               onChange={(e) => setAdvanced((a) => ({ ...a, [f.key]: e.target.value }))}
                               placeholder={f.placeholder}
                               type={f.kind === "num" ? "number" : "text"}
-                              className="h-8 bg-background text-xs"
+                              className="h-8 text-xs"
                             />
                           </div>
                         )
@@ -947,7 +943,7 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
                 Showing <strong>{visibleCompanies.length === 0 ? 0 : companyStart + 1}–{companyStart + visibleCompanies.length}</strong> of{" "}
                 <strong>{companies.length}</strong> retrieved · <strong>{totalEntries.toLocaleString()}</strong> match in Apollo ·{" "}
                 <strong>{creditsSpent}</strong> credit{creditsSpent === 1 ? "" : "s"} spent
-                {" "}· click a row for details, the arrow to select
+                {" "}· click a row for details, then select it below
               </p>
 
               {companies.length === 0 ? (
@@ -957,11 +953,11 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
                   <p className="mt-1 text-xs text-muted-foreground">
                     Try a shorter name, clear countries, or adjust Advanced search. This search cost nothing.
                   </p>
-                  <Button type="button" variant="outline" className="mt-3 bg-card" onClick={() => setStep(0)}>Refine search</Button>
+                  <Button type="button" variant="outline" className="mt-3" onClick={() => setStep(0)}>Refine search</Button>
                 </div>
               ) : (
                 <>
-                  <div className="overflow-hidden rounded-lg border border-border bg-card">
+                  <div className="overflow-hidden rounded-lg border border-border bg-field dark:bg-card">
                     <table className="w-full text-xs">
                       <thead className="bg-secondary/30 text-muted-foreground">
                         <tr>
@@ -969,7 +965,6 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
                           <th className="px-3 py-2 text-left font-medium">Location</th>
                           <th className="px-3 py-2 text-right font-medium">Staff</th>
                           <th className="px-3 py-2 text-left font-medium">Website</th>
-                          <th className="px-3 py-2" />
                         </tr>
                       </thead>
                       <tbody>
@@ -1010,31 +1005,34 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
                               <td className="px-3 py-2.5">
                                 <CompanyWebsiteLink company={c} />
                               </td>
-                              <td className="w-10 px-2 py-2.5 text-right">
-                                <button
-                                  type="button"
-                                  disabled={unavailable}
-                                  className={cn(
-                                    "ml-auto flex size-7 items-center justify-center rounded-full",
-                                    c.already_in_system
-                                      ? "bg-secondary text-muted-foreground/40"
-                                      : "bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground",
-                                  )}
-                                  title={c.already_in_system ? "Already in system" : `Select ${c.name ?? "company"}`}
-                                  aria-label={c.already_in_system ? "Unavailable" : `Select ${c.name ?? "company"}`}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    if (!unavailable) void loadPeople(c);
-                                  }}
-                                >
-                                  <ChevronRight className="size-3.5" aria-hidden />
-                                </button>
-                              </td>
                             </tr>
                             {open && (
                               <tr className="border-t border-border bg-secondary/30">
-                                <td colSpan={5} className="px-3 py-3">
-                                  <CompanyPreview company={c} />
+                                <td colSpan={4} className="px-3 py-3">
+                                  <CompanyPreview
+                                    company={c}
+                                    actions={
+                                      <button
+                                        type="button"
+                                        disabled={unavailable}
+                                        className={cn(
+                                          "flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium",
+                                          c.already_in_system
+                                            ? "bg-secondary text-muted-foreground/40"
+                                            : "bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground",
+                                        )}
+                                        title={c.already_in_system ? "Already in system" : `Select ${c.name ?? "company"}`}
+                                        aria-label={c.already_in_system ? "Unavailable" : `Select ${c.name ?? "company"}`}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          if (!unavailable) void loadPeople(c);
+                                        }}
+                                      >
+                                        {c.already_in_system ? "Already in system" : "Select company"}
+                                        <ChevronRight className="size-3.5" aria-hidden />
+                                      </button>
+                                    }
+                                  />
                                 </td>
                               </tr>
                             )}
@@ -1067,7 +1065,7 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
                           variant="outline"
                           size="sm"
                           disabled={busy}
-                          className="h-8 text-xs bg-card"
+                          className="h-8 text-xs bg-field"
                           onClick={() => {
                             if (confirm("Fetch 100 more companies from Apollo? This costs 1 credit.")) {
                               void runSearch(apolloPage + 1);
@@ -1119,14 +1117,16 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
             </div>
           ) : (
             <>
-              <div className="overflow-hidden rounded-lg border border-border bg-card">
+              <div className="overflow-hidden rounded-lg border border-border bg-field dark:bg-card">
                 {visibleContacts.map((c) => {
                   const blocked = c.already_imported || c.unenrichable;
                   const on = picked.includes(c.apollo_id);
                   const displayName = formatContactName(c.first_name, c.last_name_masked);
+                  const disabled = blocked || (!on && atPickLimit);
                   return (
                     <label
                       key={c.apollo_id}
+                      onClick={() => { if (!disabled) togglePick(c.apollo_id); }}
                       className={cn(
                         "flex items-center gap-3 border-b border-border px-3 py-2.5 last:border-b-0",
                         blocked ? "opacity-50" : "cursor-pointer hover:bg-secondary/30",
@@ -1151,15 +1151,7 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
                           no email available
                         </span>
                       )}
-                      {/* Native input — there is no shared Checkbox in this
-                          codebase and one control does not justify adding one. */}
-                      <input
-                        type="checkbox"
-                        className="size-4 shrink-0 accent-primary"
-                        checked={on}
-                        disabled={blocked || (!on && atPickLimit)}
-                        onChange={() => togglePick(c.apollo_id)}
-                      />
+                      <AppCheckbox checked={on} disabled={disabled} />
                     </label>
                   );
                 })}
@@ -1227,7 +1219,7 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
       )}
 
       <div className="flex items-center justify-between pt-2">
-        <Button type="button" variant="outline" className="bg-card" disabled={step === 0 || busy}
+        <Button type="button" variant="outline" className="bg-field dark:bg-card" disabled={step === 0 || busy}
           onClick={() => { setError(""); setStep((s) => Math.max(0, s - 1)); }}>
           Back
         </Button>

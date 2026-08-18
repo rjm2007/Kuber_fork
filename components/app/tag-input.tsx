@@ -78,11 +78,11 @@ export function TagInput({
         {tip && <InfoTip text={tip} side="right" />}
       </div>
       <div
-        className="relative min-h-9 flex flex-wrap gap-1.5 items-center rounded-md border border-input bg-background px-3 py-2 cursor-text focus-within:ring-1 focus-within:ring-ring focus-within:border-transparent transition-shadow"
+        className="relative min-h-9 flex flex-wrap gap-1.5 items-center rounded-md border border-input bg-field px-3 py-2 cursor-text focus-within:ring-1 focus-within:ring-ring focus-within:border-transparent transition-shadow"
         onClick={() => !maxReached && inputRef.current?.focus()}
       >
         {pills.map((p) => (
-          <span key={p} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary/15 border border-primary/30 text-xs font-mono font-medium text-primary">
+          <span key={p} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary/15 border border-primary/30 text-xs leading-none font-mono font-medium text-primary">
             {p}
             <Button
               type="button"

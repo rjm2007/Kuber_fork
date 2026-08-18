@@ -2462,9 +2462,21 @@ export function CampaignDetail({
           /* Table */
           <div className="flex-1 min-h-0 overflow-y-auto bg-secondary/20 px-6 py-4">
               {loading ? (
-                <div className="rounded-xl border border-border bg-card shadow-sm p-4 space-y-2 animate-pulse">
+                <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden animate-pulse">
+                  <div className="flex items-center gap-4 px-4 py-3 border-b border-border bg-secondary/30">
+                    <div className="size-4 rounded bg-secondary" />
+                    <div className="h-3 w-24 bg-secondary rounded" />
+                    <div className="h-3 w-32 bg-secondary rounded" />
+                    <div className="h-3 w-20 bg-secondary rounded ml-auto" />
+                  </div>
                   {Array.from({ length: 8 }).map((_, i) => (
-                    <div key={i} className="h-10 bg-muted rounded" />
+                    <div key={i} className="flex items-center gap-4 px-4 py-3.5 border-b border-border last:border-0">
+                      <div className="size-4 rounded bg-secondary" />
+                      <div className="size-8 rounded-full bg-secondary" />
+                      <div className="h-3.5 w-28 bg-secondary rounded" />
+                      <div className="h-3 w-36 bg-secondary/60 rounded" />
+                      <div className="h-5 w-16 bg-secondary rounded-full ml-auto" />
+                    </div>
                   ))}
                 </div>
               ) : filteredLeads.length === 0 ? (
@@ -2564,7 +2576,7 @@ export function CampaignDetail({
                                   <button
                                     type="button"
                                     onClick={(e) => { e.stopPropagation(); openReplace(cl); }}
-                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md border border-border bg-background font-mono text-[10px] font-semibold uppercase tracking-wide text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
+                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md border border-border bg-field font-mono text-[10px] font-semibold uppercase tracking-wide text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
                                     title="Add another contact at this company"
                                   >
                                     <UserPlus className="size-3" />
@@ -3055,13 +3067,26 @@ export function CampaignDetail({
 
                 {/* Initial email — editor while pending, bubble once sent */}
                 {selected.email_drafts?.status === "generating" || regenerating || getDraftActivity(selected) ? (
-                  <div className="max-w-2xl mx-auto flex flex-col items-center py-20 gap-3 rounded-xl border border-border bg-card">
-                    <Loader2 className="size-6 text-muted-foreground animate-spin" />
-                    <p className="text-sm text-muted-foreground">
-                      {getDraftActivity(selected) === "regenerating" || regenerating
-                        ? "Regenerating personalised email…"
-                        : "Generating personalised email…"}
-                    </p>
+                  <div className="max-w-2xl mx-auto rounded-xl border border-border bg-card p-6 space-y-4 animate-pulse">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Loader2 className="size-4 text-muted-foreground animate-spin" />
+                      <p className="text-xs text-muted-foreground">
+                        {getDraftActivity(selected) === "regenerating" || regenerating
+                          ? "Regenerating personalised email…"
+                          : "Generating personalised email…"}
+                      </p>
+                    </div>
+                    <div className="h-4 w-48 bg-secondary rounded" />
+                    <div className="space-y-2">
+                      <div className="h-3 w-full bg-secondary rounded" />
+                      <div className="h-3 w-full bg-secondary rounded" />
+                      <div className="h-3 w-3/4 bg-secondary rounded" />
+                    </div>
+                    <div className="space-y-2 pt-2">
+                      <div className="h-3 w-full bg-secondary rounded" />
+                      <div className="h-3 w-5/6 bg-secondary rounded" />
+                      <div className="h-3 w-2/3 bg-secondary rounded" />
+                    </div>
                   </div>
                 ) : selected.email_drafts && selected.email_drafts.status !== "sent" ? (
                   <div className="max-w-2xl mx-auto rounded-xl border border-border bg-card p-5 space-y-4">
@@ -3251,7 +3276,7 @@ export function CampaignDetail({
                           value={regenQuery}
                           onChange={(e) => setRegenQuery(e.target.value)}
                           rows={4}
-                          className="text-sm resize-y bg-card"
+                          className="text-sm resize-y bg-field"
                           placeholder='Describe the change — multiple lines are fine, e.g. paste a block and say "remove this"'
                           onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleRegenerate(); }}
                         />
@@ -3532,9 +3557,17 @@ export function CampaignDetail({
                 {seqHasContent ? (
                   <div className="rounded-xl border border-border bg-card p-6 space-y-4">
                     {seqRegenerating ? (
-                      <div className="flex flex-col items-center py-16 gap-3">
-                        <Loader2 className="size-6 text-muted-foreground animate-spin" />
-                        <p className="text-sm text-muted-foreground">Regenerating follow-up…</p>
+                      <div className="p-4 space-y-4 animate-pulse">
+                        <div className="flex items-center gap-2">
+                          <Loader2 className="size-4 text-muted-foreground animate-spin" />
+                          <p className="text-xs text-muted-foreground">Regenerating follow-up…</p>
+                        </div>
+                        <div className="h-4 w-40 bg-secondary rounded" />
+                        <div className="space-y-2">
+                          <div className="h-3 w-full bg-secondary rounded" />
+                          <div className="h-3 w-full bg-secondary rounded" />
+                          <div className="h-3 w-2/3 bg-secondary rounded" />
+                        </div>
                       </div>
                     ) : (
                       <>
@@ -3612,8 +3645,16 @@ export function CampaignDetail({
           <div className="flex-1 overflow-y-auto">
             <div className="w-full max-w-3xl mx-auto px-6 py-6">
               {loadingComments ? (
-                <div className="min-h-[320px] flex items-center justify-center text-muted-foreground">
-                  <Loader2 className="size-5 animate-spin" />
+                <div className="min-h-[320px] animate-pulse space-y-4 pt-4">
+                  {Array.from({ length: 4 }).map((_, i) => (
+                    <div key={i} className={`flex gap-2.5 ${i % 2 === 0 ? "" : "flex-row-reverse"}`}>
+                      <div className="size-7 rounded-full bg-secondary shrink-0" />
+                      <div className="space-y-1.5 max-w-[65%]">
+                        <div className="h-3 w-16 bg-secondary rounded" />
+                        <div className="h-12 w-48 bg-secondary rounded-xl" />
+                      </div>
+                    </div>
+                  ))}
                 </div>
               ) : comments.length === 0 ? (
                 <div className="min-h-[320px] flex flex-col items-center justify-center text-center px-5">
@@ -3637,8 +3678,8 @@ export function CampaignDetail({
                       <div key={comment.id} className="space-y-3">
                         {showDate && (
                           <div className="flex items-center justify-center py-1">
-                            <span className="rounded-full border border-border bg-card px-3 py-1 text-[10px] font-medium text-muted-foreground shadow-sm">
-                              {formatChatDate(comment.created_at)}
+                            <span className="rounded-full border border-border bg-card px-3 py-1 text-[10px] leading-none font-medium text-muted-foreground shadow-sm">
+                              <span className="translate-y-px inline-block">{formatChatDate(comment.created_at)}</span>
                             </span>
                           </div>
                         )}

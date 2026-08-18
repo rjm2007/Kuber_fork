@@ -817,9 +817,20 @@ export async function importExcelDirect(
 
 export type PreviewLead = { firstName: string; lastName: string; email: string; company: string; jobTitle: string; domain?: string };
 
+export type ApolloPeopleAdvanced = {
+  titles?: string[]; includeSimilarTitles?: boolean; seniorities?: string[];
+  organizationLocations?: string[]; domains?: string[]; employeeRanges?: string[];
+  revenueMin?: number; revenueMax?: number;
+  technologyAll?: string[]; technologyAny?: string[]; technologyNot?: string[];
+  jobTitles?: string[]; jobLocations?: string[];
+  numJobsMin?: number; numJobsMax?: number;
+  jobPostedAtMin?: string; jobPostedAtMax?: string;
+};
+
 export async function apolloPreview(token: string, body: {
   keywords: string[]; locations: string[];
   titles?: string[]; seniorities?: string[]; batch_name: string; color?: string;
+  advanced?: ApolloPeopleAdvanced;
 }): Promise<{ preview: true; leads: PreviewLead[] }> {
   return apiFetch("/api/v1/leads/apollo-search", {
     method: "POST",
@@ -831,6 +842,7 @@ export async function apolloSearch(token: string, body: {
   keywords: string[]; locations: string[];
   titles?: string[]; seniorities?: string[]; batch_name: string; color?: string;
   assigned_to?: string; assignment_strategy?: "round_robin" | "territory";
+  advanced?: ApolloPeopleAdvanced;
 }): Promise<{ inserted: number; skipped: number; orgs_created: number; assignment_skipped?: number; duplicate_owners?: DuplicateOwner[] }> {
   return apiFetch("/api/v1/leads/apollo-search", { method: "POST", body: JSON.stringify(body) }, token);
 }

@@ -14,7 +14,7 @@ const Card = React.forwardRef<HTMLDivElement, CardProps>(
     <div
       ref={ref}
       className={cn(
-        "rounded-xl border border-border bg-card text-card-foreground shadow-sm",
+        "rounded-xl border border-border bg-field dark:bg-card text-card-foreground shadow-sm",
         swatch !== "none" && "overflow-hidden",
         swatch === "left" && "swatch-bar",
         swatch === "top" && "swatch-bar-top",

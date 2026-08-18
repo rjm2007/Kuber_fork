@@ -2,16 +2,15 @@
 
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { ChevronRight, Loader2, Clock, Calendar as CalendarIcon, Globe, Calendar, Paperclip, Upload, FileText, X, Check } from "lucide-react";
+import { ChevronRight, Loader2, Clock, Globe, Calendar, Paperclip, Upload, FileText, X, Check } from "lucide-react";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Calendar as CalendarPicker } from "@/components/ui/calendar";
 import { InfoTip } from "@/components/ui/info-tip";
 import { Switch } from "@/components/ui/switch";
 import { Stepper } from "@/components/ui/stepper";
@@ -65,9 +64,9 @@ function DayPill({ day, active, onClick }: { day: string; active: boolean; onCli
       variant={active ? "default" : "outline"}
       size="icon"
       onClick={onClick}
-      className="size-8 rounded-full text-xs font-semibold"
+      className="size-8 rounded-full text-xs leading-none font-semibold"
     >
-      {day[0].toUpperCase()}
+      <span className="translate-y-px">{day[0].toUpperCase()}</span>
     </Button>
   );
 }
@@ -92,11 +91,6 @@ const TIME_OPTIONS = Array.from({ length: 48 }, (_, index) => {
   const label = `${String(displayHour).padStart(2, "0")}:${minutes} ${period}`;
   return { value, label };
 });
-
-/** Nested field fill for controls that sit on the modal's bg-card surface.
- *  Shared Input/Select default is already bg-background; this stronger fill is
- *  for dense toolbar-style fields that need a clearer editable affordance. */
-const FIELD_FILL = "bg-secondary/70 hover:bg-secondary focus-visible:bg-secondary transition-colors";
 
 function TimeSelect({ value, onChange }: { value: string; onChange: (value: string) => void }) {
   return (
@@ -339,11 +333,11 @@ export function CreateCampaignModal({
               <Label className="text-sm font-medium">
                 Campaign name <span className="text-destructive">*</span>
               </Label>
-              <Input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Q3 Plastics Outreach" className={FIELD_FILL} />
+              <Input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Q3 Plastics Outreach" />
             </div>
             <div className="space-y-1.5">
               <Label className="text-sm font-medium">Sender name</Label>
-              <Input value={senderName} onChange={(e) => setSenderName(e.target.value)} placeholder="Kuber Polyplast" className={FIELD_FILL} />
+              <Input value={senderName} onChange={(e) => setSenderName(e.target.value)} placeholder="Kuber Polyplast" />
             </div>
           </div>
 
@@ -351,7 +345,7 @@ export function CreateCampaignModal({
             <div className="space-y-1.5">
               <Label className="text-sm font-medium">Assign entire campaign to (optional)</Label>
               <Select value={assignTo || "keep"} onValueChange={(v) => setAssignTo(v === "keep" ? "" : v)}>
-                <SelectTrigger className={FIELD_FILL}><SelectValue /></SelectTrigger>
+                <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="keep">Keep current lead owners</SelectItem>
                   {employees.map((e) => (
@@ -379,7 +373,6 @@ export function CreateCampaignModal({
               onChange={(e) => setAiPromptContext(e.target.value)}
               placeholder="e.g. Mention our new biodegradable masterbatch line. Focus on sustainability angle. Avoid mentioning pricing."
               rows={3}
-              className={FIELD_FILL}
             />
           </div>
 
@@ -460,17 +453,7 @@ export function CreateCampaignModal({
                   <p className="text-xs text-muted-foreground">Optional — leave empty to send when ready</p>
                 </div>
               </div>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" className="gap-2">
-                    <CalendarIcon className="size-3.5" />
-                    {scheduleDate ? format(scheduleDate, "PPP") : "Pick send date"}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0">
-                  <CalendarPicker mode="single" selected={scheduleDate} onSelect={setScheduleDate} />
-                </PopoverContent>
-              </Popover>
+              <DatePicker date={scheduleDate} onChangeDate={setScheduleDate} placeholder="Pick send date" className="w-auto" />
             </div>
 
             <div className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
@@ -519,7 +502,7 @@ export function CreateCampaignModal({
                         const v = Math.max(1, Math.min(365, Number(e.target.value) || 1));
                         setFollowupSteps((prev) => prev.map((s, i) => (i === idx ? { ...s, delay: v } : s)));
                       }}
-                      className="h-7 w-14 rounded-md border border-border bg-card px-1 py-0 text-center text-sm font-mono font-medium tabular-nums focus-visible:ring-1 focus-visible:ring-offset-0"
+                      className="h-7 w-14 rounded-md border border-border bg-field px-1 py-0 text-center text-sm font-mono font-medium tabular-nums focus-visible:ring-1 focus-visible:ring-offset-0"
                     />
                     <Select
                       value={fu.delay_unit}
@@ -637,7 +620,7 @@ export function CreateCampaignModal({
         </div>
 
         <div className="border-t border-border bg-card/30 px-6 py-4 flex items-center justify-between">
-          <Button type="button" variant="outline" className="bg-card" onClick={goBack} disabled={step === 0}>
+          <Button type="button" variant="outline" onClick={goBack} disabled={step === 0}>
             Back
           </Button>
           {step < STEPS.length - 1 ? (

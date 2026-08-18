@@ -40,7 +40,7 @@ export function ReplyToField({
       <Label className="eyebrow text-muted-foreground">To</Label>
       <div
         className={cn(
-          "flex min-h-9 flex-wrap items-center gap-1.5 rounded-md border border-input bg-background px-2 py-1.5",
+          "flex min-h-9 flex-wrap items-center gap-1.5 rounded-md border border-input bg-field px-2 py-1.5",
           disabled && "opacity-50 pointer-events-none",
         )}
       >

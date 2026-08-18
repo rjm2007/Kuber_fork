@@ -154,7 +154,7 @@ export function DiscussionComment({
                     void handleToggle(group.emoji);
                   }}
                   className={cn(
-                    "inline-flex cursor-pointer items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] transition-colors",
+                    "inline-flex cursor-pointer items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] leading-none transition-colors",
                     group.reacted_by_me
                       ? "border-primary/40 bg-primary/10 text-foreground"
                       : "border-border bg-background/60 text-muted-foreground hover:bg-secondary",
@@ -162,7 +162,7 @@ export function DiscussionComment({
                   aria-label={`${group.emoji} ${group.count} — ${group.users.map((u) => u.name).join(", ")}`}
                 >
                   <span className="text-sm leading-none">{group.emoji}</span>
-                  <span className="font-medium tabular-nums">{group.count}</span>
+                  <span className="font-medium tabular-nums translate-y-px">{group.count}</span>
                 </button>
 
                 {/* Hover popup — who reacted with this emoji */}

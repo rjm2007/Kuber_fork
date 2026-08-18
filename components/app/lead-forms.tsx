@@ -18,14 +18,16 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
-import { LOCATION_MAP, APOLLO_TITLES, INDUSTRY_KEYWORD_CATEGORIES, BATCH_COLORS, getBatchColor, resolveApolloKeyword } from "@/lib/constants";
+import { LOCATION_MAP, APOLLO_TITLES, INDUSTRY_KEYWORD_CATEGORIES, BATCH_COLORS, getBatchColor, resolveApolloKeyword, type BatchColorName } from "@/lib/constants";
 import { LocationsPicker } from "@/components/ui/locations-picker";
 import { InfoTip } from "@/components/ui/info-tip";
+import { ApolloPeopleAdvanced, buildPeopleAdvanced } from "@/components/app/apollo-people-advanced";
 import { importExcelDirect, createLead, patchLead, patchOrg, fetchUsers, fetchUsage, type Profile, type PreviewLead, type DuplicateOwner } from "@/lib/api-client";
 import { ensureSplitNames } from "@/lib/utils/person-name";
 import { supabase } from "@/lib/supabase";
 import { BatchConfirmModal } from "@/components/app/batch-confirm-modal";
 import { Stepper } from "@/components/ui/stepper";
+import { Pill } from "@/components/ui/pill";
 
 // Exported so the Company Lookup wizard reuses these verbatim rather than
 // growing a second copy of the batch/assignment controls that then drifts.
@@ -62,7 +64,7 @@ export function BatchNameField({
   }, []);
 
   return (
-    <div className="rounded-xl border border-border bg-card p-4">
+    <div className="rounded-xl p-4">
       <div className="flex items-end gap-3">
         <div className="flex-1 min-w-0 space-y-1">
           <div className="flex items-center gap-1">
@@ -73,10 +75,7 @@ export function BatchNameField({
               text="Name this import so you can recognise it later (e.g. 'India Plastics Q3'). The name becomes a coloured tag on every lead in this batch."
             />
             {value.trim() && (
-              <span className={cn("ml-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full border text-[10px] font-medium", c.pill)}>
-                <span className={cn("size-1.5 rounded-full shrink-0", c.bg)} />
-                {value}
-              </span>
+              <Pill color={color as BatchColorName} dot className="ml-1 px-1.5 text-[10px]">{value}</Pill>
             )}
           </div>
           <Input
@@ -98,7 +97,7 @@ export function BatchNameField({
             variant="outline"
             onClick={() => setSwatchOpen((o) => !o)}
             className={cn(
-              "h-8 gap-2 rounded-md px-3 text-sm font-normal bg-card",
+              "h-8 gap-2 rounded-md px-3 text-sm font-normal bg-field hover:bg-field",
               swatchOpen && "ring-2 ring-ring border-transparent",
             )}
           >
@@ -162,7 +161,7 @@ function AssignToField({
     <div className="space-y-1.5">
       <Label>Assign to</Label>
       <Select value={value || "unassigned"} onValueChange={(v) => onChange(v === "unassigned" ? "" : v)}>
-        <SelectTrigger className="bg-background"><SelectValue /></SelectTrigger>
+        <SelectTrigger><SelectValue /></SelectTrigger>
         <SelectContent>
           <SelectItem value="unassigned">Leave in pool (unassigned)</SelectItem>
           {employees.map((e) => (
@@ -224,7 +223,7 @@ export function AssignStrategyPicker({
               "h-auto flex-col items-start justify-start gap-0 rounded-lg p-3 text-left font-normal",
               mode === opt.value
                 ? "border-primary bg-primary/10 hover:bg-primary/10 hover:text-foreground"
-                : "border-border bg-card hover:border-muted-foreground/40",
+                : "border-border bg-field hover:bg-field hover:border-muted-foreground/40",
             )}
           >
             <p className="text-sm font-medium">{opt.label}</p>
@@ -234,7 +233,7 @@ export function AssignStrategyPicker({
       </div>
       {mode === "manual" && (
         <Select value={assignTo || "unassigned"} onValueChange={(v) => onAssignToChange(v === "unassigned" ? "" : v)}>
-          <SelectTrigger className="bg-background"><SelectValue placeholder="Pick an employee" /></SelectTrigger>
+          <SelectTrigger><SelectValue placeholder="Pick an employee" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="unassigned">Pick an employee…</SelectItem>
             {employees.map((e) => (
@@ -351,9 +350,8 @@ function IndustryKeywordsDropdown({
           variant="outline"
           onClick={() => setOpen((o) => !o)}
           className={cn(
-            "w-full justify-between px-3 py-2 text-sm font-normal text-left",
+            "w-full justify-between px-3 py-2 text-sm font-normal text-left bg-field hover:bg-field",
             open ? "border-ring ring-1 ring-ring" : "border-input hover:border-muted-foreground",
-            "bg-card",
           )}
         >
           <span className={selectedCount === 0 ? "text-muted-foreground/60" : "text-foreground"}>
@@ -555,6 +553,8 @@ export function ApolloForm({ onImport }: { onImport: (n: number) => void }) {
   const [error,         setError        ] = useState("");
   const [assignTo,      setAssignTo     ] = useState("");
   const [assignMode,    setAssignMode   ] = useState<ImportAssignMode>("manual");
+  const [advancedRaw,   setAdvancedRaw  ] = useState<Record<string, string>>({});
+  const [includeSimilarTitles, setIncludeSimilarTitles] = useState(true);
   const employees = useAssignableEmployees(true);
 
   useEffect(() => {
@@ -619,6 +619,7 @@ export function ApolloForm({ onImport }: { onImport: (n: number) => void }) {
     setImporting(true);
     try {
       const token = await getToken();
+      const advanced = buildPeopleAdvanced(advancedRaw, includeSimilarTitles);
       // Search + lead insert happen synchronously server-side; only email
       // enrichment (Phase 2) runs in the background after this responds.
       const response = await fetch("/api/v1/leads/apollo-search", {
@@ -637,6 +638,7 @@ export function ApolloForm({ onImport }: { onImport: (n: number) => void }) {
           batch_name: batchName,
           color,
           ...buildImportAssignment(assignMode, assignTo),
+          ...(advanced ? { advanced } : {}),
         }),
       });
       const json = await response.json().catch(() => ({}));
@@ -707,6 +709,12 @@ export function ApolloForm({ onImport }: { onImport: (n: number) => void }) {
               selected={locations}
               onChangeSelected={setLocations}
             />
+            <ApolloPeopleAdvanced
+              raw={advancedRaw}
+              onRawChange={setAdvancedRaw}
+              includeSimilarTitles={includeSimilarTitles}
+              onIncludeSimilarTitlesChange={setIncludeSimilarTitles}
+            />
           </div>
         )}
 
@@ -726,7 +734,7 @@ export function ApolloForm({ onImport }: { onImport: (n: number) => void }) {
                 <InfoTip side="right" text="Every lead here costs a paid Apollo credit to reveal an email for — this is a hard cap on how many the import will spend, no matter how many keywords are selected." />
               </div>
               <Select value={String(maxTotalLeads)} onValueChange={(v) => setMaxTotalLeads(Number(v))}>
-                <SelectTrigger className="bg-background"><SelectValue /></SelectTrigger>
+                <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {(strictCap ? STRICT_TIERS : [25, 50, 100, 250, 500]).map((n) => (
                     <SelectItem key={n} value={String(n)} disabled={apolloRemaining != null && n > apolloRemaining}>
@@ -749,7 +757,7 @@ export function ApolloForm({ onImport }: { onImport: (n: number) => void }) {
                 onValueChange={(v) => setMaxPerKeyword(Number(v) as 25 | 50)}
                 disabled={perKeywordCapIsMoot}
               >
-                <SelectTrigger className="bg-background"><SelectValue /></SelectTrigger>
+                <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {[25, 50].map((n) => (
                     // An option above the fair share can never bite — the budget
@@ -808,7 +816,7 @@ export function ApolloForm({ onImport }: { onImport: (n: number) => void }) {
         )}
 
         <div className="flex items-center justify-between pt-2">
-          <Button type="button" variant="outline" className="bg-card" onClick={goBack} disabled={step === 0}>Back</Button>
+          <Button type="button" variant="outline" onClick={goBack} disabled={step === 0}>Back</Button>
           {step < APOLLO_STEPS.length - 1 ? (
             <Button type="submit">Continue</Button>
           ) : (
@@ -995,7 +1003,7 @@ export function ExcelForm({ onImport }: { onImport: (n: number) => void }) {
             <StatTile key={label} label={label} value={value ?? 0} tone={tone} />
           ))}
         </div>
-        <Button variant="outline" className="bg-card" onClick={reset}>Upload another file</Button>
+        <Button variant="outline" onClick={reset}>Upload another file</Button>
       </div>
     );
   }
@@ -1059,8 +1067,8 @@ export function ExcelForm({ onImport }: { onImport: (n: number) => void }) {
               <p className="font-mono text-sm font-medium truncate">{fileName}</p>
               <p className="font-mono text-xs text-muted-foreground tabular-nums">{rows.length} rows · {headers.length} columns detected</p>
             </div>
-            <Button type="button" variant="outline" size="sm" className="shrink-0 bg-card" onClick={() => setShowRawPreview(true)}>View</Button>
-            <Button type="button" variant="outline" size="sm" className="shrink-0 bg-card" onClick={reset}>Change</Button>
+            <Button type="button" variant="outline" size="sm" className="shrink-0" onClick={() => setShowRawPreview(true)}>View</Button>
+            <Button type="button" variant="outline" size="sm" className="shrink-0" onClick={reset}>Change</Button>
           </div>
 
           {stage === "map" && (
@@ -1092,7 +1100,7 @@ export function ExcelForm({ onImport }: { onImport: (n: number) => void }) {
                             });
                           }}
                         >
-                          <SelectTrigger className="h-8 text-xs bg-background">
+                          <SelectTrigger className="h-8 text-xs">
                             <SelectValue placeholder="Not mapped" />
                           </SelectTrigger>
                           <SelectContent>
@@ -1116,7 +1124,7 @@ export function ExcelForm({ onImport }: { onImport: (n: number) => void }) {
               <div className="flex items-center justify-between gap-3 pt-2">
                 <p className="text-xs text-muted-foreground">{rows.length} rows detected</p>
                 <div className="flex gap-2">
-                  <Button type="button" variant="outline" size="sm" className="bg-card" onClick={reset}>Back</Button>
+                  <Button type="button" variant="outline" size="sm" onClick={reset}>Back</Button>
                   <Button type="submit" disabled={!emailMapped || !nameMapped || !domainMapped}>
                     Continue
                   </Button>
@@ -1140,7 +1148,7 @@ export function ExcelForm({ onImport }: { onImport: (n: number) => void }) {
               <div className="flex items-center justify-between gap-3 pt-2">
                 <p className="text-xs text-muted-foreground">{rows.length} rows will be processed</p>
                 <div className="flex gap-2">
-                  <Button type="button" variant="outline" size="sm" className="bg-card" onClick={() => setStage("map")}>Back</Button>
+                  <Button type="button" variant="outline" size="sm" onClick={() => setStage("map")}>Back</Button>
                   <Button type="submit">
                     Continue
                   </Button>
@@ -1169,7 +1177,7 @@ export function ExcelForm({ onImport }: { onImport: (n: number) => void }) {
               <div className="flex items-center justify-between gap-3 pt-2">
                 <p className="text-xs text-muted-foreground">{rows.length} rows will be processed</p>
                 <div className="flex gap-2">
-                  <Button type="button" variant="outline" size="sm" className="bg-card" onClick={() => setStage("batch")}>Back</Button>
+                  <Button type="button" variant="outline" size="sm" onClick={() => setStage("batch")}>Back</Button>
                   <Button type="submit" disabled={importing}>
                     Preview & Import
                   </Button>
@@ -1441,7 +1449,7 @@ export function ManualForm({ onImport, prefillOrg, prefillLeads, editMode = fals
               </div>
             </div>
           ))}
-          <Button type="button" variant="outline" className="gap-1.5 w-full bg-card" onClick={addLead}>
+          <Button type="button" variant="outline" className="gap-1.5 w-full" onClick={addLead}>
             <Plus className="size-3.5" /> Add lead
           </Button>
         </div>
@@ -1462,7 +1470,7 @@ export function ManualForm({ onImport, prefillOrg, prefillLeads, editMode = fals
       {error && <p className="text-xs text-destructive">{error}</p>}
 
       <div className="flex items-center justify-between pt-2">
-        <Button type="button" variant="outline" className="bg-card" onClick={goBack} disabled={step === 0}>Back</Button>
+        <Button type="button" variant="outline" onClick={goBack} disabled={step === 0}>Back</Button>
         <Button type="submit" disabled={saving}>
           {isLastStep ? (saving ? "Saving…" : editMode ? "Save changes" : "Preview & Save") : "Continue"}
         </Button>

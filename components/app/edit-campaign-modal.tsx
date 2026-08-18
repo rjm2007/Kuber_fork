@@ -39,9 +39,9 @@ function DayPill({ day, active, onClick, disabled }: { day: string; active: bool
       size="icon"
       onClick={onClick}
       disabled={disabled}
-      className="size-8 rounded-full text-xs font-semibold"
+      className="size-8 rounded-full text-xs leading-none font-semibold"
     >
-      {day[0].toUpperCase()}
+      <span className="translate-y-px">{day[0].toUpperCase()}</span>
     </Button>
   );
 }
@@ -191,8 +191,16 @@ export function EditCampaignForm({
   const isPage = variant === "page";
 
   const followupList = stepsLoading ? (
-    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-      <Loader2 className="size-3 animate-spin" /> Loading steps…
+    <div className="space-y-3 animate-pulse">
+      {Array.from({ length: 3 }).map((_, i) => (
+        <div key={i} className="flex items-center gap-3 rounded-lg border border-border p-3">
+          <div className="size-5 rounded bg-secondary shrink-0" />
+          <div className="flex-1 space-y-1.5">
+            <div className="h-3.5 w-32 bg-secondary rounded" />
+            <div className="h-2.5 w-20 bg-secondary/60 rounded" />
+          </div>
+        </div>
+      ))}
     </div>
   ) : (
     <div
@@ -208,8 +216,8 @@ export function EditCampaignForm({
           className={cn("flex items-center shrink-0", isPage ? "gap-2" : "w-full")}
         >
           {isPage ? (
-            <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary/15 font-mono text-xs font-semibold text-primary tabular-nums">
-              {idx + 1}
+            <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary/15 font-mono text-xs leading-none font-semibold text-primary tabular-nums">
+              <span className="translate-y-px">{idx + 1}</span>
             </span>
           ) : null}
           <div
@@ -231,7 +239,7 @@ export function EditCampaignForm({
                 const v = Math.max(1, Math.min(365, Number(e.target.value) || 1));
                 setFollowupSteps((prev) => prev.map((s, i) => i === idx ? { ...s, delay: v } : s));
               }}
-              className="h-7 w-14 rounded-md border border-border bg-card px-1 py-0 text-center text-sm font-mono font-medium tabular-nums focus-visible:ring-1 focus-visible:ring-offset-0"
+              className="h-7 w-14 rounded-md border border-border bg-field px-1 py-0 text-center text-sm font-mono font-medium tabular-nums focus-visible:ring-1 focus-visible:ring-offset-0"
             />
             <Select
               value={step.delay_unit}
@@ -291,9 +299,6 @@ export function EditCampaignForm({
 
   if (isPage) {
     const fieldBlock = "space-y-2 rounded-xl border border-border bg-card px-5 py-4 shadow-sm";
-    // Fields sit on bg-card blocks — bg-card inputs vanish against them, so
-    // page-variant fields get a secondary fill to read as editable surfaces.
-    const fieldFill = "bg-secondary/70 hover:bg-secondary focus-visible:bg-secondary transition-colors";
 
     return (
       <div className={cn("space-y-6", className)}>
@@ -305,7 +310,7 @@ export function EditCampaignForm({
               <div className={fieldBlock}>
                 <Label className="text-sm font-medium">Sender name</Label>
                 <p className="text-xs text-muted-foreground">Shown as the &quot;from&quot; name on outgoing emails</p>
-                <Input value={senderName} disabled={readOnly} onChange={(e) => setSenderName(e.target.value)} placeholder="Kuber Polyplast" className={fieldFill} />
+                <Input value={senderName} disabled={readOnly} onChange={(e) => setSenderName(e.target.value)} placeholder="Kuber Polyplast" />
               </div>
 
               <div className={cn(fieldBlock, "flex flex-1 flex-col")}>
@@ -316,7 +321,7 @@ export function EditCampaignForm({
                   disabled={readOnly}
                   onChange={(e) => setAiPromptContext(e.target.value)}
                   placeholder="e.g. Mention our new biodegradable masterbatch line. Focus on sustainability angle."
-                  className={cn("flex-1 min-h-32 resize-none", fieldFill)}
+                  className="flex-1 min-h-32 resize-none"
                 />
               </div>
             </div>
@@ -342,7 +347,7 @@ export function EditCampaignForm({
                   value={dailyLimit}
                   disabled={readOnly}
                   onChange={(e) => setDailyLimit(Math.max(1, Math.min(500, Number(e.target.value))))}
-                  className={cn("h-9 w-24 text-center font-mono tabular-nums", fieldFill)}
+                  className="h-9 w-24 text-center font-mono tabular-nums"
                 />
               </div>
 
@@ -355,9 +360,9 @@ export function EditCampaignForm({
                   </div>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap">
-                  <TimeSelect value={windowFrom} onChange={setWindowFrom} disabled={readOnly} className={fieldFill} />
+                  <TimeSelect value={windowFrom} onChange={setWindowFrom} disabled={readOnly} />
                   <span className="text-xs text-muted-foreground">to</span>
-                  <TimeSelect value={windowTo} onChange={setWindowTo} disabled={readOnly} className={fieldFill} />
+                  <TimeSelect value={windowTo} onChange={setWindowTo} disabled={readOnly} />
                 </div>
               </div>
             </div>

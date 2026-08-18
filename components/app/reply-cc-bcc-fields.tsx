@@ -139,7 +139,7 @@ function EmailChipList({
       <div className="relative">
         <div
           className={cn(
-            "flex min-h-9 flex-wrap items-center gap-1.5 rounded-md border border-input bg-background px-2 py-1.5",
+            "flex min-h-9 flex-wrap items-center gap-1.5 rounded-md border border-input bg-field px-2 py-1.5",
             disabled && "opacity-50 pointer-events-none",
           )}
         >
@@ -186,7 +186,7 @@ function EmailChipList({
         </div>
         {open && filtered.length > 0 && (
           <ul
-            className="absolute left-0 right-0 top-full z-20 mt-1 max-h-40 overflow-y-auto rounded-md border border-border bg-background py-1 shadow-md"
+            className="absolute left-0 right-0 top-full z-20 mt-1 max-h-40 overflow-y-auto rounded-md border border-border bg-popover py-1 shadow-md"
             role="listbox"
           >
             {filtered.map((email, i) => (

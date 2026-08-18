@@ -85,6 +85,28 @@ export const ApolloSearchSchema = z.object({
   // apollo-search/route.ts.
   titles: z.array(z.string()).nullable().optional(),
   seniorities: z.array(z.string()).nullable().optional(),
+  // People API Search filters beyond keyword + person location. All optional —
+  // an untouched Advanced panel must never change the default title/seniority/
+  // headcount stack. See https://docs.apollo.io/reference/people-api-search
+  advanced: z.object({
+    titles: z.array(z.string().trim().min(1)).optional(),
+    includeSimilarTitles: z.boolean().optional(),
+    seniorities: z.array(z.string().trim().min(1)).optional(),
+    organizationLocations: z.array(z.string().trim().min(1)).optional(),
+    domains: z.array(z.string().trim().min(1)).optional(),
+    employeeRanges: z.array(z.string().trim().min(1)).optional(),
+    revenueMin: z.number().nonnegative().optional(),
+    revenueMax: z.number().nonnegative().optional(),
+    technologyAll: z.array(z.string().trim().min(1)).optional(),
+    technologyAny: z.array(z.string().trim().min(1)).optional(),
+    technologyNot: z.array(z.string().trim().min(1)).optional(),
+    jobTitles: z.array(z.string().trim().min(1)).optional(),
+    jobLocations: z.array(z.string().trim().min(1)).optional(),
+    numJobsMin: z.number().int().nonnegative().optional(),
+    numJobsMax: z.number().int().nonnegative().optional(),
+    jobPostedAtMin: z.string().optional(),
+    jobPostedAtMax: z.string().optional(),
+  }).optional(),
   batch_name: z.string().min(1),
   color: z.string().default("violet"),
   preview: z.boolean().optional(),

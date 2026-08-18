@@ -579,9 +579,16 @@ export function UniboxThreadView({
         {replyOpen && canReply && (
           <div className="pl-0 mt-3">
             {isGenerating && !hasDraftReady ? (
-              <div className="mt-2 flex items-center gap-2 text-sm text-muted-foreground py-4">
-                <Loader2 className="size-4 animate-spin" />
-                Writing reply…
+              <div className="mt-2 py-4 space-y-3 animate-pulse">
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Loader2 className="size-4 animate-spin" />
+                  Writing reply…
+                </div>
+                <div className="space-y-2 pl-6">
+                  <div className="h-3 w-full bg-secondary rounded" />
+                  <div className="h-3 w-5/6 bg-secondary rounded" />
+                  <div className="h-3 w-2/3 bg-secondary rounded" />
+                </div>
               </div>
             ) : hasDraftReady ? (
               <ReplyDraftBox

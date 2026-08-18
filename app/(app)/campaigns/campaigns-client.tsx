@@ -116,7 +116,7 @@ export function CampaignsClient({ initialCampaigns }: { initialCampaigns: Campai
           onChange={setSearch}
           placeholder="Search campaigns…"
           wrapperClassName="flex-1 min-w-[200px] max-w-xs"
-          className="bg-card"
+          className="bg-field"
         />
         <SegmentedTabs
           value={statusFilter}
@@ -127,7 +127,7 @@ export function CampaignsClient({ initialCampaigns }: { initialCampaigns: Campai
         />
         {role === "manager" && users.length > 0 && (
           <Select value={ownerFilter} onValueChange={setOwnerFilter}>
-            <SelectTrigger className="h-9 w-40 border-border bg-card shadow-sm">
+            <SelectTrigger className="h-9 w-40 border-border bg-field shadow-sm">
               <SelectValue placeholder="Owner" />
             </SelectTrigger>
             <SelectContent>

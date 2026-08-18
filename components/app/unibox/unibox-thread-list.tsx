@@ -116,13 +116,13 @@ export function UniboxThreadList({
               onChange={onSearch}
               placeholder="Search by lead name…"
               wrapperClassName="flex-1 max-w-xl"
-              className="bg-card"
+              className="bg-field"
             />
           </div>
         </div>
         <div className="flex-1 overflow-y-auto px-6 py-4">
           {loading && threads.length === 0 ? (
-            <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden divide-y divide-border">
+            <div className="rounded-xl border border-border bg-field dark:bg-card shadow-sm overflow-hidden divide-y divide-border">
               {Array.from({ length: 8 }).map((_, i) => (
                 <ThreadRowSkeleton key={i} />
               ))}
@@ -130,7 +130,7 @@ export function UniboxThreadList({
           ) : threads.length === 0 ? (
             <EmptyState message="No conversations match your filters." />
           ) : (
-            <div className="enter rounded-xl border border-border bg-card shadow-sm overflow-hidden divide-y divide-border">
+            <div className="enter rounded-xl border border-border bg-field dark:bg-card shadow-sm overflow-hidden divide-y divide-border">
               {threads.map((t) => {
                 const name = [t.lead?.first_name, t.lead?.last_name].filter(Boolean).join(" ") || t.lead_email || "Unknown";
                 const needsReply = t.latest_direction === "received";

@@ -5,6 +5,7 @@ import {
   APOLLO_SENIORITIES,
   CONTACT_EMAIL_STATUSES,
   EMPLOYEE_RANGES,
+  LOCATION_MAP,
 } from "@/lib/constants";
 
 const BASE = "https://api.apollo.io/api/v1";
@@ -46,6 +47,49 @@ export interface ApolloSearchResult {
   people: ApolloSearchPerson[];
 }
 
+export interface ApolloPeopleAdvancedFilters {
+  titles?: string[];
+  includeSimilarTitles?: boolean;
+  seniorities?: string[];
+  organizationLocations?: string[];
+  domains?: string[];
+  employeeRanges?: string[];
+  revenueMin?: number;
+  revenueMax?: number;
+  technologyAll?: string[];
+  technologyAny?: string[];
+  technologyNot?: string[];
+  jobTitles?: string[];
+  jobLocations?: string[];
+  numJobsMin?: number;
+  numJobsMax?: number;
+  jobPostedAtMin?: string;
+  jobPostedAtMax?: string;
+}
+
+function techUids(values?: string[]): string[] | undefined {
+  if (!values?.length) return undefined;
+  const out = values
+    .map((s) => s.trim().toLowerCase().replace(/[.\s]+/g, "_"))
+    .filter(Boolean);
+  return out.length ? out : undefined;
+}
+
+function mapLocations(values?: string[]): string[] | undefined {
+  if (!values?.length) return undefined;
+  return values.map((l) => LOCATION_MAP[l] ?? l);
+}
+
+/** Apollo wants `"1,10"` pairs. A comma-split UI can flatten that to
+ *  `["1","10","11","50"]` — re-pair any run of numbers so the filter still works. */
+function employeeRanges(values?: string[]): string[] | undefined {
+  if (!values?.length) return undefined;
+  const paired = [...values.join(" ").matchAll(/(\d+)\s*,\s*(\d+)/g)].map(
+    (m) => `${m[1]},${m[2]}`,
+  );
+  return paired.length ? paired : undefined;
+}
+
 export async function searchPeople(opts: {
   keyword?: string;
   locations?: string[];
@@ -53,6 +97,7 @@ export async function searchPeople(opts: {
   perPage?: number;
   titles?: string[];
   seniorities?: string[];
+  advanced?: ApolloPeopleAdvancedFilters;
   /** Apollo organization ids. Passing these switches the call to ROSTER MODE:
    *  everyone at those companies, with none of the segment filters below.
    *
@@ -65,6 +110,7 @@ export async function searchPeople(opts: {
   organizationIds?: string[];
 }): Promise<ApolloSearchResult> {
   const rosterMode = (opts.organizationIds?.length ?? 0) > 0;
+  const a = opts.advanced ?? {};
 
   const body: Record<string, unknown> = {
     contact_email_status: CONTACT_EMAIL_STATUSES,
@@ -72,20 +118,37 @@ export async function searchPeople(opts: {
     page: opts.page,
   };
 
+  const setList = (key: string, value?: string[]) => {
+    if (value && value.length > 0) body[key] = value;
+  };
+  const setRange = (key: string, min?: number | string, max?: number | string) => {
+    const range: Record<string, number | string> = {};
+    if (min !== undefined && min !== "") range.min = min;
+    if (max !== undefined && max !== "") range.max = max;
+    if (Object.keys(range).length > 0) body[key] = range;
+  };
+
   if (rosterMode) {
     body.organization_ids = opts.organizationIds;
   } else {
-    body.person_titles = opts.titles ?? APOLLO_TITLES;
-    // Measured inert: removing person_seniorities changed the result count by
-    // exactly 0 in both test scenarios, because person_titles already implies
-    // the seniority. Kept because it costs nothing; do not expect it to filter.
-    body.person_seniorities = opts.seniorities ?? APOLLO_SENIORITIES;
+    body.person_titles = a.titles?.length ? a.titles : (opts.titles ?? APOLLO_TITLES);
+    // Measured inert as a default: removing person_seniorities changed the
+    // result count by exactly 0 because person_titles already implies the
+    // seniority. Still sent (costs nothing) unless Advanced overrides it.
+    body.person_seniorities = a.seniorities?.length ? a.seniorities : (opts.seniorities ?? APOLLO_SENIORITIES);
     body.q_keywords = opts.keyword;
-    body.organization_num_employees_ranges = EMPLOYEE_RANGES;
-    // Was false. Apollo's own fuzzy title matching adds ~30% more people at
-    // the same quality — "Head of Purchasing" and "Sr. Procurement Manager"
-    // were being missed by near-literal matching on "purchase manager".
-    body.include_similar_titles = true;
+    body.organization_num_employees_ranges = employeeRanges(a.employeeRanges) ?? EMPLOYEE_RANGES;
+    body.include_similar_titles = a.includeSimilarTitles ?? true;
+    setList("organization_locations", mapLocations(a.organizationLocations));
+    setList("q_organization_domains_list", a.domains);
+    setList("currently_using_all_of_technology_uids", techUids(a.technologyAll));
+    setList("currently_using_any_of_technology_uids", techUids(a.technologyAny));
+    setList("currently_not_using_any_of_technology_uids", techUids(a.technologyNot));
+    setList("q_organization_job_titles", a.jobTitles);
+    setList("organization_job_locations", mapLocations(a.jobLocations));
+    setRange("revenue_range", a.revenueMin, a.revenueMax);
+    setRange("organization_num_jobs_range", a.numJobsMin, a.numJobsMax);
+    setRange("organization_job_posted_at_range", a.jobPostedAtMin, a.jobPostedAtMax);
   }
 
   if ((opts.locations?.length ?? 0) > 0) {

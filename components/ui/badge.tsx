@@ -2,9 +2,12 @@ import * as React from "react"
 import { cva, type VariantProps } from "class-variance-authority"
 
 import { cn } from "@/lib/utils"
+import { Pill } from "@/components/ui/pill"
 
+// Colour/state only — shape, padding, text size and vertical centering all
+// come from Pill so every badge/pill in the app shares one implementation.
 const badgeVariants = cva(
-  "inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold tracking-wide transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
+  "font-semibold tracking-wide transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
   {
     variants: {
       variant: {
@@ -29,12 +32,16 @@ const badgeVariants = cva(
 )
 
 export interface BadgeProps
-  extends React.HTMLAttributes<HTMLDivElement>,
+  // omit the non-standard HTML `color` attribute — it collides with Pill's
+  // own `color` (a BatchColorName), which Badge doesn't use.
+  extends Omit<React.HTMLAttributes<HTMLSpanElement>, "color">,
     VariantProps<typeof badgeVariants> {}
 
-function Badge({ className, variant, ...props }: BadgeProps) {
+function Badge({ className, variant, children, ...props }: BadgeProps) {
   return (
-    <div className={cn(badgeVariants({ variant }), className)} {...props} />
+    <Pill className={cn("py-0.5", badgeVariants({ variant }), className)} {...props}>
+      {children}
+    </Pill>
   )
 }
 

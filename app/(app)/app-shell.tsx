@@ -289,10 +289,10 @@ function AppShell({ children }: { children: React.ReactNode }) {
 
             {sidebarCollapsed ? (
               <div
-                className="size-7 rounded-full bg-secondary flex items-center justify-center text-[10px] font-semibold text-muted-foreground shrink-0"
+                className="size-7 rounded-full bg-secondary flex items-center justify-center text-[10px] leading-none font-semibold text-muted-foreground shrink-0"
                 title={session.user.email}
               >
-                {session.user.email?.[0]?.toUpperCase() ?? "?"}
+                <span className="translate-y-px">{session.user.email?.[0]?.toUpperCase() ?? "?"}</span>
               </div>
             ) : (
               <p className="text-[11px] text-muted-foreground truncate px-1">{session.user.email}</p>

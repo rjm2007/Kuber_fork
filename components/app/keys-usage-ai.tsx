@@ -23,7 +23,7 @@ function ProviderRow({ provider }: { provider: AiUsageData["providers"][number] 
   const remaining = formatRemaining(provider.id, provider.remaining);
   const detail = provider.message && provider.message !== "OK" ? provider.message : provider.ok ? "Key is valid" : "No usable key configured";
   return (
-    <div className="rounded-xl border border-border bg-card px-4 py-3.5 space-y-1">
+    <div className="rounded-xl border border-border bg-field px-4 py-3.5 space-y-1">
       <div className="flex items-center gap-2 min-w-0">
         <span className={cn("size-1.5 rounded-full shrink-0", provider.ok ? "bg-emerald-400" : "bg-destructive")} aria-hidden />
         <p className="font-medium text-sm truncate">{provider.label}</p>
@@ -67,7 +67,7 @@ export function AiUsageView() {
         <Skeleton className="h-9 w-full rounded-lg" />
         <div className="space-y-2">
           {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="rounded-xl border border-border bg-card px-4 py-3.5 space-y-2">
+            <div key={i} className="rounded-xl border border-border bg-field px-4 py-3.5 space-y-2">
               <div className="flex items-center gap-2">
                 <Skeleton className="size-1.5 rounded-full" />
                 <Skeleton className="h-3.5 w-32" />

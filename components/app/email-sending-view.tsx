@@ -119,7 +119,7 @@ export function EmailSendingView() {
                 Mailbox
               </label>
               <Select value={draftEmail} onValueChange={setDraftEmail}>
-                <SelectTrigger id="sending-account" className="bg-secondary/50">
+                <SelectTrigger id="sending-account">
                   <SelectValue placeholder="Select an active Instantly mailbox" />
                 </SelectTrigger>
                 <SelectContent>

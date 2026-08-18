@@ -4,7 +4,7 @@ import { bulkDeleteLeads, bulkAssignLeads, fetchUsers, fetchImports, retryAllFai
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { EmptyState } from "@/components/ui/empty-state";
-import { getBatchColor } from "@/lib/constants";
+import { getBatchColor, type BatchColorName } from "@/lib/constants";
 import { ServiceHealthBanner } from "@/components/app/service-health-banner";
 
 import { useRef, useEffect, useMemo, useState } from "react";
@@ -31,6 +31,8 @@ import { Button } from "@/components/ui/button";
 import { SearchInput } from "@/components/ui/search-input";
 import { SegmentedTabs } from "@/components/ui/segmented-tabs";
 import { AppCheckbox } from "@/components/ui/app-checkbox";
+import { Pill } from "@/components/ui/pill";
+import { AppRadio } from "@/components/ui/app-radio";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { format } from "date-fns";
@@ -243,7 +245,7 @@ function ColumnsDropdown<K extends string>({
 
   return (
     <div ref={ref} className="relative">
-      <Button variant="outline" size="sm" className="gap-1.5 bg-card" onClick={() => setOpen((o) => !o)}>
+      <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setOpen((o) => !o)}>
         <Columns3 className="size-3.5" />
         Columns
       </Button>
@@ -350,7 +352,7 @@ function MultiSelectDropdown<T extends string>({
         type="button"
         variant="outline"
         onClick={() => setOpen((o) => !o)}
-        className="w-full h-auto min-h-9 flex-wrap justify-start gap-1.5 rounded-md px-3 py-1.5 text-left text-sm font-normal bg-card"
+        className="w-full h-auto min-h-9 flex-wrap justify-start gap-1.5 rounded-md px-3 py-1.5 text-left text-sm font-normal bg-field"
       >
         {selected.size === 0 ? (
           <span className="text-muted-foreground text-xs">Select {label.toLowerCase()}…</span>
@@ -978,7 +980,7 @@ export default function LeadsPage() {
 
           {role === "manager" && (
             <Button
-              size="sm" variant="outline" className="gap-1.5 bg-card"
+              size="sm" variant="outline" className="gap-1.5"
               disabled={checkedIds.size === 0}
               onClick={() => { if (checkedIds.size > 0) { setAssignOverwriteConfirmed(false); setAssignSkipAssigned(false); setShowBulkAssign(true); } }}
             >
@@ -1018,7 +1020,7 @@ export default function LeadsPage() {
             />
           )}
           <Button
-            variant="outline" size="sm" className="gap-1.5 bg-card"
+            variant="outline" size="sm" className="gap-1.5"
             disabled={loadingLeads}
             onClick={() => {
               if (!session) return;
@@ -1051,7 +1053,7 @@ export default function LeadsPage() {
             placeholder={leadsEntityMode === "orgs" ? "Search organizations…" : "Search leads or organization…"}
             size="sm"
             wrapperClassName="flex-1 max-w-xs"
-            className="bg-card"
+            className="bg-field"
           />
           {leadsEntityMode === "individual" && someChecked && role === "manager" && (
             <Button
@@ -1063,7 +1065,7 @@ export default function LeadsPage() {
           )}
           <div className="ml-auto flex items-center gap-3">
             <Select value={leadsSort} onValueChange={(value) => setLeadsSort(value as LeadsSort)}>
-              <SelectTrigger className="h-8 w-36 gap-2 rounded-md border-border bg-card px-3 text-xs shadow-sm">
+              <SelectTrigger className="h-8 w-36 gap-2 rounded-md border-border bg-field px-3 text-xs shadow-sm">
                 <SelectValue placeholder="Sort by" />
               </SelectTrigger>
               <SelectContent align="end" className="min-w-36">
@@ -1078,14 +1080,14 @@ export default function LeadsPage() {
                 type="button"
                 variant={isFiltersEmpty(filters) ? "outline" : "default"}
                 size="sm"
-                className={cn("relative gap-1.5", isFiltersEmpty(filters) && "bg-card")}
+                className="relative gap-1.5"
                 onClick={() => setShowFilters(true)}
               >
                 <SlidersHorizontal className="size-3.5" />
                 Filters
                 {!isFiltersEmpty(filters) && (
-                  <span className="ml-0.5 size-4 rounded-full bg-primary-foreground/20 font-mono text-[9px] font-bold tabular-nums flex items-center justify-center">
-                    {activeFilterCount(filters)}
+                  <span className="ml-0.5 size-4 rounded-full bg-primary-foreground/20 font-mono text-[9px] leading-none font-bold tabular-nums flex items-center justify-center">
+                    <span className="translate-y-px">{activeFilterCount(filters)}</span>
                   </span>
                 )}
               </Button>
@@ -1122,7 +1124,7 @@ export default function LeadsPage() {
             server, and skipping the skeleton there rendered the stale 500-row
             window through matchesFilters — i.e. "No leads yet" — until it landed. */}
         {loadingLeads || searchLoading ? (
-          <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
+          <div className="rounded-xl border border-border bg-field dark:bg-card shadow-sm overflow-hidden">
             <div className="divide-y divide-border animate-pulse">
               <div className="flex items-center gap-4 px-4 py-3">
                 {[10, 8, 32, 20, 20, 14, 12, 10].map((w, i) => (
@@ -1146,7 +1148,7 @@ export default function LeadsPage() {
           </div>
         ) : leadsEntityMode === "orgs" ? (
             <div>
-              <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden w-full">
+              <div className="rounded-xl border border-border bg-field dark:bg-card shadow-sm overflow-hidden w-full">
                 <Table>
                   <TableHeader>
                     <TableRow className="border-border hover:bg-transparent">
@@ -1251,7 +1253,7 @@ export default function LeadsPage() {
             )}
           </>
         ) : (
-          <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
+          <div className="rounded-xl border border-border bg-field dark:bg-card shadow-sm overflow-hidden">
             {/* Compact cells so all columns (incl. Created) fit without clipping */}
             <Table className="[&_th]:px-3 [&_td]:px-3 [&_td]:py-3">
               <TableHeader>
@@ -1342,8 +1344,8 @@ export default function LeadsPage() {
                                 {assigneeDisplayName(lead.assignedTo, session, employees)}
                               </span>
                             ) : (
-                              <span className="inline-flex items-center px-1.5 py-0.5 rounded-sm text-[10px] font-mono font-semibold uppercase tracking-wider bg-yellow-500/10 text-yellow-400 border border-yellow-500/25">
-                                Unassigned
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded-sm text-[10px] leading-none font-mono font-semibold uppercase tracking-wider bg-yellow-500/10 text-yellow-400 border border-yellow-500/25">
+                                <span className="translate-y-px">Unassigned</span>
                               </span>
                             )}
                           </TableCell>
@@ -1356,8 +1358,8 @@ export default function LeadsPage() {
                             {lead.campaigns.length > 0 ? (
                               <div className="flex flex-wrap gap-1">
                                 {lead.campaigns.map((c) => (
-                                  <span key={c.id} className="font-mono text-[10px] font-medium bg-secondary border border-border rounded-sm px-1.5 py-0.5 text-muted-foreground whitespace-nowrap">
-                                    {c.name}
+                                  <span key={c.id} className="font-mono text-[10px] leading-none font-medium bg-secondary border border-border rounded-sm px-1.5 py-0.5 text-muted-foreground whitespace-nowrap">
+                                    <span className="translate-y-px inline-block">{c.name}</span>
                                   </span>
                                 ))}
                               </div>
@@ -1368,14 +1370,9 @@ export default function LeadsPage() {
                         )}
                         {visibleCols.batch && (
                           <TableCell>
-                            {lead.batchLabel ? (() => {
-                              const bc = getBatchColor(lead.batchColor ?? "violet");
-                              return (
-                                <span className={cn("inline-flex items-center px-2.5 py-1 rounded-full border text-xs font-medium whitespace-nowrap", bc.pill)}>
-                                  {lead.batchLabel}
-                                </span>
-                              );
-                            })() : <span className="text-xs text-muted-foreground">—</span>}
+                            {lead.batchLabel ? (
+                              <Pill color={(lead.batchColor ?? "violet") as BatchColorName}>{lead.batchLabel}</Pill>
+                            ) : <span className="text-xs text-muted-foreground">—</span>}
                           </TableCell>
                         )}
                         {visibleCols.added     && <TableCell><span className="font-mono text-xs text-muted-foreground tabular-nums whitespace-nowrap">{new Date(lead.createdAt).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}</span></TableCell>}
@@ -1511,24 +1508,25 @@ export default function LeadsPage() {
             </div>
 
             <div className="grid gap-2">
-              {ASSIGN_STRATEGIES.map((s) => (
-                <label
-                  key={s.value}
-                  className="flex items-start gap-3 rounded-lg border border-border p-3 cursor-pointer hover:bg-secondary/40 has-[:checked]:border-primary has-[:checked]:bg-primary/5"
-                >
-                  <input
-                    type="radio"
-                    name="assign-strategy"
-                    className="mt-1"
-                    checked={assignStrategy === s.value}
-                    onChange={() => setAssignStrategy(s.value)}
-                  />
-                  <div>
-                    <p className="text-sm font-medium">{s.label}</p>
-                    <p className="text-xs text-muted-foreground">{s.description}</p>
-                  </div>
-                </label>
-              ))}
+              {ASSIGN_STRATEGIES.map((s) => {
+                const checked = assignStrategy === s.value;
+                return (
+                  <label
+                    key={s.value}
+                    onClick={() => setAssignStrategy(s.value)}
+                    className={cn(
+                      "flex items-start gap-3 rounded-lg border border-border p-3 cursor-pointer bg-field hover:bg-field",
+                      checked && "border-primary bg-primary/5",
+                    )}
+                  >
+                    <AppRadio checked={checked} className="mt-1" />
+                    <div>
+                      <p className="text-sm font-medium">{s.label}</p>
+                      <p className="text-xs text-muted-foreground">{s.description}</p>
+                    </div>
+                  </label>
+                );
+              })}
             </div>
 
             {assignStrategy === "manual" && (
@@ -1536,7 +1534,7 @@ export default function LeadsPage() {
                 <div className="h-10 rounded-md border border-border bg-secondary/40 animate-pulse" />
               ) : (
                 <Select value={assignTarget} onValueChange={setAssignTarget}>
-                  <SelectTrigger className="bg-background"><SelectValue /></SelectTrigger>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent className="z-300">
                     <SelectItem value="unassigned">Unassigned (pool)</SelectItem>
                     {employees.map((e) => (

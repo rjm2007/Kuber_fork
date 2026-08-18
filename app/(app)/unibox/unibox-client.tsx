@@ -304,7 +304,16 @@ export function UniboxClient() {
               </div>
             </div>
             {detailLoading ? (
-              <div className="flex-1 flex items-center justify-center min-h-0"><Loader2 className="size-6 animate-spin text-muted-foreground" /></div>
+              <div className="flex-1 min-h-0 p-6 space-y-5 animate-pulse">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <div key={i} className={`flex ${i % 2 === 0 ? "" : "justify-end"}`}>
+                    <div className="space-y-1.5">
+                      <div className="h-3 w-20 bg-secondary rounded" />
+                      <div className="h-14 w-56 bg-secondary rounded-xl" />
+                    </div>
+                  </div>
+                ))}
+              </div>
             ) : (
               <div className="flex-1 overflow-y-auto min-h-0">
                 <UniboxThreadView
