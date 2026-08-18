@@ -2462,7 +2462,7 @@ export function CampaignDetail({
           /* Table */
           <div className="flex-1 min-h-0 overflow-y-auto bg-secondary/20 px-6 py-4">
               {loading ? (
-                <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden animate-pulse">
+                <div className="rounded-xl border border-border bg-field dark:bg-card shadow-sm overflow-hidden animate-pulse">
                   <div className="flex items-center gap-4 px-4 py-3 border-b border-border bg-secondary/30">
                     <div className="size-4 rounded bg-secondary" />
                     <div className="h-3 w-24 bg-secondary rounded" />
@@ -2482,7 +2482,7 @@ export function CampaignDetail({
               ) : filteredLeads.length === 0 ? (
                 <EmptyState message={leadsSearch ? "No leads match your search." : "No leads yet."} />
               ) : (
-                <div className="block w-full rounded-xl border border-border bg-card shadow-sm overflow-x-auto overflow-y-hidden">
+                <div className="block w-full rounded-xl border border-border bg-field dark:bg-card shadow-sm overflow-x-auto overflow-y-hidden">
                 <table className="w-full text-sm border-collapse">
                   <thead className="sticky top-0 z-10 bg-secondary/60 backdrop-blur-sm">
                     <tr className="border-b border-border">
@@ -2605,7 +2605,7 @@ export function CampaignDetail({
       {viewTab === "outbox" && (
         <div className="flex flex-1 min-h-0">
           {/* Left: unified lead list */}
-          <div className="w-[266px] shrink-0 border-r border-border bg-card flex flex-col">
+          <div className="w-[266px] shrink-0 border-r border-border bg-field dark:bg-card flex flex-col">
             {/* Header */}
             <div className="border-b border-border shrink-0">
               <div className="px-3 pt-2 flex items-center gap-1.5">
@@ -2905,7 +2905,7 @@ export function CampaignDetail({
               <div className="w-full max-w-[1400px] mx-auto p-6 space-y-4">
                 {/* Lead + org cards — half width each; click opens Lead / Org drawers */}
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <div className="flex w-full items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 shadow-sm transition-colors hover:border-primary/40 hover:bg-secondary/20">
+                  <div className="flex w-full items-center gap-3 rounded-xl border border-border bg-field px-4 py-3 shadow-sm transition-colors hover:border-primary/40 hover:bg-field">
                     <button
                       type="button"
                       onClick={() => setDrawerLead(campaignLeadToDrawerLead(selected))}
@@ -3005,7 +3005,7 @@ export function CampaignDetail({
                       const websiteLabel = websiteRaw.replace(/^https?:\/\//i, "").replace(/\/$/, "") || null;
                       const location = [org.company_city, org.company_country].filter(Boolean).join(", ");
                       return (
-                        <div className="flex w-full items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 shadow-sm transition-colors hover:border-primary/40 hover:bg-secondary/20">
+                        <div className="flex w-full items-center gap-3 rounded-xl border border-border bg-field px-4 py-3 shadow-sm transition-colors hover:border-primary/40 hover:bg-field">
                           <button
                             type="button"
                             onClick={() => setDrawerOrgId(org.org_id!)}
@@ -3051,7 +3051,7 @@ export function CampaignDetail({
                       );
                     })()
                   ) : (
-                    <div className="flex w-full items-center gap-3 rounded-xl border border-dashed border-border bg-card/60 px-4 py-3 text-left shadow-sm">
+                    <div className="flex w-full items-center gap-3 rounded-xl border border-dashed border-border bg-field/60 px-4 py-3 text-left shadow-sm">
                       <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-secondary text-muted-foreground" aria-hidden>
                         <Building2 className="size-4" />
                       </span>
@@ -3292,7 +3292,7 @@ export function CampaignDetail({
                     )}
                   </div>
                 ) : outboxMessageItems.length > 0 ? (
-                  <div className="rounded-xl border border-border bg-card overflow-hidden">
+                  <div className="rounded-xl border border-border bg-field dark:bg-card overflow-hidden">
                     <AddParticipantLeadDialog
                       open={!!outboxAddLeadFor}
                       email={outboxAddLeadFor}
@@ -3484,7 +3484,7 @@ export function CampaignDetail({
                       "h-auto w-full block border rounded-lg p-4 text-left font-normal",
                       isActive
                         ? "swatch-bar border-primary bg-primary/10 hover:bg-primary/10"
-                        : "border-border bg-card hover:bg-secondary/40 hover:border-primary/40",
+                        : "border-border bg-field hover:bg-field hover:border-primary/40",
                     )}
                   >
                     <p className={cn("font-display text-sm font-semibold mb-0.5", isActive ? "text-primary" : "text-foreground")}>
@@ -3658,7 +3658,7 @@ export function CampaignDetail({
                 </div>
               ) : comments.length === 0 ? (
                 <div className="min-h-[320px] flex flex-col items-center justify-center text-center px-5">
-                  <div className="size-11 rounded-full border border-border bg-card flex items-center justify-center text-primary mb-3">
+                  <div className="size-11 rounded-full border border-border bg-field flex items-center justify-center text-primary mb-3">
                     <MessageSquare className="size-5" />
                   </div>
                   <p className="text-sm font-semibold">Start the campaign discussion</p>
@@ -3678,7 +3678,7 @@ export function CampaignDetail({
                       <div key={comment.id} className="space-y-3">
                         {showDate && (
                           <div className="flex items-center justify-center py-1">
-                            <span className="rounded-full border border-border bg-card px-3 py-1 text-[10px] leading-none font-medium text-muted-foreground shadow-sm">
+                            <span className="rounded-full border border-border bg-field px-3 py-1 text-[10px] leading-none font-medium text-muted-foreground shadow-sm">
                               <span className="translate-y-px inline-block">{formatChatDate(comment.created_at)}</span>
                             </span>
                           </div>
@@ -3700,7 +3700,7 @@ export function CampaignDetail({
 
           {/* Floating composer — no full-width bar, the input is its own card. */}
           <div className="shrink-0 w-full max-w-3xl mx-auto px-6 pb-6 pt-2">
-            <div className="rounded-2xl border border-border bg-card shadow-lg shadow-black/5">
+            <div className="rounded-2xl border border-border bg-field shadow-lg shadow-black/5">
               <Textarea
                 value={commentBody}
                 onChange={(event) => setCommentBody(event.target.value)}

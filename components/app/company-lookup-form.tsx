@@ -4,6 +4,7 @@ import { Fragment, useState, type ComponentType, type ReactNode, type SVGProps }
 import { AlertCircle, Building2, ChevronDown, ChevronRight, Globe, Rocket, Search, Users } from "lucide-react";
 import { format } from "date-fns";
 import { AppCheckbox } from "@/components/ui/app-checkbox";
+import { ApolloCostNote } from "@/components/app/apollo-cost-note";
 import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Field, FieldLabel } from "@/components/ui/field";
@@ -1171,15 +1172,16 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
           )}
 
           {loadingList !== "people" && (
-            <p className="text-[11px] text-muted-foreground">
-              Surnames show as an initial until the email is revealed.{" "}
-              {mock ? (
-                <>Test mode — revealing these costs nothing and produces placeholder emails.</>
-              ) : (
-                <>Revealing costs <strong>1 credit per contact</strong> — {picked.length} selected ={" "}
-                <strong>{picked.length} credit{picked.length === 1 ? "" : "s"}</strong>.</>
-              )}
-            </p>
+            <>
+              <p className="text-[11px] text-muted-foreground">
+                Surnames show as an initial until the email is revealed.
+              </p>
+              <ApolloCostNote
+                credits={picked.length}
+                spendingOn={`revealing email${picked.length === 1 ? "" : "s"} for the ${picked.length} selected contact${picked.length === 1 ? "" : "s"}`}
+                mock={mock}
+              />
+            </>
           )}
         </div>
       )}
@@ -1201,14 +1203,11 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
             assignTo={assignTo}
             onAssignToChange={setAssignTo}
           />
-          <p className="text-[11px] text-amber-500">
-            {mock ? (
-              <>Test mode — importing {picked.length} contact{picked.length === 1 ? "" : "s"} spends no credits and writes placeholder emails.</>
-            ) : (
-              <>Importing {picked.length} contact{picked.length === 1 ? "" : "s"} will spend{" "}
-              <strong>{picked.length} Apollo credit{picked.length === 1 ? "" : "s"}</strong> revealing their emails.</>
-            )}
-          </p>
+          <ApolloCostNote
+            credits={picked.length}
+            spendingOn={`revealing email${picked.length === 1 ? "" : "s"} for the ${picked.length} imported contact${picked.length === 1 ? "" : "s"}`}
+            mock={mock}
+          />
         </div>
       )}
 

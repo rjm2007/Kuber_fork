@@ -81,14 +81,14 @@ export function DiscussionComment({
   return (
     <div
       className={cn(
-        "group relative w-full cursor-pointer border border-border bg-card dark:bg-secondary transition-colors",
+        "group relative w-full cursor-pointer border border-border bg-field dark:bg-secondary transition-colors",
         compact ? "rounded-lg px-3 py-2.5" : "rounded-xl px-4 py-3",
       )}
     >
         {/* Hover reaction picker */}
         <div
           className={cn(
-            "absolute -top-3 right-3 z-10 flex items-center gap-0.5 rounded-full border border-border bg-card px-1 py-0.5 shadow-md",
+            "absolute -top-3 right-3 z-10 flex items-center gap-0.5 rounded-full border border-border bg-field px-1 py-0.5 shadow-md",
             "opacity-0 pointer-events-none transition-opacity",
             "group-hover:opacity-100 group-hover:pointer-events-auto focus-within:opacity-100 focus-within:pointer-events-auto",
           )}

@@ -22,7 +22,7 @@ export function Stepper({ steps, current, className }: StepperProps) {
             <div
               className={cn(
                 "flex items-center gap-2 rounded-full border px-2.5 py-1.5 shrink-0",
-                active ? "border-primary bg-primary/10" : done ? "border-primary/30 bg-primary/5" : "border-border bg-card",
+                active ? "border-primary bg-primary/10" : done ? "border-primary/30 bg-primary/5" : "border-border bg-field",
               )}
             >
               <span

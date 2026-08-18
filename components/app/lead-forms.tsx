@@ -22,6 +22,7 @@ import { LOCATION_MAP, APOLLO_TITLES, INDUSTRY_KEYWORD_CATEGORIES, BATCH_COLORS,
 import { LocationsPicker } from "@/components/ui/locations-picker";
 import { InfoTip } from "@/components/ui/info-tip";
 import { ApolloPeopleAdvanced, buildPeopleAdvanced } from "@/components/app/apollo-people-advanced";
+import { ApolloCostNote } from "@/components/app/apollo-cost-note";
 import { importExcelDirect, createLead, patchLead, patchOrg, fetchUsers, fetchUsage, type Profile, type PreviewLead, type DuplicateOwner } from "@/lib/api-client";
 import { ensureSplitNames } from "@/lib/utils/person-name";
 import { supabase } from "@/lib/supabase";
@@ -786,6 +787,10 @@ export function ApolloForm({ onImport }: { onImport: (n: number) => void }) {
                 : `The per-keyword limit of ${maxPerKeyword} applies on top, so this import can reach at most ${Math.min(maxTotalLeads, maxPerKeyword * keywordGroupCount).toLocaleString()}.`}{" "}
               Apollo is searched as deeply as needed, skipping anyone already in your list.
             </p>
+            <ApolloCostNote
+              credits={maxTotalLeads}
+              spendingOn={`revealing emails for up to ${maxTotalLeads.toLocaleString()} leads`}
+            />
           </div>
         )}
 
@@ -800,13 +805,19 @@ export function ApolloForm({ onImport }: { onImport: (n: number) => void }) {
         )}
 
         {step === 3 && (
-          <AssignStrategyPicker
-            employees={employees}
-            mode={assignMode}
-            onModeChange={setAssignMode}
-            assignTo={assignTo}
-            onAssignToChange={setAssignTo}
-          />
+          <div className="space-y-4">
+            <AssignStrategyPicker
+              employees={employees}
+              mode={assignMode}
+              onModeChange={setAssignMode}
+              assignTo={assignTo}
+              onAssignToChange={setAssignTo}
+            />
+            <ApolloCostNote
+              credits={maxTotalLeads}
+              spendingOn={`revealing emails for up to ${maxTotalLeads.toLocaleString()} leads`}
+            />
+          </div>
         )}
 
         {error && (
