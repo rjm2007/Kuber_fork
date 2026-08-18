@@ -131,6 +131,22 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* Chrome/Safari paint their own autofill background using the OS/browser
+   dark-mode preference, completely bypassing bg-field — this is why the
+   Sign in email/password fields rendered black regardless of the theme
+   tokens above. The 5000s transition delay is the standard trick to stop
+   the browser's own autofill yellow/dark flash from ever appearing before
+   this kicks in. */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active {
+  -webkit-text-fill-color: var(--foreground);
+  -webkit-box-shadow: 0 0 0px 1000px var(--field) inset;
+  box-shadow: 0 0 0px 1000px var(--field) inset;
+  transition: background-color 5000s ease-in-out 0s;
+}
+
 ::-webkit-scrollbar { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: hsl(0 0% 20%); border-radius: 4px; }
