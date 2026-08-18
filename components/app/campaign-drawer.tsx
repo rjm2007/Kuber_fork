@@ -2605,7 +2605,7 @@ export function CampaignDetail({
       {viewTab === "outbox" && (
         <div className="flex flex-1 min-h-0">
           {/* Left: unified lead list */}
-          <div className="w-[266px] shrink-0 border-r border-border bg-field dark:bg-card flex flex-col">
+          <div className="w-[266px] h-full shrink-0 border-r border-border flex flex-col">
             {/* Header */}
             <div className="border-b border-border shrink-0">
               <div className="px-3 pt-2 flex items-center gap-1.5">
@@ -2637,7 +2637,7 @@ export function CampaignDetail({
                   disabled={syncingReplies}
                   title="Sync replies"
                   onClick={() => void runSyncReplies()}
-                  className="size-7 shrink-0 bg-secondary/30 text-muted-foreground hover:text-primary disabled:opacity-50"
+                  className="size-7 shrink-0 bg-field hover:bg-field text-muted-foreground hover:text-primary disabled:opacity-50"
                 >
                   <RefreshCw className={cn("size-3", syncingReplies && "animate-spin")} />
                 </Button>
@@ -2646,7 +2646,7 @@ export function CampaignDetail({
                   variant="outline"
                   size="icon"
                   title="Open in Unibox"
-                  className="size-7 shrink-0 bg-secondary/30 text-muted-foreground hover:text-primary"
+                  className="size-7 shrink-0 bg-field hover:bg-field text-muted-foreground hover:text-primary"
                 >
                   <a href={`/unibox?campaign_id=${campaign.id}`}>
                     <ExternalLink className="size-3" />
@@ -2768,7 +2768,7 @@ export function CampaignDetail({
                 </div>
               )}
             </div>
-            <div className="flex-1 overflow-y-auto divide-y divide-border/40">
+            <div className="flex-1 overflow-y-auto space-y-1.5 p-2">
               {outboxFilteredLeads.length === 0 ? (
                 <p className="p-6 text-sm text-muted-foreground text-center">
                   {campaignLeads.length === 0 ? "No leads yet." : "No leads match this filter."}
@@ -2798,8 +2798,8 @@ export function CampaignDetail({
                       variant="ghost"
                       onClick={() => setSelectedId(cl.id)}
                       className={cn(
-                        "h-auto w-full block justify-start text-left font-normal rounded-none pl-12 pr-4 py-3",
-                        isActive ? "bg-primary/8 hover:bg-primary/8 border-l-2 border-l-primary" : "hover:bg-secondary/40 border-l-2 border-l-transparent",
+                        "h-auto w-full block justify-start text-left font-normal rounded-lg border px-3 py-2.5",
+                        isActive ? "border-primary bg-primary/8 hover:bg-primary/8" : "border-border bg-field hover:bg-field hover:border-muted-foreground/40",
                       )}
                     >
                       <div className="flex items-center gap-2">
@@ -2855,13 +2855,13 @@ export function CampaignDetail({
                   <div
                     key={cl.id}
                     className={cn(
-                      "flex items-center cursor-pointer border-l-2 transition-colors",
-                      isActive ? "bg-primary/10 border-primary" : "border-transparent hover:bg-secondary/40",
+                      "flex items-center cursor-pointer rounded-lg border transition-colors",
+                      isActive ? "border-primary bg-primary/10" : "border-border bg-field hover:bg-field hover:border-muted-foreground/40",
                     )}
                     onClick={() => setSelectedId(cl.id)}
                   >
                     <div
-                      className="w-9 shrink-0 py-3 pl-4 flex items-center"
+                      className="w-9 shrink-0 py-2.5 pl-2.5 flex items-center"
                       onClick={(e) => {
                         e.stopPropagation();
                         if (!canCheck || !showCheckbox) return;
@@ -2879,7 +2879,7 @@ export function CampaignDetail({
                         />
                       ) : null}
                     </div>
-                    <div className="flex items-center gap-2 flex-1 min-w-0 py-3 pl-3 pr-3">
+                    <div className="flex items-center gap-2 flex-1 min-w-0 py-2.5 pl-1 pr-3">
                       <Avatar name={name} size="sm" />
                       <div className="flex-1 min-w-0">
                         <p className={cn("text-xs font-medium truncate", isActive ? "text-primary" : "text-foreground")}>{name}</p>
