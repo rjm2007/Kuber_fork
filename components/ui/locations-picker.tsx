@@ -135,6 +135,8 @@ export function LocationsPicker({
   placeholder = "Select countries… (empty = worldwide)",
   showPills = true,
   panelClassName,
+  labelClassName,
+  triggerClassName,
 }: {
   selected: string[];
   onChangeSelected: (v: string[]) => void;
@@ -144,6 +146,8 @@ export function LocationsPicker({
   showPills?: boolean;
   /** Override panel positioning where the trigger sits inside a narrow cell. */
   panelClassName?: string;
+  labelClassName?: string;
+  triggerClassName?: string;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -167,7 +171,7 @@ export function LocationsPicker({
     <div className="space-y-1.5">
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-1">
-          <Label>{label}</Label>
+          <Label className={labelClassName}>{label}</Label>
           {helpText && <InfoTip side="right" text={helpText} />}
         </div>
         {selectedCount > 0 && (
@@ -184,8 +188,9 @@ export function LocationsPicker({
           variant="outline"
           onClick={() => setOpen((o) => !o)}
           className={cn(
-            "w-full justify-between px-3 py-2 text-sm font-normal text-left bg-background",
+            "w-full justify-between px-3 py-2 text-sm font-normal text-left bg-field hover:bg-field",
             open ? "border-ring ring-1 ring-ring" : "border-input hover:border-muted-foreground",
+            triggerClassName,
           )}
         >
           <span className={selectedCount === 0 ? "text-muted-foreground/60" : "text-foreground"}>
@@ -207,7 +212,7 @@ export function LocationsPicker({
             <LocationsGrid selected={selected} onChangeSelected={onChangeSelected} />
 
             {/* Footer */}
-            <div className="border-t border-border px-4 py-2.5 flex items-center justify-end bg-secondary/20">
+            <div className="border-t border-border px-4 py-2.5 flex items-center justify-end bg-secondary/30">
               <Button type="button" variant="link" size="sm" onClick={() => setOpen(false)} className="h-auto p-0 text-xs">
                 Done
               </Button>

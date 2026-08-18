@@ -4,10 +4,6 @@ import type { AuthedUser } from "@/lib/auth/api-auth";
 
 type Db = ReturnType<typeof createAdminClient>;
 
-// !lead_id on every campaign_leads -> leads embed below: campaign_leads also
-// FKs to leads via replaced_by_lead_id (bounce replacement), so PostgREST
-// refuses a bare `leads(...)` embed as ambiguous.
-
 // Access model (spec §5 / §7 — the multi-employee campaign container):
 //   • Managers / super-admins see everything.
 //   • A campaign is a CONTAINER that may hold leads owned by several

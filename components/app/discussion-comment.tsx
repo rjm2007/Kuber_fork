@@ -81,14 +81,14 @@ export function DiscussionComment({
   return (
     <div
       className={cn(
-        "group relative w-full cursor-pointer border border-border bg-card dark:bg-secondary transition-colors",
+        "group relative w-full cursor-pointer border border-border bg-field dark:bg-secondary transition-colors",
         compact ? "rounded-lg px-3 py-2.5" : "rounded-xl px-4 py-3",
       )}
     >
         {/* Hover reaction picker */}
         <div
           className={cn(
-            "absolute -top-3 right-3 z-10 flex items-center gap-0.5 rounded-full border border-border bg-card px-1 py-0.5 shadow-md",
+            "absolute -top-3 right-3 z-10 flex items-center gap-0.5 rounded-full border border-border bg-field px-1 py-0.5 shadow-md",
             "opacity-0 pointer-events-none transition-opacity",
             "group-hover:opacity-100 group-hover:pointer-events-auto focus-within:opacity-100 focus-within:pointer-events-auto",
           )}
@@ -154,7 +154,7 @@ export function DiscussionComment({
                     void handleToggle(group.emoji);
                   }}
                   className={cn(
-                    "inline-flex cursor-pointer items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] transition-colors",
+                    "inline-flex cursor-pointer items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] leading-none transition-colors",
                     group.reacted_by_me
                       ? "border-primary/40 bg-primary/10 text-foreground"
                       : "border-border bg-background/60 text-muted-foreground hover:bg-secondary",
@@ -162,7 +162,7 @@ export function DiscussionComment({
                   aria-label={`${group.emoji} ${group.count} — ${group.users.map((u) => u.name).join(", ")}`}
                 >
                   <span className="text-sm leading-none">{group.emoji}</span>
-                  <span className="font-medium tabular-nums">{group.count}</span>
+                  <span className="font-medium tabular-nums translate-y-px">{group.count}</span>
                 </button>
 
                 {/* Hover popup — who reacted with this emoji */}

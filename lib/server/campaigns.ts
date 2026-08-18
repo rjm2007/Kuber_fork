@@ -23,8 +23,6 @@ async function overlayEmployeeStats(
   const ids = campaigns.map((c) => c.id);
   const { data: ownRows } = await db
     .from("campaign_leads")
-    // !lead_id: campaign_leads also FKs to leads via replaced_by_lead_id, so a
-    // bare embed is ambiguous and PostgREST returns an error (stats all zero).
     .select("campaign_id, crm_status, first_sent_at, lead_temperature, email_drafts(status), leads!lead_id!inner(assigned_to)")
     .in("campaign_id", ids)
     .eq("leads.assigned_to", scopedUserId);

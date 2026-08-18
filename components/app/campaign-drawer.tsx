@@ -5,6 +5,7 @@ import {
   Megaphone, Users, Send, MessageSquare, Clock, Gauge, ArrowUp,
   Globe, Calendar, ExternalLink, Loader2, CheckCircle2, RotateCcw, RefreshCw, Check, Save, History, ChevronDown, ArrowLeft,
   List, LayoutGrid, BarChart2, Flame, Snowflake, ThumbsDown, Layers, Paperclip, X, Sparkles, Pencil, Reply, AlertTriangle,
+  Building2, MapPin, ReplyAll, CornerDownRight, UserPlus, ArrowRight,
 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
@@ -14,6 +15,7 @@ import { emailPreview, splitQuotedBody } from "@/lib/email-display";
 import { convertResidualMarkdownInHtml } from "@/lib/utils/email-html";
 import { Avatar } from "@/components/leads/lead-ui";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { StatTile } from "@/components/ui/stat-tile";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -55,18 +57,30 @@ import {
   regenerateCampaignDrafts,
   fetchRegenerationJob,
   cancelRegenerationJob,
+  replaceBouncedLead,
   type CampaignReplyThread,
   type CampaignComment,
   type ReplyDraft,
   type RegenerationJobStatus,
   type RegenerationSkipped,
+  addThreadParticipantAsLead,
 } from "@/lib/api-client";
 import { RegenerateDraftsModal } from "@/components/app/regenerate-drafts-modal";
+import { ReplaceLeadModal, type ReplaceLeadTarget } from "@/components/app/replace-lead-modal";
 import { DiscussionComment } from "@/components/app/discussion-comment";
 import { CampaignKanban } from "@/components/app/campaign-kanban";
 import { CampaignReportView, type CampaignReportData } from "@/components/app/campaign-report";
 import { ReplyDraftBox, replyDraftHasContent } from "@/components/app/reply-draft-box";
-import { ManualReplyBox } from "@/components/app/manual-reply-box";
+import { ManualReplyBox, type ReplyRecipientContext } from "@/components/app/manual-reply-box";
+import { AddParticipantLeadDialog } from "@/components/app/add-participant-lead-dialog";
+import {
+  latestInboundMessage,
+  ourAddresses,
+  parseAddressList,
+  replyRecipients,
+  threadParticipants,
+  unansweredInbound,
+} from "@/lib/thread-participants";
 import { LeadDrawer } from "@/components/app/lead-drawer";
 import { OrgDrawer } from "@/components/app/org-drawer";
 import { supabase } from "@/lib/supabase";
@@ -88,7 +102,8 @@ import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, BarChart, Bar, XAxis
 import { EmptyState } from "@/components/ui/empty-state";
 import { ServiceHealthBanner } from "@/components/app/service-health-banner";
 import {
-  computeCampaignStats, deliveryBucket, DELIVERY_BUCKET_LABELS,
+  computeCampaignStats, deliveryBucket, deliveryLabel, DELIVERY_BUCKET_LABELS,
+  sequenceStepLabel,
   type DeliveryBucket,
 } from "@/lib/campaign-status";
 
@@ -168,7 +183,21 @@ type CampaignLead = {
   crm_status: string;
   lead_temperature: string | null;
   created_at: string;
-  leads: { first_name: string | null; last_name: string | null; email: string | null; title: string | null; country: string | null; company_name: string | null } | null;
+  leads: {
+    first_name: string | null;
+    last_name: string | null;
+    email: string | null;
+    title: string | null;
+    country: string | null;
+    company_name: string | null;
+    org_id?: string | null;
+    company_domain?: string | null;
+    company_country?: string | null;
+    company_city?: string | null;
+    company_website?: string | null;
+    /** Set when this contact was added to stand in for a bounced one. */
+    replaces_lead_id?: string | null;
+  } | null;
   email_drafts: { id: string; subject: string | null; body: string | null; status: string; step_number?: number | null; created_at?: string } | null;
   /**
    * Set by the leads API when a step-1 draft row is mid-generation. It cannot be
@@ -180,6 +209,36 @@ type CampaignLead = {
   /** Set by Instantly's email_sent webhook — the mail actually went out. NULL
    *  while crm_status='sent' means queued in the drip, not yet delivered. */
   first_sent_at?: string | null;
+  /** Highest sequence step delivered so far (step 1 = opening mail, so step N
+   *  is follow-up N-1). first_sent_at alone cannot show this — it is stamped
+   *  once and never moves as the follow-ups go out. */
+  last_step_sent?: number | null;
+  /** Which sequence step the address rejected (1 = the opening email), so a
+   *  mailbox that died between sends reads differently from one dead all along. */
+  bounced_step?: number | null;
+  /** Every mail the sequence itself sent this lead — the opening email and each
+   *  follow-up — mirrored back by Instantly. Empty until the Unibox sync has
+   *  picked them up, which is why the step-1 draft is still used as a fallback. */
+  sequence_messages?: Array<{
+    id: string;
+    step: string | null;
+    subject: string | null;
+    body_html: string | null;
+    body_text: string | null;
+    timestamp_email: string | null;
+    to_emails: string | null;
+    cc_emails: string | null;
+  }>;
+  /** Set once someone answered this bounce by adding another contact at the same
+   *  company. The row stays bounced (and still counts as one) — this only marks
+   *  it as dealt with, so nobody redoes the work. */
+  replaced_by_lead_id?: string | null;
+  /** Who answered the bounce, and when. Null on bounces replaced before the
+   *  attribution columns existed — the panel then omits the line. */
+  replaced_at?: string | null;
+  replaced_by_user_name?: string | null;
+  /** From the email_bounced webhook — the day the address rejected us. */
+  bounced_at?: string | null;
   attachment?: AttachmentInfo;
 };
 
@@ -205,6 +264,40 @@ function sortCampaignLeads(leads: CampaignLead[], sort: CampaignLeadsSort): Camp
     const bName = [b.leads?.first_name, b.leads?.last_name].filter(Boolean).join(" ");
     return aName.localeCompare(bName);
   });
+}
+
+/** Stub for LeadDrawer — it refetches full lead details by id. */
+function campaignLeadToDrawerLead(cl: CampaignLead): Lead {
+  const l = cl.leads;
+  return {
+    id: cl.lead_id,
+    firstName: l?.first_name ?? "",
+    lastName: l?.last_name ?? "",
+    email: l?.email ?? "",
+    company: l?.company_name ?? "",
+    domain: l?.company_domain ?? "",
+    domainSource: null,
+    phone: "",
+    jobTitle: l?.title ?? "",
+    country: l?.country ?? "",
+    status: "Enriched",
+    score: "—",
+    source: "Apollo",
+    campaign: "",
+    campaigns: [],
+    createdAt: cl.created_at,
+    orgId: l?.org_id ?? null,
+    enrichmentStage: null,
+    companyDescription: null,
+    sellsTo: null,
+    lastError: null,
+    hasScraped: false,
+    importId: null,
+    batchLabel: null,
+    batchColor: null,
+    assignedTo: null,
+    orgShared: null,
+  };
 }
 
 type EmailDraftRow = NonNullable<CampaignLead["email_drafts"]>;
@@ -334,6 +427,16 @@ function OutboxQuotedBlock({ quoted, isHtml }: { quoted: string; isHtml: boolean
 function OutboxMessageRow({
   senderName,
   toLabel,
+  ccLabel,
+  fromThirdParty,
+  isUnanswered,
+  isReplyTarget,
+  inReplyToLabel,
+  stepLabel,
+  onReplyTo,
+  onReplyAll,
+  onAddAsLead,
+  addingLead,
   timestamp,
   bodyHtml,
   bodyText,
@@ -342,6 +445,22 @@ function OutboxMessageRow({
 }: {
   senderName: string;
   toLabel: string;
+  ccLabel: string;
+  /** Inbound from someone other than the lead — needs saying out loud. */
+  fromThirdParty: boolean;
+  /** Nobody has replied to this person since they wrote. */
+  isUnanswered: boolean;
+  isReplyTarget: boolean;
+  /** For our own replies: who wrote the message this one answered. */
+  inReplyToLabel: string | null;
+  /** "Opening email" / "Follow-up 1" — which sequence send this is. */
+  stepLabel: string | null;
+  /** Set for inbound messages that can be answered directly. */
+  onReplyTo: (() => void) | null;
+  onReplyAll: (() => void) | null;
+  /** Set only for a third participant who is not already a lead. */
+  onAddAsLead: (() => void) | null;
+  addingLead: boolean;
   timestamp: string | null;
   bodyHtml: string | null;
   bodyText: string | null;
@@ -364,6 +483,24 @@ function OutboxMessageRow({
         <span className="shrink-0 max-w-[160px] truncate text-sm font-medium text-foreground/90">
           {senderName}
         </span>
+        {fromThirdParty && (
+          <Badge variant="outline" className="shrink-0 rounded font-mono text-[9px] px-1.5 py-0 text-muted-foreground">
+            via cc
+          </Badge>
+        )}
+        {/* Which sequence send this is. On the collapsed row because that is the
+            glanceable one — the whole point is reading the thread at a glance. */}
+        {stepLabel && (
+          <Badge variant="outline" className="shrink-0 rounded font-mono text-[9px] px-1.5 py-0 border-primary/40 text-primary">
+            {stepLabel}
+          </Badge>
+        )}
+        {/* Same reason as the Unibox: the collapsed row is the glanceable one. */}
+        {isUnanswered && (
+          <Badge variant="outline" className="shrink-0 rounded font-mono text-[9px] px-1.5 py-0 border-amber-500/40 text-amber-500">
+            Not answered
+          </Badge>
+        )}
         <span className="flex-1 min-w-0 truncate text-xs text-muted-foreground">
           {snippet || "(empty message)"}
         </span>
@@ -386,8 +523,34 @@ function OutboxMessageRow({
       >
         <Avatar name={senderName} size="sm" />
         <div className="flex-1 min-w-0">
-          <span className="font-semibold text-sm">{senderName}</span>
-          <p className="text-xs text-muted-foreground truncate">to {toLabel}</p>
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-semibold text-sm">{senderName}</span>
+            {fromThirdParty && (
+              <Badge variant="outline" className="rounded font-mono text-[9px] px-1.5 py-0.5 text-muted-foreground">
+                not the lead
+              </Badge>
+            )}
+            {isUnanswered && (
+              <Badge variant="outline" className="rounded font-mono text-[9px] px-1.5 py-0.5 border-amber-500/40 text-amber-500">
+                Not answered
+              </Badge>
+            )}
+            {isReplyTarget && (
+              <Badge variant="selected" className="rounded font-mono text-[9px] px-1.5 py-0.5">
+                Replying to this
+              </Badge>
+            )}
+          </div>
+          {inReplyToLabel && (
+            <p className="flex items-center gap-1 font-mono text-[11px] text-primary/80 truncate">
+              <CornerDownRight className="size-3 shrink-0" />
+              in reply to {inReplyToLabel}
+            </p>
+          )}
+          <p className="font-mono text-xs text-muted-foreground truncate">
+            to {toLabel || "—"}
+            {ccLabel && ` · cc ${ccLabel}`}
+          </p>
         </div>
         {timestamp && (
           <span className="shrink-0 font-mono text-[11px] text-muted-foreground tabular-nums">
@@ -409,6 +572,52 @@ function OutboxMessageRow({
           <p className="text-muted-foreground italic">(empty message)</p>
         )}
         {quoted && <OutboxQuotedBlock quoted={quoted} isHtml={isHtml} />}
+        {/* Picking the message decides the recipient: Instantly addresses a
+            reply to the sender of whatever it answers, so without this the
+            composer can only ever reach whoever happened to write last. */}
+        {onReplyTo && (
+          <div className="mt-2 flex items-center gap-1">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={onReplyTo}
+              className="h-7 gap-1.5 px-2 text-[11px] text-primary hover:text-primary"
+            >
+              <Reply className="size-3" />
+              Reply to {senderName}
+            </Button>
+            {onReplyAll && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={onReplyAll}
+                className="h-7 gap-1.5 px-2 text-[11px] text-muted-foreground hover:text-foreground"
+                title="Answer this message with everyone on the thread in the To line"
+              >
+                <ReplyAll className="size-3" />
+                Reply all
+              </Button>
+            )}
+            {/* Same action as the Unibox — a stakeholder who joins the thread
+                should be promotable from wherever the rep is standing. */}
+            {onAddAsLead && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={addingLead}
+                onClick={onAddAsLead}
+                className="h-7 gap-1.5 px-2 text-[11px] text-muted-foreground hover:text-foreground"
+                title="Add this person as a lead in the same organization"
+              >
+                {addingLead ? <Loader2 className="size-3 animate-spin" /> : <UserPlus className="size-3" />}
+                Add as lead
+              </Button>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -474,11 +683,26 @@ export function CampaignDetail({
   const [retryingAll, setRetryingAll] = useState(false);
   const [drawerLead, setDrawerLead] = useState<Lead | null>(null);
   const [drawerOrgId, setDrawerOrgId] = useState<string | null>(null);
+  /** "View the email that bounced" — the dead thread is folded away, not
+   *  deleted, so a disputed bounce can still be checked. Resets per selection. */
+  const [bouncedThreadOpen, setBouncedThreadOpen] = useState(false);
+  const [replaceTarget, setReplaceTarget] = useState<ReplaceLeadTarget | null>(null);
+  const [replaceSubmitting, setReplaceSubmitting] = useState(false);
+  const [replaceError, setReplaceError] = useState("");
   const [threads, setThreads] = useState<CampaignReplyThread[]>([]);
-  const [outboxFilter, setOutboxFilter] = useState<"all" | "action" | "certified" | "sent" | "replied">("all");
+  const [outboxFilter, setOutboxFilter] = useState<
+    "all" | "action" | "certified" | "sending" | "sent" | "replied" | "bounced"
+  >("all");
   const [outboxExpandOverrides, setOutboxExpandOverrides] = useState<Set<string>>(new Set());
   const [outboxReplyOpen, setOutboxReplyOpen] = useState(false);
   const [outboxReplyStartBlank, setOutboxReplyStartBlank] = useState(true);
+  /** Which message the Outbox composer answers. null = newest inbound. */
+  const [outboxReplyTargetId, setOutboxReplyTargetId] = useState<string | null>(null);
+  /** Reply all seeds every participant into To; plain Reply seeds just one. */
+  const [outboxReplyAll, setOutboxReplyAll] = useState(true);
+  /** Participant the Add-as-lead dialog is open for, and its in-flight state. */
+  const [outboxAddLeadFor, setOutboxAddLeadFor] = useState<string | null>(null);
+  const [outboxSavingLead, setOutboxSavingLead] = useState(false);
   const [outboxNewReplyLoading, setOutboxNewReplyLoading] = useState(false);
   const [syncingReplies, setSyncingReplies] = useState(false);
   const syncHitTimesRef = useRef<number[]>([]);
@@ -726,6 +950,8 @@ export function CampaignDetail({
   useEffect(() => {
     setOutboxReplyOpen(false);
     setOutboxReplyStartBlank(true);
+    setOutboxReplyTargetId(null);
+    setOutboxReplyAll(true);
   }, [selectedId]);
 
   // Clicking "Regenerate" only reveals a collapsed panel below the button —
@@ -901,6 +1127,7 @@ export function CampaignDetail({
     setPreviewVersionId(null);
     setError("");
     setOutboxExpandOverrides(new Set());
+    setBouncedThreadOpen(false);
   }, [selected?.id, selected?.email_drafts?.subject, selected?.email_drafts?.body]);
 
   useEffect(() => {
@@ -972,6 +1199,10 @@ export function CampaignDetail({
   function getDisplayStatus(cl: CampaignLead): string {
     const activity = getDraftActivity(cl);
     if (activity) return DRAFT_ACTIVITY_LABEL[activity];
+    // Prefer delivery outcome over draft status once mail has left (or bounced) —
+    // otherwise a bounced lead still reads as "Sent" because email_drafts stays sent.
+    const delivery = deliveryBucket(cl);
+    if (delivery !== "not_queued") return deliveryLabel(cl);
     if (cl.email_drafts?.status) return DRAFT_STATUS_LABEL[cl.email_drafts.status] ?? cl.crm_status;
     if (cl.crm_status === "new" || cl.crm_status === "enriched") return isGenerating ? "Pending" : "No draft";
     return cl.crm_status;
@@ -979,6 +1210,8 @@ export function CampaignDetail({
 
   function getStatusStyle(cl: CampaignLead): string {
     if (getDraftActivity(cl)) return DRAFT_STATUS_STYLE.generating;
+    const delivery = deliveryBucket(cl);
+    if (delivery !== "not_queued") return DELIVERY_PILL_CLS[delivery];
     const ds = cl.email_drafts?.status;
     if (ds && DRAFT_STATUS_STYLE[ds]) return DRAFT_STATUS_STYLE[ds];
     return "bg-secondary text-muted-foreground";
@@ -1406,6 +1639,84 @@ export function CampaignDetail({
     setViewTab("outbox");
   }
 
+  /** The contact added to answer this bounce, if there is one. It was put into
+   *  THIS campaign and inherits the bounced lead's owner, so it is always
+   *  already in `campaignLeads` — no extra fetch to name it. */
+  function replacementFor(cl: CampaignLead): CampaignLead | null {
+    if (!cl.replaced_by_lead_id) return null;
+    return campaignLeads.find((c) => c.lead_id === cl.replaced_by_lead_id) ?? null;
+  }
+
+  function replacedTooltip(cl: CampaignLead): string {
+    const r = replacementFor(cl);
+    const who = r?.leads?.email
+      ?? [r?.leads?.first_name, r?.leads?.last_name].filter(Boolean).join(" ");
+    return who ? `Replaced by ${who}` : "A replacement contact was added at this company";
+  }
+
+  /** The other direction: the bounced contact this one stands in for. The
+   *  bounced row stays in the campaign after being retired, so it is still here
+   *  to name and to open. */
+  function originalFor(cl: CampaignLead): CampaignLead | null {
+    const id = cl.leads?.replaces_lead_id;
+    if (!id) return null;
+    return campaignLeads.find((c) => c.lead_id === id) ?? null;
+  }
+
+  function replacesTooltip(cl: CampaignLead): string {
+    const original = originalFor(cl);
+    const who = [original?.leads?.first_name, original?.leads?.last_name].filter(Boolean).join(" ")
+      || original?.leads?.email;
+    return who ? `Added to replace ${who}, whose address bounced` : "Added to replace a bounced contact";
+  }
+
+  /** The two chips are a two-way door: a bounce opens its replacement, a
+   *  replacement opens the bounce it answers. Neither is a dead end. */
+  function openReplacementOf(cl: CampaignLead) {
+    const r = replacementFor(cl);
+    if (r) handleOpenInOutbox(r.id);
+  }
+
+  function openOriginalOf(cl: CampaignLead) {
+    const o = originalFor(cl);
+    if (o) handleOpenInOutbox(o.id);
+  }
+
+  /** A bounce cost us a door into that company, not the company itself — this
+   *  opens the dialog that adds another address there. */
+  function openReplace(cl: CampaignLead) {
+    setReplaceError("");
+    setReplaceTarget({
+      campaignLeadId: cl.id,
+      bouncedName: [cl.leads?.first_name, cl.leads?.last_name].filter(Boolean).join(" ") || "This contact",
+      bouncedEmail: cl.leads?.email ?? null,
+      companyName: cl.leads?.company_name ?? null,
+      companyWebsite: cl.leads?.company_website ?? cl.leads?.company_domain ?? null,
+    });
+  }
+
+  async function handleReplaceConfirm(input: { email: string; first_name: string; last_name?: string; title?: string }) {
+    if (!replaceTarget) return;
+    setReplaceSubmitting(true);
+    setReplaceError("");
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+      const { campaign_lead_id } = await replaceBouncedLead(session.access_token, replaceTarget.campaignLeadId, input);
+      setReplaceTarget(null);
+      toast.success("Replacement added — writing their email now");
+      await loadData();
+      // Land the user on the new contact: their draft is what needs certifying.
+      handleOpenInOutbox(campaign_lead_id);
+    } catch (e) {
+      // Stays open with the message — most failures here are fixable in place
+      // (address already a lead, held by a colleague, company unsubscribed).
+      setReplaceError((e as Error).message);
+    } finally {
+      setReplaceSubmitting(false);
+    }
+  }
+
   const checkedSendCount = campaignLeads.filter(
     (cl) => checkedIds.has(cl.id) && sendReadyLeads.some((s) => s.id === cl.id)
   ).length;
@@ -1448,6 +1759,13 @@ export function CampaignDetail({
 
   const selectedThread = threads.find((t) => t.campaign_lead_id === selectedId) ?? null;
 
+  // A bounce that has already been answered. Its email was never read, so the
+  // Outbox shows the handoff to the replacement instead of a thread nobody can
+  // act on — the dead mail stays one click away, not deleted.
+  const isReplacedBounce = !!selected && !!selected.replaced_by_lead_id && deliveryBucket(selected) === "bounced";
+  const selectedReplacement = selected ? replacementFor(selected) : null;
+  const selectedOriginal = selected ? originalFor(selected) : null;
+
   const outboxReplyName = selected
     ? [selected.leads?.first_name, selected.leads?.last_name].filter(Boolean).join(" ") || selectedThread?.lead_email || "Unknown"
     : "Unknown";
@@ -1456,17 +1774,136 @@ export function CampaignDetail({
     id: string;
     sender: string;
     to: string;
+    cc: string;
+    /** Inbound message from someone other than the lead (joined via CC). */
+    fromThirdParty: boolean;
+    /** Instantly id — set only for inbound messages, which alone can be answered. */
+    replyTargetId: string | null;
+    isUnanswered: boolean;
+    /** Sender of the message this reply answered, for our own sent mail. */
+    inReplyToLabel: string | null;
+    /** Third participant not yet a lead — the address to promote. */
+    promotableEmail: string | null;
+    /** "Opening email" / "Follow-up 1" for a sequence send; null for a manual reply. */
+    stepLabel: string | null;
     timestamp: string | null;
     bodyHtml: string | null;
     bodyText: string | null;
   };
 
+  const outboxLeadAddress = parseAddressList(selectedThread?.lead_email ?? null)[0] ?? null;
+  /** The lead's name only when the message really is from the lead — otherwise
+   *  the raw address. The Outbox used to label every inbound message with the
+   *  lead's name, so a CC'd third party's reply was indistinguishable from the
+   *  prospect's own. */
+  const outboxSenderName = (fromEmail: string | null): { name: string; thirdParty: boolean } => {
+    const from = parseAddressList(fromEmail)[0] ?? null;
+    if (!from) return { name: outboxReplyName, thirdParty: false };
+    if (outboxLeadAddress && from === outboxLeadAddress) return { name: outboxReplyName, thirdParty: false };
+    return { name: from, thirdParty: true };
+  };
+
+  // Participant view of the thread, shared with the Unibox so both surfaces
+  // agree on who is owed a reply.
+  const outboxParticipantMessages = selectedThread
+    ? [
+        ...selectedThread.messages.map((m) => ({
+          instantly_email_id: m.instantly_email_id,
+          direction: "received",
+          from_email: m.from_email,
+          to_emails: m.to_emails,
+          cc_emails: m.cc_emails,
+          timestamp_email: m.received_at,
+        })),
+        ...selectedThread.sent_messages.map((m) => ({
+          instantly_email_id: m.instantly_email_id,
+          direction: "sent_manual",
+          from_email: m.from_email,
+          to_emails: m.to_emails,
+          cc_emails: m.cc_emails,
+          timestamp_email: m.sent_at,
+        })),
+      ]
+    : [];
+  const outboxOurEmails = ourAddresses(outboxParticipantMessages, [selectedThread?.eaccount ?? null]);
+  const outboxUnansweredIds = new Set(
+    unansweredInbound(outboxParticipantMessages, outboxOurEmails).map((m) => m.instantly_email_id),
+  );
+  // The message the composer answers — an explicit pick, else the newest
+  // inbound one. Restricted to inbound: replying to our own sent mail would
+  // address it straight back at us.
+  const outboxActiveTarget =
+    outboxParticipantMessages.find(
+      (m) => m.direction === "received" && m.instantly_email_id === outboxReplyTargetId,
+    ) ?? latestInboundMessage(outboxParticipantMessages);
+  const outboxActiveTargetId = outboxActiveTarget?.instantly_email_id ?? null;
+  // Sender of each message, so a sent reply can name what it answered.
+  async function handleOutboxConfirmAddLead(firstName: string, lastName: string) {
+    if (!outboxAddLeadFor || !selectedThread) return;
+    setOutboxSavingLead(true);
+    try {
+      await addThreadParticipantAsLead(appSession?.access_token ?? "", selectedThread.thread_key, {
+        email: outboxAddLeadFor,
+        first_name: firstName,
+        last_name: lastName || undefined,
+      });
+      toast.success(`${firstName} added as a lead`);
+      setOutboxAddLeadFor(null);
+      void loadReplies();
+    } catch (e) {
+      const err = e as Error & { code?: string };
+      toast.error(err.code === "DUPLICATE" ? "This person is already a lead" : err.message);
+    } finally {
+      setOutboxSavingLead(false);
+    }
+  }
+
+  const outboxKnownLeadSet = new Set(
+    (selectedThread?.known_lead_emails ?? []).map((e) => e.trim().toLowerCase()),
+  );
+  const outboxSenderByEmailId = new Map<string, string>(
+    outboxParticipantMessages
+      .map((m) => [m.instantly_email_id, parseAddressList(m.from_email)[0]] as const)
+      .filter((pair): pair is readonly [string, string] => !!pair[1]),
+  );
+
   const outboxMessageItems: OutboxMessageItem[] = [];
-  if (selected?.email_drafts?.status === "sent") {
+  // What the sequence actually sent — the opening email AND every follow-up —
+  // straight from the mirrored mail. This is the real record of what left; the
+  // draft below is only what we composed.
+  const outboxSequenceSends = selected?.sequence_messages ?? [];
+  for (const m of outboxSequenceSends) {
+    outboxMessageItems.push({
+      id: `seq-${m.id}`,
+      sender: "You",
+      to: parseAddressList(m.to_emails).join(", ") || (selectedThread?.lead_email ?? outboxReplyName),
+      cc: parseAddressList(m.cc_emails).join(", "),
+      fromThirdParty: false,
+      replyTargetId: null,
+      isUnanswered: false,
+      inReplyToLabel: null,
+      promotableEmail: null,
+      stepLabel: sequenceStepLabel(m.step),
+      timestamp: m.timestamp_email,
+      bodyHtml: m.body_html,
+      bodyText: m.body_text,
+    });
+  }
+  // Fallback for the opening email only: the Unibox sync runs on a schedule, so
+  // a just-sent lead has no mirrored copy yet. Never both — that would show the
+  // same email twice.
+  if (outboxSequenceSends.length === 0 && selected?.email_drafts?.status === "sent") {
     outboxMessageItems.push({
       id: `initial-${selected.email_drafts.id}`,
       sender: "You",
-      to: outboxReplyName,
+      to: selectedThread?.lead_email ?? outboxReplyName,
+      cc: "",
+      fromThirdParty: false,
+      replyTargetId: null,
+      isUnanswered: false,
+      inReplyToLabel: null,
+      promotableEmail: null,
+      stepLabel: "Opening email",
       timestamp: selected.email_drafts.created_at ?? null,
       bodyHtml: selectedThread?.original_email?.body ?? selected.email_drafts.body ?? "",
       bodyText: null,
@@ -1474,31 +1911,52 @@ export function CampaignDetail({
   }
   if (selectedThread) {
     for (const msg of selectedThread.messages) {
+      const { name, thirdParty } = outboxSenderName(msg.from_email);
+      const from = parseAddressList(msg.from_email)[0] ?? null;
       outboxMessageItems.push({
         id: msg.id,
-        sender: outboxReplyName,
-        to: "You",
+        sender: name,
+        to: parseAddressList(msg.to_emails).join(", "),
+        cc: parseAddressList(msg.cc_emails).join(", "),
+        fromThirdParty: thirdParty,
+        replyTargetId: msg.instantly_email_id,
+        isUnanswered: outboxUnansweredIds.has(msg.instantly_email_id),
+        inReplyToLabel: null,
+        promotableEmail:
+          thirdParty && from && !outboxKnownLeadSet.has(from) && !outboxOurEmails.has(from) ? from : null,
+        stepLabel: null,
         timestamp: msg.received_at,
         bodyHtml: null,
         bodyText: stripQuotedLines(msg.reply_body) ?? "",
       });
-      // Show every sent reply — not only the latest draft. A newer draft/regen
-      // must not hide earlier outbound mail from the thread.
-      for (const draft of msg.reply_drafts) {
-        if (draft.status !== "sent") continue;
-        outboxMessageItems.push({
-          // Scoped to the message it answers: a draft id alone is not unique across
-          // the thread, and a repeated key makes React drop a message row.
-          id: `${msg.id}:${draft.id}`,
-          sender: "You",
-          to: outboxReplyName,
-          timestamp: draft.sent_at,
-          bodyHtml: draft.body,
-          bodyText: null,
-        });
-      }
+    }
+    // Sent replies come from the mirrored mail, not from reply_drafts: a draft
+    // records what we wrote, only the sent message records who received it —
+    // and Instantly addresses a reply to the sender of the message it answers,
+    // which is frequently NOT the lead.
+    for (const sent of selectedThread.sent_messages) {
+      outboxMessageItems.push({
+        id: `sent-${sent.id}`,
+        sender: sent.sent_by_name ?? "You",
+        to: parseAddressList(sent.to_emails).join(", "),
+        cc: parseAddressList(sent.cc_emails).join(", "),
+        fromThirdParty: false,
+        replyTargetId: null,
+        isUnanswered: false,
+        inReplyToLabel: sent.in_reply_to_email_id
+          ? outboxSenderByEmailId.get(sent.in_reply_to_email_id) ?? null
+          : null,
+        promotableEmail: null,
+        stepLabel: null, // a manual reply is not a sequence step
+        timestamp: sent.sent_at,
+        bodyHtml: sent.body_html,
+        bodyText: sent.body_text,
+      });
     }
   }
+  // Outside the thread block: a lead who never replied has no thread at all, but
+  // now still has sequence sends to order.
+  outboxMessageItems.sort((a, b) => (a.timestamp ?? "").localeCompare(b.timestamp ?? ""));
   const outboxLastItemId = outboxMessageItems.length > 0 ? outboxMessageItems[outboxMessageItems.length - 1].id : null;
 
   const TEMP_BADGE: Record<string, { label: string; cls: string; icon?: React.ReactNode }> = {
@@ -1585,25 +2043,48 @@ export function CampaignDetail({
     { id: "all",       label: "All" },
     { id: "action",    label: "Needs action" },
     { id: "certified", label: "Certified" },
+    { id: "sending",   label: "Sending" },
     { id: "sent",      label: "Sent" },
     { id: "replied",   label: "Replied" },
+    { id: "bounced",   label: "Bounced" },
   ];
 
-  const outboxFilteredLeads = sortCampaignLeads(campaignLeads.filter((cl) => {
-    if (outboxFilter === "all") return true;
+  function matchesOutboxFilter(
+    cl: CampaignLead,
+    filter: typeof outboxFilter,
+  ): boolean {
+    if (filter === "all") return true;
     const thread = outboxThreadByLeadId.get(cl.id) ?? null;
-    if (outboxFilter === "replied") return !!thread;
-    if (outboxFilter === "action") {
+    const delivery = deliveryBucket(cl);
+    // Delivery filters share the same buckets as the Leads tab so Sent never
+    // swallows Bounced / Replied (draft status stays "sent" after those outcomes).
+    if (filter === "sending") return delivery === "sending";
+    if (filter === "sent") return delivery === "sent";
+    if (filter === "bounced") return delivery === "bounced";
+    if (filter === "replied") return delivery === "replied" || !!thread;
+    if (filter === "action") {
       if (thread) {
         const latestMsg = thread.messages[thread.messages.length - 1];
         return latestMsg?.reply_drafts[latestMsg.reply_drafts.length - 1]?.status === "draft";
       }
       return cl.email_drafts?.status === "draft";
     }
-    if (outboxFilter === "certified") return cl.email_drafts?.status === "approved";
-    if (outboxFilter === "sent") return cl.email_drafts?.status === "sent";
+    if (filter === "certified") return cl.email_drafts?.status === "approved";
     return true;
-  }), leadsSort);
+  }
+
+  // Counts from the full outbox set so chip numbers stay stable while filtering.
+  const outboxFilterCounts = OUTBOX_FILTERS.reduce((acc, { id }) => {
+    acc[id] = id === "all"
+      ? campaignLeads.length
+      : campaignLeads.filter((cl) => matchesOutboxFilter(cl, id)).length;
+    return acc;
+  }, {} as Record<typeof outboxFilter, number>);
+
+  const outboxFilteredLeads = sortCampaignLeads(
+    campaignLeads.filter((cl) => matchesOutboxFilter(cl, outboxFilter)),
+    leadsSort,
+  );
 
   const outboxSelectableFilteredLeads = outboxFilteredLeads.filter((cl) => {
     if (outboxThreadByLeadId.get(cl.id)) return false;
@@ -1752,7 +2233,8 @@ export function CampaignDetail({
               <Button
                 variant="outline"
                 size="sm"
-                disabled={certifying}
+                disabled={certifying || regenJobActive}
+                title={regenJobActive ? "A regeneration is running — certifying is paused until it finishes" : undefined}
                 onClick={handleCertifyAll}
               >
                 {certifying ? <Loader2 className="size-3.5 animate-spin mr-1.5" /> : null}
@@ -2090,15 +2572,27 @@ export function CampaignDetail({
           /* Table */
           <div className="flex-1 min-h-0 overflow-y-auto bg-secondary/20 px-6 py-4">
               {loading ? (
-                <div className="rounded-xl border border-border bg-card shadow-sm p-4 space-y-2 animate-pulse">
+                <div className="rounded-xl border border-border bg-field dark:bg-card shadow-sm overflow-hidden animate-pulse">
+                  <div className="flex items-center gap-4 px-4 py-3 border-b border-border bg-secondary/30">
+                    <div className="size-4 rounded bg-secondary" />
+                    <div className="h-3 w-24 bg-secondary rounded" />
+                    <div className="h-3 w-32 bg-secondary rounded" />
+                    <div className="h-3 w-20 bg-secondary rounded ml-auto" />
+                  </div>
                   {Array.from({ length: 8 }).map((_, i) => (
-                    <div key={i} className="h-10 bg-muted rounded" />
+                    <div key={i} className="flex items-center gap-4 px-4 py-3.5 border-b border-border last:border-0">
+                      <div className="size-4 rounded bg-secondary" />
+                      <div className="size-8 rounded-full bg-secondary" />
+                      <div className="h-3.5 w-28 bg-secondary rounded" />
+                      <div className="h-3 w-36 bg-secondary/60 rounded" />
+                      <div className="h-5 w-16 bg-secondary rounded-full ml-auto" />
+                    </div>
                   ))}
                 </div>
               ) : filteredLeads.length === 0 ? (
                 <EmptyState message={leadsSearch ? "No leads match your search." : "No leads yet."} />
               ) : (
-                <div className="block w-full rounded-xl border border-border bg-card shadow-sm overflow-x-auto overflow-y-hidden">
+                <div className="block w-full rounded-xl border border-border bg-field dark:bg-card shadow-sm overflow-x-auto overflow-y-hidden">
                 <table className="w-full text-sm border-collapse">
                   <thead className="sticky top-0 z-10 bg-secondary/60 backdrop-blur-sm">
                     <tr className="border-b border-border">
@@ -2161,7 +2655,7 @@ export function CampaignDetail({
                                 // above already says where such a lead stands.
                                 const delivery = deliveryBucket(cl);
                                 if (delivery !== "not_queued") {
-                                  pills.push({ label: DELIVERY_BUCKET_LABELS[delivery], cls: DELIVERY_PILL_CLS[delivery] });
+                                  pills.push({ label: deliveryLabel(cl), cls: DELIVERY_PILL_CLS[delivery] });
                                 }
 
                                 // Fallback if nothing matched
@@ -2175,6 +2669,47 @@ export function CampaignDetail({
                                   </span>
                                 ));
                               })()}
+                              {/* Where this contact came from — otherwise a
+                                  person nobody imported just appears inside a
+                                  running campaign. */}
+                              {cl.leads?.replaces_lead_id && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => { e.stopPropagation(); openOriginalOf(cl); }}
+                                  title={`${replacesTooltip(cl)} — open them`}
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-secondary border border-border font-mono text-[10px] font-semibold uppercase tracking-wide text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
+                                >
+                                  <CornerDownRight className="size-3" />
+                                  Replacement
+                                </button>
+                              )}
+                              {/* The only action a bounce allows: try another
+                                  address at the same company — until someone
+                                  has, at which point it reads as handled so the
+                                  next person doesn't do it twice. */}
+                              {deliveryBucket(cl) === "bounced" && (
+                                cl.replaced_by_lead_id ? (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); openReplacementOf(cl); }}
+                                    title={`${replacedTooltip(cl)} — open them`}
+                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-green-500/15 border border-green-500/30 font-mono text-[10px] font-semibold uppercase tracking-wide text-green-600 transition-colors hover:bg-green-500/25"
+                                  >
+                                    <Check className="size-3" />
+                                    Replaced
+                                  </button>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); openReplace(cl); }}
+                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md border border-border bg-field font-mono text-[10px] font-semibold uppercase tracking-wide text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
+                                    title="Add another contact at this company"
+                                  >
+                                    <UserPlus className="size-3" />
+                                    Replace
+                                  </button>
+                                )
+                              )}
                             </div>
                           </td>
                           <td className="px-6 py-3 text-xs text-muted-foreground">
@@ -2196,7 +2731,7 @@ export function CampaignDetail({
       {viewTab === "outbox" && (
         <div className="flex flex-1 min-h-0">
           {/* Left: unified lead list */}
-          <div className="w-[266px] shrink-0 border-r border-border bg-card flex flex-col">
+          <div className="w-[266px] h-full shrink-0 border-r border-border flex flex-col">
             {/* Header */}
             <div className="border-b border-border shrink-0">
               <div className="px-3 pt-2 flex items-center gap-1.5">
@@ -2206,7 +2741,9 @@ export function CampaignDetail({
                   </SelectTrigger>
                   <SelectContent>
                     {OUTBOX_FILTERS.map(({ id, label }) => (
-                      <SelectItem key={id} value={id} className="text-[11px]">{label}</SelectItem>
+                      <SelectItem key={id} value={id} className="text-[11px]">
+                        {label} ({outboxFilterCounts[id]})
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -2226,7 +2763,7 @@ export function CampaignDetail({
                   disabled={syncingReplies}
                   title="Sync replies"
                   onClick={() => void runSyncReplies()}
-                  className="size-7 shrink-0 bg-secondary/30 text-muted-foreground hover:text-primary disabled:opacity-50"
+                  className="size-7 shrink-0 bg-field hover:bg-field text-muted-foreground hover:text-primary disabled:opacity-50"
                 >
                   <RefreshCw className={cn("size-3", syncingReplies && "animate-spin")} />
                 </Button>
@@ -2235,7 +2772,7 @@ export function CampaignDetail({
                   variant="outline"
                   size="icon"
                   title="Open in Unibox"
-                  className="size-7 shrink-0 bg-secondary/30 text-muted-foreground hover:text-primary"
+                  className="size-7 shrink-0 bg-field hover:bg-field text-muted-foreground hover:text-primary"
                 >
                   <a href={`/unibox?campaign_id=${campaign.id}`}>
                     <ExternalLink className="size-3" />
@@ -2313,7 +2850,8 @@ export function CampaignDetail({
                       variant="outline"
                       size="sm"
                       className="h-7 shrink-0 px-2 text-[11px]"
-                      disabled={certifying}
+                      disabled={certifying || regenJobActive}
+                      title={regenJobActive ? "A regeneration is running — certifying is paused until it finishes" : undefined}
                       onClick={() => void handleBulkCertify(outboxCertifyDraftIds)}
                     >
                       {certifying ? <Loader2 className="size-3 animate-spin mr-1" /> : null}
@@ -2357,7 +2895,7 @@ export function CampaignDetail({
                 </div>
               )}
             </div>
-            <div className="flex-1 overflow-y-auto divide-y divide-border/40">
+            <div className="flex-1 overflow-y-auto space-y-1.5 p-2">
               {outboxFilteredLeads.length === 0 ? (
                 <p className="p-6 text-sm text-muted-foreground text-center">
                   {campaignLeads.length === 0 ? "No leads yet." : "No leads match this filter."}
@@ -2387,8 +2925,8 @@ export function CampaignDetail({
                       variant="ghost"
                       onClick={() => setSelectedId(cl.id)}
                       className={cn(
-                        "h-auto w-full block justify-start text-left font-normal rounded-none pl-12 pr-4 py-3",
-                        isActive ? "bg-primary/8 hover:bg-primary/8 border-l-2 border-l-primary" : "hover:bg-secondary/40 border-l-2 border-l-transparent",
+                        "h-auto w-full block justify-start text-left font-normal rounded-lg border px-3 py-2.5",
+                        isActive ? "border-primary bg-primary/8 hover:bg-primary/8" : "border-border bg-field hover:bg-field hover:border-muted-foreground/40",
                       )}
                     >
                       <div className="flex items-center gap-2">
@@ -2416,6 +2954,7 @@ export function CampaignDetail({
 
                 const activity = getDraftActivity(cl);
                 const status = cl.email_drafts?.status ?? "none";
+                const delivery = deliveryBucket(cl);
                 const inFlightCls = "bg-yellow-500/15 text-yellow-500 border-yellow-500/25";
                 const statusConfig: Record<string, { label: string; cls: string }> = {
                   generating: { label: "Generating", cls: inFlightCls },
@@ -2429,40 +2968,45 @@ export function CampaignDetail({
                 // during a regeneration that's the superseded ('rejected') version,
                 // which has no entry here and would otherwise fall through to
                 // "No draft" — exactly the blink this is meant to remove.
+                // Once mail has a delivery outcome, prefer that pill (Bounced /
+                // Sending / Sent / Replied) over draft status — drafts stay
+                // "sent" after a bounce, which hid the red Bounced pill here.
                 const sc = activity
                   ? { label: DRAFT_ACTIVITY_LABEL[activity], cls: inFlightCls }
-                  : statusConfig[status] ?? statusConfig.none;
-                const showCheckbox = status !== "sent";
+                  : delivery !== "not_queued"
+                    ? { label: deliveryLabel(cl), cls: DELIVERY_PILL_CLS[delivery] }
+                    : statusConfig[status] ?? statusConfig.none;
+                const showCheckbox = status !== "sent" && delivery === "not_queued";
                 const canCheck = showCheckbox;
                 return (
                   <div
                     key={cl.id}
                     className={cn(
-                      "flex items-center cursor-pointer border-l-2 transition-colors",
-                      isActive ? "bg-primary/10 border-primary" : "border-transparent hover:bg-secondary/40",
+                      "flex items-center cursor-pointer rounded-lg border transition-colors",
+                      isActive ? "border-primary bg-primary/10" : "border-border bg-field hover:bg-field hover:border-muted-foreground/40",
                     )}
                     onClick={() => setSelectedId(cl.id)}
                   >
-                    <div
-                      className="w-9 shrink-0 py-3 pl-4 flex items-center"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (!canCheck || !showCheckbox) return;
-                        setCheckedIds((prev) => {
-                          const next = new Set(prev);
-                          if (next.has(cl.id)) next.delete(cl.id); else next.add(cl.id);
-                          return next;
-                        });
-                      }}
-                    >
-                      {showCheckbox ? (
+                    {showCheckbox && (
+                      <div
+                        className="w-9 shrink-0 py-2.5 pl-2.5 flex items-center"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (!canCheck) return;
+                          setCheckedIds((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(cl.id)) next.delete(cl.id); else next.add(cl.id);
+                            return next;
+                          });
+                        }}
+                      >
                         <AppCheckbox
                           checked={isChecked && canCheck}
                           disabled={!canCheck}
                         />
-                      ) : null}
-                    </div>
-                    <div className="flex items-center gap-2 flex-1 min-w-0 py-3 pl-3 pr-3">
+                      </div>
+                    )}
+                    <div className={cn("flex items-center gap-2 flex-1 min-w-0 py-2.5 pr-3", showCheckbox ? "pl-1" : "pl-3")}>
                       <Avatar name={name} size="sm" />
                       <div className="flex-1 min-w-0">
                         <p className={cn("text-xs font-medium truncate", isActive ? "text-primary" : "text-foreground")}>{name}</p>
@@ -2486,43 +3030,298 @@ export function CampaignDetail({
               </div>
             ) : (
               <div className="w-full max-w-[1400px] mx-auto p-6 space-y-4">
-                {/* Lead header */}
-                <div className="flex items-center justify-between gap-3 pb-2 border-b border-border">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <Avatar name={[selected.leads?.first_name, selected.leads?.last_name].filter(Boolean).join(" ") || "?"} size="sm" />
-                    <div className="min-w-0">
-                      <p className="font-display text-sm font-semibold text-foreground truncate">{[selected.leads?.first_name, selected.leads?.last_name].filter(Boolean).join(" ") || "Unknown"}</p>
-                      <p className="font-mono text-xs text-muted-foreground truncate">{selected.leads?.email}</p>
+                {/* Lead + org cards — half width each; click opens Lead / Org drawers */}
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="flex w-full items-center gap-3 rounded-xl border border-border bg-field px-4 py-3 shadow-sm transition-colors hover:border-primary/40 hover:bg-field">
+                    <button
+                      type="button"
+                      onClick={() => setDrawerLead(campaignLeadToDrawerLead(selected))}
+                      className="shrink-0 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      title="Open lead details"
+                      aria-label="Open lead details"
+                    >
+                      <Avatar name={[selected.leads?.first_name, selected.leads?.last_name].filter(Boolean).join(" ") || "?"} size="sm" />
+                    </button>
+                    <div className="min-w-0 flex-1">
+                      <button
+                        type="button"
+                        onClick={() => setDrawerLead(campaignLeadToDrawerLead(selected))}
+                        className="block w-full min-w-0 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+                        title="Open lead details"
+                      >
+                        <p className="eyebrow text-muted-foreground">Lead</p>
+                        <p className="font-display text-sm font-semibold text-foreground truncate">
+                          {[selected.leads?.first_name, selected.leads?.last_name].filter(Boolean).join(" ") || "Unknown"}
+                        </p>
+                      </button>
+                      {selected.leads?.email ? (
+                        <a
+                          href={`mailto:${selected.leads.email}`}
+                          className="font-mono text-xs text-blue-500 hover:text-blue-600 hover:underline truncate block max-w-full"
+                          title={`Email ${selected.leads.email}`}
+                        >
+                          {selected.leads.email}
+                        </a>
+                      ) : (
+                        <p className="font-mono text-xs text-muted-foreground truncate">No email</p>
+                      )}
+                      {selected.leads?.title && (
+                        <p className="text-xs text-muted-foreground truncate">{selected.leads.title}</p>
+                      )}
                     </div>
-                  </div>
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    {(selected.email_drafts || getDraftActivity(selected)) && (
-                      <DraftStatusBadge
-                        label={getDisplayStatus(selected)}
-                        styleClass={getStatusStyle(selected)}
-                      />
+                    <button
+                      type="button"
+                      onClick={() => setDrawerLead(campaignLeadToDrawerLead(selected))}
+                      className="flex shrink-0 flex-col items-end gap-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+                      title="Open lead details"
+                    >
+                      {(selected.email_drafts || getDraftActivity(selected)) && (
+                        <DraftStatusBadge
+                          label={getDisplayStatus(selected)}
+                          styleClass={getStatusStyle(selected)}
+                        />
+                      )}
+                      {selectedThread && (() => {
+                        const temp = selectedThread.latest_temperature ?? "neutral";
+                        const badge = TEMP_BADGE[temp] ?? TEMP_BADGE.neutral;
+                        return (
+                          <span className={cn("font-mono text-[10px] font-semibold uppercase tracking-wider px-2 py-1 rounded-md border inline-flex items-center gap-1", badge.cls)}>
+                            {badge.icon}{badge.label}
+                          </span>
+                        );
+                      })()}
+                    </button>
+                    {selected.leads?.replaces_lead_id && (
+                      <span
+                        title={replacesTooltip(selected)}
+                        className="shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-secondary border border-border font-mono text-[10px] font-semibold uppercase tracking-wider text-muted-foreground"
+                      >
+                        <UserPlus className="size-3.5" />
+                        Replacement
+                      </span>
                     )}
-                    {selectedThread && (() => {
-                      const temp = selectedThread.latest_temperature ?? "neutral";
-                      const badge = TEMP_BADGE[temp] ?? TEMP_BADGE.neutral;
-                      return (
-                        <span className={cn("font-mono text-[10px] font-semibold uppercase tracking-wider px-2 py-1 rounded-md border inline-flex items-center gap-1", badge.cls)}>
-                          {badge.icon}{badge.label}
-                        </span>
-                      );
-                    })()}
+                    {/* Sits outside the card's open-lead button so the click
+                        opens the replace dialog, not the lead drawer. */}
+                    {deliveryBucket(selected) === "bounced" && (
+                      selected.replaced_by_lead_id ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const r = replacementFor(selected);
+                            if (r) handleOpenInOutbox(r.id);
+                          }}
+                          title={`${replacedTooltip(selected)} — open them`}
+                          className="shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-green-500/15 border border-green-500/30 font-mono text-[10px] font-semibold uppercase tracking-wider text-green-600 transition-colors hover:bg-green-500/25"
+                        >
+                          <Check className="size-3.5" />
+                          Replaced
+                        </button>
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="shrink-0 gap-1.5"
+                          onClick={() => openReplace(selected)}
+                          title="Add another contact at this company"
+                        >
+                          <UserPlus className="size-3.5" />
+                          Replace
+                        </Button>
+                      )
+                    )}
                   </div>
+
+                  {selected.leads?.org_id ? (
+                    (() => {
+                      const org = selected.leads!;
+                      const websiteRaw = (org.company_website || org.company_domain || "").trim();
+                      const websiteHref = websiteRaw
+                        ? (/^https?:\/\//i.test(websiteRaw) ? websiteRaw : `https://${websiteRaw}`)
+                        : null;
+                      const websiteLabel = websiteRaw.replace(/^https?:\/\//i, "").replace(/\/$/, "") || null;
+                      const location = [org.company_city, org.company_country].filter(Boolean).join(", ");
+                      return (
+                        <div className="flex w-full items-center gap-3 rounded-xl border border-border bg-field px-4 py-3 shadow-sm transition-colors hover:border-primary/40 hover:bg-field">
+                          <button
+                            type="button"
+                            onClick={() => setDrawerOrgId(org.org_id!)}
+                            className="flex size-8 shrink-0 items-center justify-center rounded-md bg-secondary text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            title="Open organization details"
+                            aria-label="Open organization details"
+                          >
+                            <Building2 className="size-4" />
+                          </button>
+                          <div className="min-w-0 flex-1">
+                            <button
+                              type="button"
+                              onClick={() => setDrawerOrgId(org.org_id!)}
+                              className="block w-full min-w-0 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+                              title="Open organization details"
+                            >
+                              <p className="eyebrow text-muted-foreground">Organization</p>
+                              <p className="font-display text-sm font-semibold text-foreground truncate">
+                                {org.company_name || "Untitled organization"}
+                              </p>
+                            </button>
+                            {websiteHref && websiteLabel && (
+                              <a
+                                href={websiteHref}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="font-mono text-xs text-blue-500 hover:text-blue-600 hover:underline truncate block max-w-full"
+                                title={websiteHref}
+                              >
+                                {websiteLabel}
+                              </a>
+                            )}
+                            {location ? (
+                              <p className="flex items-center gap-1 text-[11px] text-muted-foreground truncate">
+                                <MapPin className="size-3 shrink-0" aria-hidden />
+                                <span className="truncate">{location}</span>
+                              </p>
+                            ) : !websiteHref ? (
+                              <p className="font-mono text-xs text-muted-foreground truncate">No website</p>
+                            ) : null}
+                          </div>
+                        </div>
+                      );
+                    })()
+                  ) : (
+                    <div className="flex w-full items-center gap-3 rounded-xl border border-dashed border-border bg-field/60 px-4 py-3 text-left shadow-sm">
+                      <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-secondary text-muted-foreground" aria-hidden>
+                        <Building2 className="size-4" />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="eyebrow text-muted-foreground">Organization</p>
+                        <p className="text-sm text-muted-foreground italic">
+                          {selected.leads?.company_name || "No organization linked"}
+                        </p>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
-                {/* Initial email — editor while pending, bubble once sent */}
-                {selected.email_drafts?.status === "generating" || regenerating || getDraftActivity(selected) ? (
-                  <div className="max-w-2xl mx-auto flex flex-col items-center py-20 gap-3 rounded-xl border border-border bg-card">
-                    <Loader2 className="size-6 text-muted-foreground animate-spin" />
-                    <p className="text-sm text-muted-foreground">
-                      {getDraftActivity(selected) === "regenerating" || regenerating
-                        ? "Regenerating personalised email…"
-                        : "Generating personalised email…"}
+                {/* A replacement carries its origin wherever it is opened —
+                    otherwise a contact nobody imported just appears in a
+                    running campaign with no explanation. */}
+                {selectedOriginal && (
+                  <div className="max-w-2xl mx-auto w-full flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border border-border bg-secondary/30 px-3 py-2 text-xs text-muted-foreground">
+                    <span className="font-mono text-[10px] font-semibold uppercase tracking-wider text-foreground/70">
+                      Replacement for
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleOpenInOutbox(selectedOriginal.id)}
+                      className="font-semibold text-primary underline-offset-2 hover:underline"
+                    >
+                      {[selectedOriginal.leads?.first_name, selectedOriginal.leads?.last_name].filter(Boolean).join(" ") || "the bounced contact"}
+                    </button>
+                    {selectedOriginal.leads?.email && (
+                      <span className="font-mono text-[11px] line-through opacity-70">{selectedOriginal.leads.email}</span>
+                    )}
+                    <span>
+                      bounced{selectedOriginal.bounced_at ? ` ${format(new Date(selectedOriginal.bounced_at), "d MMM")}` : ""}
+                    </span>
+                  </div>
+                )}
+
+                {/* The handoff: what a replaced bounce shows instead of a dead
+                    thread. What happened, who covers it now, who decided that. */}
+                {isReplacedBounce && !bouncedThreadOpen && (
+                  <div className="max-w-2xl mx-auto w-full rounded-xl border border-border bg-card p-6 flex flex-col items-center gap-4 text-center">
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-red-500/15 border border-red-500/30 font-mono text-[10px] font-semibold uppercase tracking-wide text-red-500">
+                      Bounced{selected.bounced_at ? ` ${format(new Date(selected.bounced_at), "d MMM yyyy")}` : ""}
+                    </span>
+                    <div className="space-y-1.5">
+                      <p className="font-display text-sm font-semibold text-foreground">This mailbox rejected our email.</p>
+                      <p className="text-xs text-muted-foreground max-w-sm mx-auto">
+                        The message was never read, so there is nothing here to review or send.
+                        {" "}Outreach to {selected.leads?.company_name || "this company"} continues with the contact below.
+                      </p>
+                    </div>
+
+                    {selectedReplacement ? (
+                      <button
+                        type="button"
+                        onClick={() => handleOpenInOutbox(selectedReplacement.id)}
+                        className="w-full max-w-sm flex items-center gap-3 rounded-lg border border-primary/40 bg-primary/5 px-3 py-2.5 text-left transition-colors hover:border-primary hover:bg-primary/10"
+                      >
+                        <Avatar
+                          name={[selectedReplacement.leads?.first_name, selectedReplacement.leads?.last_name].filter(Boolean).join(" ") || "?"}
+                          size="sm"
+                        />
+                        <span className="min-w-0">
+                          <span className="block text-sm font-semibold text-foreground truncate">
+                            {[selectedReplacement.leads?.first_name, selectedReplacement.leads?.last_name].filter(Boolean).join(" ") || "Replacement contact"}
+                          </span>
+                          <span className="block font-mono text-[11px] text-muted-foreground truncate">
+                            {selectedReplacement.leads?.email}
+                          </span>
+                        </span>
+                        <ArrowRight className="ml-auto size-4 shrink-0 text-primary" />
+                      </button>
+                    ) : (
+                      // The replacement exists but isn't on this screen — a
+                      // co-worker owns it, so an employee can't see it.
+                      <p className="text-xs text-muted-foreground">A replacement contact was added at this company.</p>
+                    )}
+                    {selectedReplacement && (
+                      <p className="text-[11px] text-muted-foreground">Opens their email, ready to certify</p>
+                    )}
+
+                    <div className="w-full border-t border-border pt-3 text-[11px] text-muted-foreground">
+                      {selected.replaced_by_user_name && (
+                        <>
+                          Added by {selected.replaced_by_user_name}
+                          {selected.replaced_at ? ` on ${format(new Date(selected.replaced_at), "d MMM")}` : ""}
+                          {" · "}
+                        </>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setBouncedThreadOpen(true)}
+                        className="underline underline-offset-2 hover:text-foreground"
+                      >
+                        View the email that bounced
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {isReplacedBounce && bouncedThreadOpen && (
+                  <div className="max-w-2xl mx-auto w-full flex items-center justify-between gap-3 rounded-lg border border-border bg-secondary/30 px-3 py-2">
+                    <p className="text-xs text-muted-foreground">
+                      This email bounced and was never read — kept only as a record.
                     </p>
+                    <Button size="sm" variant="ghost" className="shrink-0 text-xs" onClick={() => setBouncedThreadOpen(false)}>
+                      Hide
+                    </Button>
+                  </div>
+                )}
+
+                {/* Initial email — editor while pending, bubble once sent */}
+                {(!isReplacedBounce || bouncedThreadOpen) && (<>
+                {selected.email_drafts?.status === "generating" || regenerating || getDraftActivity(selected) ? (
+                  <div className="max-w-2xl mx-auto rounded-xl border border-border bg-card p-6 space-y-4 animate-pulse">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Loader2 className="size-4 text-muted-foreground animate-spin" />
+                      <p className="text-xs text-muted-foreground">
+                        {getDraftActivity(selected) === "regenerating" || regenerating
+                          ? "Regenerating personalised email…"
+                          : "Generating personalised email…"}
+                      </p>
+                    </div>
+                    <div className="h-4 w-48 bg-secondary rounded" />
+                    <div className="space-y-2">
+                      <div className="h-3 w-full bg-secondary rounded" />
+                      <div className="h-3 w-full bg-secondary rounded" />
+                      <div className="h-3 w-3/4 bg-secondary rounded" />
+                    </div>
+                    <div className="space-y-2 pt-2">
+                      <div className="h-3 w-full bg-secondary rounded" />
+                      <div className="h-3 w-5/6 bg-secondary rounded" />
+                      <div className="h-3 w-2/3 bg-secondary rounded" />
+                    </div>
                   </div>
                 ) : selected.email_drafts && selected.email_drafts.status !== "sent" ? (
                   <div className="max-w-2xl mx-auto rounded-xl border border-border bg-card p-5 space-y-4">
@@ -2606,7 +3405,7 @@ export function CampaignDetail({
                             {saving ? <Loader2 className="size-3.5 animate-spin" /> : <Save className="size-3.5" />}
                             Save edits
                           </Button>
-                          <Button className="gap-1.5" disabled={certifying} onClick={() => handleCertifyOne(selected.email_drafts!.id)}>
+                          <Button className="gap-1.5" disabled={certifying || regenJobActive} title={regenJobActive ? "A regeneration is running — certifying is paused until it finishes" : undefined} onClick={() => handleCertifyOne(selected.email_drafts!.id)}>
                             {certifying ? <Loader2 className="size-3.5 animate-spin" /> : <Check className="size-3.5" />}
                             Certify
                           </Button>
@@ -2712,7 +3511,7 @@ export function CampaignDetail({
                           value={regenQuery}
                           onChange={(e) => setRegenQuery(e.target.value)}
                           rows={4}
-                          className="text-sm resize-y bg-card"
+                          className="text-sm resize-y bg-field"
                           placeholder='Describe the change — multiple lines are fine, e.g. paste a block and say "remove this"'
                           onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleRegenerate(); }}
                         />
@@ -2728,12 +3527,45 @@ export function CampaignDetail({
                     )}
                   </div>
                 ) : outboxMessageItems.length > 0 ? (
-                  <div className="rounded-xl border border-border bg-card overflow-hidden">
+                  <div className="rounded-xl border border-border bg-field dark:bg-card overflow-hidden">
+                    <AddParticipantLeadDialog
+                      open={!!outboxAddLeadFor}
+                      email={outboxAddLeadFor}
+                      organizationName={selectedThread?.lead_organization_name ?? null}
+                      ownerName={selectedThread?.lead_owner_name ?? null}
+                      saving={outboxSavingLead}
+                      onCancel={() => setOutboxAddLeadFor(null)}
+                      onConfirm={(f, l) => void handleOutboxConfirmAddLead(f, l)}
+                    />
                     {outboxMessageItems.map((item) => (
                       <OutboxMessageRow
                         key={item.id}
                         senderName={item.sender}
                         toLabel={item.to}
+                        ccLabel={item.cc}
+                        fromThirdParty={item.fromThirdParty}
+                        isUnanswered={item.isUnanswered}
+                        isReplyTarget={outboxReplyOpen && !!item.replyTargetId && item.replyTargetId === outboxActiveTargetId}
+                        inReplyToLabel={item.inReplyToLabel}
+                        stepLabel={item.stepLabel}
+                        addingLead={outboxSavingLead && outboxAddLeadFor === item.promotableEmail}
+                        onAddAsLead={item.promotableEmail
+                          ? () => setOutboxAddLeadFor(item.promotableEmail)
+                          : null}
+                        onReplyTo={item.replyTargetId
+                          ? () => {
+                              setOutboxReplyTargetId(item.replyTargetId);
+                              setOutboxReplyAll(false);
+                              setOutboxReplyOpen(true);
+                            }
+                          : null}
+                        onReplyAll={item.replyTargetId
+                          ? () => {
+                              setOutboxReplyTargetId(item.replyTargetId);
+                              setOutboxReplyAll(true);
+                              setOutboxReplyOpen(true);
+                            }
+                          : null}
                         timestamp={item.timestamp}
                         bodyHtml={item.bodyHtml}
                         bodyText={item.bodyText}
@@ -2749,6 +3581,7 @@ export function CampaignDetail({
                 ) : (
                   <EmptyState message="No draft available for this lead." className="max-w-2xl mx-auto" />
                 )}
+                </>)}
 
                 {/* Reply to the latest inbound message. Opens a plain composer;
                     the AI only writes a draft when "AI draft" is pressed. */}
@@ -2759,6 +3592,27 @@ export function CampaignDetail({
                   const hasDraftReady = !!latestDraft && latestDraft.status !== "generating" && latestDraft.status !== "sent" && latestDraft.status !== "rejected";
                   const isGenerating = latestDraft?.status === "generating" || outboxNewReplyLoading;
                   const campaignLeadId = selectedThread.campaign_lead_id;
+
+                  // Same participant model as the Unibox: reply-all by default,
+                  // recipients shown literally, and the target chosen per
+                  // message. Without this the composer answers whoever spoke
+                  // last and silently drops everyone else, the lead included.
+                  const outboxParticipants = threadParticipants(outboxParticipantMessages, {
+                    ourEmails: outboxOurEmails,
+                    leadEmail: selectedThread.lead_email,
+                  });
+                  // Reply all puts every participant in To (Instantly's
+                  // additional_recipients); plain Reply addresses only the
+                  // sender of the message being answered.
+                  const outboxTo = replyRecipients(outboxActiveTarget, outboxParticipants);
+                  const outboxRecipientsCtx: ReplyRecipientContext = {
+                    to: outboxReplyAll ? [...outboxTo.to, ...outboxTo.cc] : outboxTo.to,
+                    lockedTo: outboxTo.to[0] ?? null,
+                    participants: outboxParticipants.map((p) => p.email),
+                    leadEmail: selectedThread.lead_email,
+                    leadName: outboxReplyName,
+                    replyToUuid: outboxActiveTargetId,
+                  };
 
                   function handleReplyClick() {
                     if (outboxReplyOpen) {
@@ -2810,6 +3664,7 @@ export function CampaignDetail({
                               startBlank={outboxReplyStartBlank && !replyDraftHasContent(latestDraft)}
                               onNewAiDraft={campaignLeadId ? handleAiDraftClick : undefined}
                               newAiDraftPending={isGenerating}
+                              recipients={outboxRecipientsCtx}
                             />
                           ) : (
                             <ManualReplyBox
@@ -2820,6 +3675,7 @@ export function CampaignDetail({
                               onCancel={() => setOutboxReplyOpen(false)}
                               onNewAiDraft={campaignLeadId ? handleAiDraftClick : undefined}
                               newAiDraftPending={isGenerating}
+                              recipients={outboxRecipientsCtx}
                             />
                           )}
                         </div>
@@ -2865,7 +3721,7 @@ export function CampaignDetail({
                       "h-auto w-full block border rounded-lg p-4 text-left font-normal",
                       isActive
                         ? "swatch-bar border-primary bg-primary/10 hover:bg-primary/10"
-                        : "border-border bg-card hover:bg-secondary/40 hover:border-primary/40",
+                        : "border-border bg-field hover:bg-field hover:border-primary/40",
                     )}
                   >
                     <p className={cn("font-display text-sm font-semibold mb-0.5", isActive ? "text-primary" : "text-foreground")}>
@@ -2938,9 +3794,17 @@ export function CampaignDetail({
                 {seqHasContent ? (
                   <div className="rounded-xl border border-border bg-card p-6 space-y-4">
                     {seqRegenerating ? (
-                      <div className="flex flex-col items-center py-16 gap-3">
-                        <Loader2 className="size-6 text-muted-foreground animate-spin" />
-                        <p className="text-sm text-muted-foreground">Regenerating follow-up…</p>
+                      <div className="p-4 space-y-4 animate-pulse">
+                        <div className="flex items-center gap-2">
+                          <Loader2 className="size-4 text-muted-foreground animate-spin" />
+                          <p className="text-xs text-muted-foreground">Regenerating follow-up…</p>
+                        </div>
+                        <div className="h-4 w-40 bg-secondary rounded" />
+                        <div className="space-y-2">
+                          <div className="h-3 w-full bg-secondary rounded" />
+                          <div className="h-3 w-full bg-secondary rounded" />
+                          <div className="h-3 w-2/3 bg-secondary rounded" />
+                        </div>
                       </div>
                     ) : (
                       <>
@@ -3018,12 +3882,20 @@ export function CampaignDetail({
           <div className="flex-1 overflow-y-auto">
             <div className="w-full max-w-3xl mx-auto px-6 py-6">
               {loadingComments ? (
-                <div className="min-h-[320px] flex items-center justify-center text-muted-foreground">
-                  <Loader2 className="size-5 animate-spin" />
+                <div className="min-h-[320px] animate-pulse space-y-4 pt-4">
+                  {Array.from({ length: 4 }).map((_, i) => (
+                    <div key={i} className={`flex gap-2.5 ${i % 2 === 0 ? "" : "flex-row-reverse"}`}>
+                      <div className="size-7 rounded-full bg-secondary shrink-0" />
+                      <div className="space-y-1.5 max-w-[65%]">
+                        <div className="h-3 w-16 bg-secondary rounded" />
+                        <div className="h-12 w-48 bg-secondary rounded-xl" />
+                      </div>
+                    </div>
+                  ))}
                 </div>
               ) : comments.length === 0 ? (
                 <div className="min-h-[320px] flex flex-col items-center justify-center text-center px-5">
-                  <div className="size-11 rounded-full border border-border bg-card flex items-center justify-center text-primary mb-3">
+                  <div className="size-11 rounded-full border border-border bg-field flex items-center justify-center text-primary mb-3">
                     <MessageSquare className="size-5" />
                   </div>
                   <p className="text-sm font-semibold">Start the campaign discussion</p>
@@ -3043,8 +3915,8 @@ export function CampaignDetail({
                       <div key={comment.id} className="space-y-3">
                         {showDate && (
                           <div className="flex items-center justify-center py-1">
-                            <span className="rounded-full border border-border bg-card px-3 py-1 text-[10px] font-medium text-muted-foreground shadow-sm">
-                              {formatChatDate(comment.created_at)}
+                            <span className="rounded-full border border-border bg-field px-3 py-1 text-[10px] leading-none font-medium text-muted-foreground shadow-sm">
+                              <span className="translate-y-px inline-block">{formatChatDate(comment.created_at)}</span>
                             </span>
                           </div>
                         )}
@@ -3065,7 +3937,7 @@ export function CampaignDetail({
 
           {/* Floating composer — no full-width bar, the input is its own card. */}
           <div className="shrink-0 w-full max-w-3xl mx-auto px-6 pb-6 pt-2">
-            <div className="rounded-2xl border border-border bg-card shadow-lg shadow-black/5">
+            <div className="rounded-2xl border border-border bg-field shadow-lg shadow-black/5">
               <Textarea
                 value={commentBody}
                 onChange={(event) => setCommentBody(event.target.value)}
@@ -3115,6 +3987,16 @@ export function CampaignDetail({
           submitting={bulkRegenSubmitting}
           onConfirm={(instruction) => void submitBulkRegenerate(instruction)}
           onCancel={() => setBulkRegenPreview(null)}
+        />
+      )}
+
+      {replaceTarget && (
+        <ReplaceLeadModal
+          target={replaceTarget}
+          submitting={replaceSubmitting}
+          error={replaceError}
+          onConfirm={(input) => void handleReplaceConfirm(input)}
+          onCancel={() => { setReplaceTarget(null); setReplaceError(""); }}
         />
       )}
 

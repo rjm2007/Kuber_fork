@@ -267,6 +267,67 @@ export const EMPLOYEE_RANGES = ["1,10", "11,50", "51,200", "201,1000", "1001,100
 
 export const CONTACT_EMAIL_STATUSES = ["verified", "likely to engage"];
 
+// ── Company Lookup ──────────────────────────────────────────────────────────
+
+/** Contacts a single Company Lookup may reveal. This is the ONLY spend ceiling
+ *  on the reveal step, so it is enforced in the validator (server-side), not
+ *  just by disabling checkboxes. */
+export const COMPANY_LOOKUP_MAX_CONTACTS = 5;
+
+/** Apollo pages one lookup may buy. Apollo itself allows 500; each costs a
+ *  credit, and if the right company is not among 300 candidates the answer is
+ *  a better filter, not a deeper page. Tune once real usage says otherwise. */
+export const COMPANY_LOOKUP_MAX_PAGES = 3;
+
+/** Title ranking for the people list. Company Lookup cannot rank on seniority
+ *  — Apollo's people search does not return it — so ordering is derived from
+ *  the title string. Lower index = higher in the list; anything unmatched
+ *  sorts last in Apollo's own order.
+ *  Matched as a lowercased substring, so "Group Managing Director" hits
+ *  "managing director" before it hits "director". Order matters: the FIRST
+ *  entry that appears in the title wins, so keep specific phrases above the
+ *  generic words they contain. */
+export const COMPANY_LOOKUP_TITLE_RANK = [
+  "chief executive",
+  "ceo",
+  "founder",
+  "co-founder",
+  "managing director",
+  "owner",
+  "proprietor",
+  "partner",
+  "president",
+  "chairman",
+  "director",
+  "vice president",
+  "vp",
+  "head of",
+  "export",
+  "import",
+  "procurement",
+  "purchase",
+  "purchasing",
+  "sourcing",
+  "supply chain",
+  "commercial",
+  "sales",
+  "business development",
+  "operations",
+  "plant",
+  "production",
+  "manager",
+] as const;
+
+/** Index of the first ranked phrase contained in `title`, or a large number
+ *  when nothing matches (unranked titles sink to the bottom, keeping Apollo's
+ *  own relevance order among themselves). */
+export function companyLookupTitleRank(title: string | null | undefined): number {
+  if (!title) return Number.MAX_SAFE_INTEGER;
+  const t = title.toLowerCase();
+  const i = COMPANY_LOOKUP_TITLE_RANK.findIndex((phrase) => t.includes(phrase));
+  return i === -1 ? Number.MAX_SAFE_INTEGER : i;
+}
+
 /** Maps UI dropdown label → Apollo person_locations[] value */
 export const LOCATION_MAP: Record<string, string> = {
   // South Asia

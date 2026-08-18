@@ -47,7 +47,7 @@ export function KanbanBoard({
             className="shrink-0 flex flex-col gap-2"
             style={{ width: "calc((100% - 32px) / 5)", minWidth: "160px" }}
           >
-            <div className={cn("swatch-bar overflow-hidden flex items-center gap-1.5 px-2.5 py-2 rounded-lg border bg-card", col.header)} title={col.hint}>
+            <div className={cn("swatch-bar overflow-hidden flex items-center gap-1.5 px-2.5 py-2 rounded-lg border bg-field", col.header)} title={col.hint}>
               <span className={cn("size-2 rounded-full shrink-0", col.dot)} />
               <span className="eyebrow truncate text-foreground/80!">{col.label}</span>
               {col.id === "Input Required" && onRetryAllFailed && failedCount > 0 && (
@@ -77,7 +77,7 @@ export function KanbanBoard({
                     variant="ghost"
                     onClick={() => onCardClick(lead)}
                     className={cn(
-                      "h-auto w-full block rounded-lg border bg-card p-2.5 text-left font-normal cursor-pointer hover:border-muted-foreground/50 hover:bg-card transition-colors shadow-sm relative",
+                      "h-auto w-full block rounded-lg border bg-field p-2.5 text-left font-normal cursor-pointer hover:border-muted-foreground/50 hover:bg-field transition-colors shadow-sm relative",
                       reason === "failed" ? "border-yellow-500/40" : reason === "missing_data" ? "border-red-500/30" : "border-border",
                     )}
                     title={reason === "failed" && lead.lastError ? lead.lastError : undefined}

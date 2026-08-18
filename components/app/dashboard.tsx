@@ -10,7 +10,7 @@ import {
   TrendingUp, Users, Zap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { getBatchColor } from "@/lib/constants";
+import { getBatchColor, type BatchColorName } from "@/lib/constants";
 import type { Campaign } from "@/components/app/create-campaign-modal";
 import type { ImportBatch } from "@/lib/api-client";
 import { ServiceHealthBanner } from "@/components/app/service-health-banner";
@@ -18,6 +18,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Card } from "@/components/ui/card";
 import { StatTile } from "@/components/ui/stat-tile";
 import { Button } from "@/components/ui/button";
+import { Pill } from "@/components/ui/pill";
 
 // ─── Chart helpers ────────────────────────────────────────────────────────────
 
@@ -333,9 +334,9 @@ export function DashboardView({
                       <p className="text-sm font-medium truncate">{b.label}</p>
                       <p className="text-xs text-muted-foreground truncate capitalize">{b.source}</p>
                     </div>
-                    <span className={cn("inline-flex items-center px-2.5 py-1 rounded-full border font-mono text-xs font-medium whitespace-nowrap shrink-0 tabular-nums", bc.pill)}>
+                    <Pill color={b.color as BatchColorName} className="font-mono tabular-nums shrink-0">
                       {b.lead_count} lead{b.lead_count !== 1 ? "s" : ""}
-                    </span>
+                    </Pill>
                   </Button>
                 );
               })}

@@ -1,0 +1,761 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PRD — Campaign-level CC / BCC</title>
+<style>
+  :root {
+    --page:      #FFFFFF;
+    --panel:     #F4F6F8;
+    --panel-2:   #EAEEF2;
+    --line:      #D3DAE2;
+    --line-soft: #E3E8EE;
+    --ink:       #161D26;
+    --ink-2:     #55616F;
+    --ink-3:     #7C8794;
+    --accent:    #5546D6;
+    --accent-bg: #EFEDFC;
+    --ok:        #0B6B5C;
+    --ok-bg:     #DFF1ED;
+    --prop:      #9A5A06;
+    --prop-bg:   #FBEDD8;
+    --ver:       #A32B22;
+    --ver-bg:    #FBE6E3;
+
+    --sans: "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, "Helvetica Neue", Arial, sans-serif;
+    --mono: "Cascadia Mono", Consolas, "SF Mono", Menlo, "Liberation Mono", monospace;
+  }
+
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--page); color: var(--ink);
+    font-family: var(--sans); font-size: 15px; line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+  .sheet { max-width: 60rem; margin: 0 auto; padding: 3rem 1.5rem 5rem; }
+
+  h1 { font-size: 2.4rem; line-height: 1.1; letter-spacing: -.022em; margin: .4rem 0 0; font-weight: 650; }
+  h2 { font-size: 1.35rem; line-height: 1.25; letter-spacing: -.014em; margin: 0; font-weight: 640; }
+  h3 { font-size: 1.02rem; margin: 0 0 .1rem; font-weight: 645; letter-spacing: -.006em; }
+  h4 { font-size: .875rem; margin: 0; font-weight: 650; }
+  p  { margin: 0 0 .85rem; max-width: 72ch; }
+  p:last-child { margin-bottom: 0; }
+
+  .eyebrow { font-size: .7rem; font-weight: 660; letter-spacing: .11em; text-transform: uppercase; color: var(--ink-3); margin: 0; }
+  .lede { font-size: 1.05rem; color: var(--ink-2); margin-top: .9rem; max-width: 64ch; }
+
+  code { font-family: var(--mono); font-size: .855em; background: var(--panel-2); padding: .1em .35em; border-radius: 3px; word-break: break-word; }
+  pre { font-family: var(--mono); font-size: .78rem; line-height: 1.6; background: var(--panel); border: 1px solid var(--line); border-radius: 5px; padding: .85rem 1rem; overflow-x: auto; margin: 0 0 .85rem; }
+  pre code { background: none; padding: 0; font-size: inherit; }
+
+  .meta { display: grid; grid-template-columns: repeat(auto-fit, minmax(8.5rem,1fr)); gap: 0 1.5rem; border: 1px solid var(--line); border-radius: 6px; padding: .9rem 1.15rem; margin: 1.75rem 0 0; background: var(--panel); }
+  .meta > div { padding: .4rem 0; }
+  .meta dt { font-size: .66rem; text-transform: uppercase; letter-spacing: .08em; color: var(--ink-3); font-weight: 650; }
+  .meta dd { margin: .1rem 0 0; font-weight: 570; font-size: .9rem; }
+
+  nav.toc { border: 1px solid var(--line); border-radius: 6px; padding: 1rem 1.2rem; margin: 2.5rem 0 0; background: var(--panel); }
+  nav.toc h4 { font-size: .68rem; text-transform: uppercase; letter-spacing: .1em; color: var(--ink-3); margin-bottom: .55rem; }
+  nav.toc ol { margin: 0; padding: 0; list-style: none; columns: 2; column-gap: 2rem; }
+  nav.toc li { font-size: .82rem; padding: .16rem 0; break-inside: avoid; }
+  nav.toc a { color: var(--ink-2); text-decoration: none; }
+  nav.toc a:hover, nav.toc a:focus-visible { color: var(--accent); text-decoration: underline; }
+  nav.toc .n { font-family: var(--mono); color: var(--ink-3); margin-right: .4rem; font-size: .92em; }
+  @media (max-width: 620px) { nav.toc ol { columns: 1; } }
+
+  section { margin-top: 2.75rem; scroll-margin-top: 1rem; }
+  .sec-head { border-top: 2px solid var(--ink); padding-top: .8rem; margin-bottom: 1.1rem; display: flex; align-items: baseline; gap: .65rem; flex-wrap: wrap; }
+  .sec-n { font-family: var(--mono); font-size: .74rem; font-weight: 700; color: var(--ink-3); }
+  .sub { margin-top: 1.6rem; }
+  .sub h3 { padding-bottom: .35rem; border-bottom: 1px solid var(--line); margin-bottom: .7rem; }
+
+  .tag { display: inline-block; font-family: var(--mono); font-size: .655rem; font-weight: 700; letter-spacing: .045em; padding: .15rem .4rem; border-radius: 3px; border: 1px solid; text-transform: uppercase; white-space: nowrap; vertical-align: .05em; }
+  .t-ok   { color: var(--ok);     background: var(--ok-bg);     border-color: #B5DCD3; }
+  .t-code { color: var(--accent); background: var(--accent-bg); border-color: #CFC9F4; }
+  .t-prop { color: var(--prop);   background: var(--prop-bg);   border-color: #EBD3AC; }
+  .t-ver  { color: var(--ver);    background: var(--ver-bg);    border-color: #EFC4BF; }
+
+  .legend { display: flex; gap: 1.25rem; flex-wrap: wrap; border: 1px solid var(--line); border-radius: 6px; padding: .85rem 1.1rem; background: var(--panel); margin-bottom: 1.1rem; }
+  .legend div { font-size: .78rem; color: var(--ink-2); display: flex; align-items: center; gap: .45rem; }
+
+  .box { border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 5px; padding: .95rem 1.15rem; margin: 0 0 .9rem; background: var(--panel); }
+  .box.crit { border-left-color: var(--ver); }
+  .box.good { border-left-color: var(--ok); }
+  .box h4 { text-transform: uppercase; letter-spacing: .07em; font-size: .7rem; color: var(--accent); margin-bottom: .45rem; }
+  .box.crit h4 { color: var(--ver); }
+  .box.good h4 { color: var(--ok); }
+  .box p, .box ul { font-size: .875rem; }
+
+  .tw { overflow-x: auto; border: 1px solid var(--line); border-radius: 5px; margin: 0 0 .9rem; }
+  table { border-collapse: collapse; width: 100%; font-size: .82rem; min-width: 34rem; background: var(--page); }
+  th, td { text-align: left; padding: .5rem .7rem; border-bottom: 1px solid var(--line-soft); vertical-align: top; }
+  th { font-weight: 650; color: var(--ink-2); text-transform: uppercase; letter-spacing: .05em; font-size: .655rem; background: var(--panel-2); border-bottom: 1px solid var(--line); }
+  tbody tr:last-child td { border-bottom: none; }
+  td code { font-size: .8em; }
+
+  ul, ol.l { margin: 0 0 .9rem; padding-left: 1.15rem; max-width: 72ch; }
+  li { margin-bottom: .3rem; line-height: 1.6; }
+  li:last-child { margin-bottom: 0; }
+
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: .9rem; margin-bottom: .9rem; }
+  @media (max-width: 700px) { .cols { grid-template-columns: 1fr; } }
+  .card { border: 1px solid var(--line); border-radius: 5px; padding: .95rem 1.05rem; background: var(--page); }
+  .card h4 { margin-bottom: .5rem; }
+  .card ul { margin-bottom: 0; font-size: .84rem; }
+
+  .flow { font-family: var(--mono); font-size: .78rem; line-height: 1.85; border: 1px solid var(--line); border-radius: 5px; padding: .9rem 1.1rem; background: var(--panel); overflow-x: auto; margin-bottom: .9rem; }
+  .flow div { white-space: nowrap; color: var(--ink-2); }
+  .flow b { color: var(--ink); font-weight: 650; }
+  .flow .a { color: var(--ink-3); }
+
+  .step { border: 1px solid var(--line); border-radius: 5px; margin-bottom: .8rem; overflow: hidden; }
+  .step-h { display: flex; align-items: center; gap: .6rem; padding: .65rem .95rem; background: var(--panel); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  .step-h .sn { font-family: var(--mono); font-size: .72rem; font-weight: 700; width: 1.35rem; height: 1.35rem; border-radius: 3px; background: var(--ink); color: #fff; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .step-h h4 { flex: 1; min-width: 7rem; }
+  .step-b { padding: .9rem .95rem; }
+  .step-b ul, .step-b p { margin-bottom: .6rem; font-size: .875rem; }
+  .step-b > :last-child { margin-bottom: 0; }
+
+  .bq { border: 1px solid var(--line); border-top: 3px solid var(--accent); border-radius: 5px; padding: 1.1rem 1.2rem; margin-bottom: 1rem; }
+  .bq .lbl { font-family: var(--mono); font-size: .7rem; font-weight: 700; color: var(--accent); letter-spacing: .06em; text-transform: uppercase; }
+  .bq h3 { margin: .4rem 0 .7rem; }
+  .opts { display: grid; grid-template-columns: 1fr 1fr; gap: .7rem; margin-bottom: .8rem; }
+  @media (max-width: 620px) { .opts { grid-template-columns: 1fr; } }
+  .opt { border: 1px solid var(--line); border-radius: 4px; padding: .7rem .8rem; background: var(--panel); }
+  .opt .t { font-weight: 645; font-size: .875rem; display: block; margin-bottom: .2rem; }
+  .opt .d { font-size: .8rem; color: var(--ink-2); line-height: 1.55; }
+  .impl { font-size: .84rem; color: var(--ink-2); border-top: 1px solid var(--line-soft); padding-top: .65rem; }
+
+  ol.ac { counter-reset: ac; list-style: none; padding: 0; margin: 0; }
+  ol.ac li { display: flex; gap: .6rem; border: 1px solid var(--line); border-radius: 4px; padding: .55rem .75rem; margin-bottom: .4rem; font-size: .85rem; align-items: flex-start; }
+  ol.ac li::before { counter-increment: ac; content: "AC-" counter(ac, decimal-leading-zero); font-family: var(--mono); font-size: .655rem; font-weight: 700; color: var(--accent); background: var(--accent-bg); border: 1px solid #CFC9F4; padding: .12rem .3rem; border-radius: 3px; flex-shrink: 0; margin-top: .12rem; }
+
+  footer { margin-top: 3rem; border-top: 1px solid var(--line); padding-top: 1.1rem; color: var(--ink-3); font-size: .8rem; }
+  footer p { margin-bottom: .4rem; }
+  a { color: var(--accent); }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  @media print {
+    body { font-size: 11pt; }
+    .sheet { max-width: none; padding: 0; }
+    section { break-inside: avoid-page; }
+    nav.toc { break-after: page; }
+  }
+</style>
+</head>
+<body>
+<div class="sheet">
+
+<header>
+  <p class="eyebrow">Kuber · Campaign Outreach</p>
+  <h1>Campaign-level CC / BCC — Product Requirements</h1>
+  <p class="lede">Let managers set shared CC and BCC addresses on a campaign once, then have Instantly apply them to every outbound sequence email for every lead in that campaign — not per draft and not on Unibox replies.</p>
+  <dl class="meta">
+    <div><dt>Document</dt><dd>PRD, Version 1</dd></div>
+    <div><dt>Status</dt><dd>Draft — pending Instantly account verification</dd></div>
+    <div><dt>Date</dt><dd>15 August 2026</dd></div>
+    <div><dt>Scope</dt><dd>V1 — campaign outreach only</dd></div>
+    <div><dt>Provider</dt><dd>Instantly <code>cc_list</code> / <code>bcc_list</code></dd></div>
+    <div><dt>Database</dt><dd>Migration required on <code>campaigns</code></dd></div>
+  </dl>
+</header>
+
+<nav class="toc" aria-label="Table of contents">
+  <h4>Contents</h4>
+  <ol>
+    <li><a href="#s1"><span class="n">1</span>Feature Overview</a></li>
+    <li><a href="#s2"><span class="n">2</span>Problem / Client Use Case</a></li>
+    <li><a href="#s3"><span class="n">3</span>Goals</a></li>
+    <li><a href="#s4"><span class="n">4</span>Non-Goals</a></li>
+    <li><a href="#s5"><span class="n">5</span>Product Decisions</a></li>
+    <li><a href="#s6"><span class="n">6</span>User Flow</a></li>
+    <li><a href="#s7"><span class="n">7</span>UI Requirements</a></li>
+    <li><a href="#s8"><span class="n">8</span>Instantly Behaviour</a></li>
+    <li><a href="#s9"><span class="n">9</span>Send / Fan-out Flow</a></li>
+    <li><a href="#s10"><span class="n">10</span>Database Impact</a></li>
+    <li><a href="#s11"><span class="n">11</span>API &amp; Validation</a></li>
+    <li><a href="#s12"><span class="n">12</span>Files to Change</a></li>
+    <li><a href="#s13"><span class="n">13</span>Edge Cases</a></li>
+    <li><a href="#s14"><span class="n">14</span>Acceptance Criteria</a></li>
+    <li><a href="#s15"><span class="n">15</span>Open Business Questions</a></li>
+    <li><a href="#s16"><span class="n">16</span>Implementation Notes</a></li>
+    <li><a href="#s17"><span class="n">17</span>Research Summary</a></li>
+    <li><a href="#s18"><span class="n">18</span>Implementation Readiness</a></li>
+  </ol>
+</nav>
+
+<section id="legend" style="margin-top:2rem">
+  <div class="legend">
+    <div><span class="tag t-ok">Confirmed — Instantly docs</span> Stated in Instantly API documentation</div>
+    <div><span class="tag t-code">Confirmed — implementation</span> Verified in the Kuber codebase</div>
+    <div><span class="tag t-prop">Proposed</span> A product or implementation decision for V1</div>
+    <div><span class="tag t-ver">Requires verification</span> Needs a live Instantly check before ship</div>
+  </div>
+</section>
+
+<!-- 1 -->
+<section id="s1">
+  <div class="sec-head"><span class="sec-n">01</span><h2>Feature Overview</h2></div>
+  <p>Campaign-level CC / BCC adds two optional address lists to a master campaign. When Kuber creates or patches Instantly sub-campaigns during send fan-out (or config sync), those lists are passed as Instantly <code>cc_list</code> and <code>bcc_list</code>.</p>
+  <p>Instantly then CCs / BCCs those addresses on every sequence email for every lead under that Instantly campaign. Managers configure this once in campaign Options — the same place as sender name, window, and daily limit — not inside each lead draft.</p>
+  <div class="flow">
+    <div><b>Create / Edit campaign</b> <span class="a">→</span> set CC / BCC lists <span class="a">→</span> approve drafts <span class="a">→</span> send fan-out <span class="a">→</span> Instantly sub-campaigns get <code>cc_list</code> / <code>bcc_list</code> <span class="a">→</span> all sequence emails include them</div>
+  </div>
+  <div class="box good">
+    <h4>Why Instantly campaign-level (not per email)</h4>
+    <p>Kuber does not send campaign mail through Gmail/Outlook/SMTP APIs. Outreach is Instantly-only. Instantly already exposes campaign-level <code>cc_list</code> / <code>bcc_list</code> on create and patch. Per-message CC only exists today on Unibox reply (<code>cc_address_email_list</code>), which is a different product surface.</p>
+  </div>
+</section>
+
+<!-- 2 -->
+<section id="s2">
+  <div class="sec-head"><span class="sec-n">02</span><h2>Problem / Client Use Case</h2></div>
+  <p>Sales managers often need a fixed stakeholder copied on every campaign outreach email — for example a regional manager, a shared sales inbox, or an internal archive address — without putting that person in the To field or editing every AI draft.</p>
+  <p>Today Kuber has no way to do this for campaigns:</p>
+  <ul>
+    <li>Create / Edit campaign Options expose sender name, schedule, daily limit, HIL, follow-ups, AI context, and attachment — but not CC / BCC. <span class="tag t-code">Confirmed — implementation</span></li>
+    <li><code>createInstantlyCampaign</code> and <code>patchInstantlyCampaignConfig</code> never send <code>cc_list</code> / <code>bcc_list</code>. <span class="tag t-code">Confirmed — implementation</span></li>
+    <li>Unibox reply API already accepts CC / BCC, but there is no campaign UI and no fan-out wiring. <span class="tag t-code">Confirmed — implementation</span></li>
+  </ul>
+  <p>Without this, internal visibility and compliance copying require manual Instantly console edits (fragile across country/mailbox sub-campaigns) or putting addresses into email bodies (wrong semantics).</p>
+</section>
+
+<!-- 3 -->
+<section id="s3">
+  <div class="sec-head"><span class="sec-n">03</span><h2>Goals</h2></div>
+  <ul>
+    <li>Allow a manager to set zero or more CC addresses and zero or more BCC addresses on a campaign.</li>
+    <li>Persist those lists on the master <code>campaigns</code> row as source of truth.</li>
+    <li>Pass them to Instantly on sub-campaign create and on live config sync.</li>
+    <li>Apply the same lists to every country / mailbox Instantly sub-campaign created by fan-out.</li>
+    <li>Apply to all sequence steps Instantly sends for that campaign (step 1 + follow-ups).</li>
+    <li>Support edit-before-send and edit-after-send (sync to existing Instantly campaigns), matching how <code>daily_limit</code> works today.</li>
+    <li>Keep UX campaign-scoped — never force CC/BCC into per-lead draft editors.</li>
+  </ul>
+</section>
+
+<!-- 4 -->
+<section id="s4">
+  <div class="sec-head"><span class="sec-n">04</span><h2>Non-Goals</h2></div>
+  <ul>
+    <li><strong>Per-lead or per-draft CC / BCC.</strong> Out of scope. Instantly campaign fields are shared across leads.</li>
+    <li><strong>Unibox reply CC / BCC UI.</strong> Backend already accepts <code>cc</code> / <code>bcc</code> on <code>POST /api/v1/unibox/reply</code>; exposing that in the reply composer is a separate ticket.</li>
+    <li><strong>Per-step CC / BCC.</strong> Instantly applies lists at campaign level, not per sequence step.</li>
+    <li><strong>Different CC / BCC per country or mailbox bucket.</strong> V1 uses one shared list from the master campaign for every Instantly sub-campaign.</li>
+    <li><strong>Direct Gmail / Outlook / SMTP send.</strong> Campaign outreach remains Instantly-only.</li>
+    <li><strong>Showing CC / BCC inside AI draft subject/body.</strong> Recipients stay on Instantly headers, not in personalized copy.</li>
+    <li><strong>Changing who the primary To recipient is.</strong> Lead email remains the To address via Instantly lead add.</li>
+  </ul>
+</section>
+
+<!-- 5 -->
+<section id="s5">
+  <div class="sec-head"><span class="sec-n">05</span><h2>Product Decisions</h2></div>
+
+  <div class="bq">
+    <div class="lbl">Decision 1</div>
+    <h3>Scope = Instantly campaign-level lists</h3>
+    <div class="opts">
+      <div class="opt">
+        <span class="t">Chosen — Campaign-level <span class="tag t-prop">Proposed</span></span>
+        <span class="d">Store on master campaign; pass Instantly <code>cc_list</code> / <code>bcc_list</code>. One configuration for the whole campaign.</span>
+      </div>
+      <div class="opt">
+        <span class="t">Rejected — Per-email / Unibox path</span>
+        <span class="d">Reply API fields already exist for one-off threads; they do not cover sequence blast and would require per-message UI.</span>
+      </div>
+    </div>
+    <p class="impl">Matches Instantly’s native model and Kuber’s fan-out architecture (one Instantly campaign per country × mailbox).</p>
+  </div>
+
+  <div class="bq">
+    <div class="lbl">Decision 2</div>
+    <h3>Same lists for every sub-campaign</h3>
+    <div class="opts">
+      <div class="opt">
+        <span class="t">Chosen — Fan out identically <span class="tag t-prop">Proposed</span></span>
+        <span class="d">Every Instantly sub-campaign created/patched for this master campaign gets the same CC / BCC arrays.</span>
+      </div>
+      <div class="opt">
+        <span class="t">Deferred — Per-bucket overrides</span>
+        <span class="d">Could live later on <code>instantly_campaigns</code>; adds UI and sync complexity not justified for V1.</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="bq">
+    <div class="lbl">Decision 3</div>
+    <h3>Empty means clear / omit</h3>
+    <div class="opts">
+      <div class="opt">
+        <span class="t">Chosen <span class="tag t-prop">Proposed</span></span>
+        <span class="d">Empty arrays are valid. On create, omit Instantly fields when empty. On patch after send, explicitly send empty arrays so Instantly clears prior lists.</span>
+      </div>
+      <div class="opt">
+        <span class="t">Rejected — “Unset” separate from empty</span>
+        <span class="d">No third state; null/empty both mean no CC/BCC.</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="bq">
+    <div class="lbl">Decision 4</div>
+    <h3>Visibility of addresses to the lead</h3>
+    <p><strong>CC</strong> addresses are visible to the primary recipient (standard email semantics). <strong>BCC</strong> addresses are not. Product copy in the UI must label them clearly so managers do not put a confidential archive on CC by mistake.</p>
+  </div>
+</section>
+
+<!-- 6 -->
+<section id="s6">
+  <div class="sec-head"><span class="sec-n">06</span><h2>User Flow</h2></div>
+
+  <div class="step">
+    <div class="step-h"><span class="sn">1</span><h4>Create campaign</h4><span class="tag t-prop">Proposed</span></div>
+    <div class="step-b">
+      <p>In Create Campaign → Options (near Sender name), manager optionally adds CC and BCC addresses. Lists save with the campaign on create.</p>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-h"><span class="sn">2</span><h4>Edit before first send</h4><span class="tag t-prop">Proposed</span></div>
+    <div class="step-b">
+      <p>Edit Campaign updates the master row only. No Instantly call yet if no sub-campaigns exist — same pattern as other pre-send Options.</p>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-h"><span class="sn">3</span><h4>Send approved leads</h4><span class="tag t-code">Confirmed — implementation</span></div>
+    <div class="step-b">
+      <p><code>sendCampaign()</code> buckets leads by country × sender mailbox, creates Instantly campaigns if needed, adds leads, activates. New Instantly campaigns include <code>cc_list</code> / <code>bcc_list</code> from the master campaign.</p>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-h"><span class="sn">4</span><h4>Edit after send / while active</h4><span class="tag t-prop">Proposed</span></div>
+    <div class="step-b">
+      <p>Config PATCH updates master DB, then patches every linked Instantly sub-campaign’s <code>cc_list</code> / <code>bcc_list</code> (same fan-out pattern as schedule / daily limit).</p>
+      <div class="box crit">
+        <h4>Already-sent emails</h4>
+        <p>Changing CC / BCC does not rewrite messages Instantly already delivered. It only affects future sequence sends / remaining steps. Surface this in Edit UI helper text.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-h"><span class="sn">5</span><h4>Read-only config view</h4><span class="tag t-prop">Proposed</span></div>
+    <div class="step-b">
+      <p>Campaign config modal / drawer summary shows CC and BCC chips (or “None”) so viewers without edit permission can still see who is copied.</p>
+    </div>
+  </div>
+</section>
+
+<!-- 7 -->
+<section id="s7">
+  <div class="sec-head"><span class="sec-n">07</span><h2>UI Requirements</h2></div>
+
+  <div class="sub">
+    <h3>7.1 Placement</h3>
+    <p>Add two fields under campaign Options in:</p>
+    <ul>
+      <li><code>create-campaign-modal.tsx</code></li>
+      <li><code>edit-campaign-modal.tsx</code></li>
+      <li>Read-only display in <code>campaign-config-modal.tsx</code> (and drawer summary if Options are mirrored there)</li>
+    </ul>
+    <p>Place below <strong>Sender name</strong> (same Options section). Fields sit on <code>bg-card</code> panels, so inputs must use <code>bg-background</code> per the surface ladder.</p>
+  </div>
+
+  <div class="sub">
+    <h3>7.2 Control design <span class="tag t-prop">Proposed</span></h3>
+    <div class="cols">
+      <div class="card">
+        <h4>CC</h4>
+        <ul>
+          <li>Label: “CC”</li>
+          <li>Multi-email chip input or comma/Enter-to-add list</li>
+          <li>Helper: “Visible to the lead on every campaign email.”</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h4>BCC</h4>
+        <ul>
+          <li>Label: “BCC”</li>
+          <li>Same control pattern as CC</li>
+          <li>Helper: “Hidden from the lead. Applied to every campaign email.”</li>
+        </ul>
+      </div>
+    </div>
+    <ul>
+      <li>Max addresses per list: <strong>10</strong> (soft product limit; Instantly docs do not publish a hard max — verify if needed).</li>
+      <li>Inline validation for invalid emails; block Save/Create until fixed.</li>
+      <li>Case-fold + trim + dedupe within each list on save.</li>
+      <li>Do not allow the same address in both CC and BCC (prefer CC, reject BCC duplicate — or reject both; V1: reject with clear error).</li>
+    </ul>
+  </div>
+
+  <div class="sub">
+    <h3>7.3 Permissions</h3>
+    <p>Reuse existing campaign Options edit permission (<code>canEditSharedOptions</code> / role gates already on create-edit). No new capability flag for V1.</p>
+  </div>
+</section>
+
+<!-- 8 -->
+<section id="s8">
+  <div class="sec-head"><span class="sec-n">08</span><h2>Instantly Behaviour</h2></div>
+
+  <div class="tw">
+    <table>
+      <thead>
+        <tr><th>Topic</th><th>Status</th><th>Detail</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Create campaign fields</td>
+          <td><span class="tag t-ok">Confirmed — Instantly docs</span></td>
+          <td><code>cc_list</code>, <code>bcc_list</code>: arrays of email strings on <code>POST /api/v2/campaigns</code></td>
+        </tr>
+        <tr>
+          <td>Patch campaign fields</td>
+          <td><span class="tag t-ok">Confirmed — Instantly docs</span></td>
+          <td>Same fields on <code>PATCH /api/v2/campaigns/{id}</code></td>
+        </tr>
+        <tr>
+          <td>Docs wording</td>
+          <td><span class="tag t-ver">Requires verification</span></td>
+          <td>Docs say “List of <em>accounts</em> to CC/BCC”. May mean Instantly sending accounts only, or any email. <strong>Must verify with a live create before ship.</strong></td>
+        </tr>
+        <tr>
+          <td>Applies to sequence emails</td>
+          <td><span class="tag t-prop">Proposed</span></td>
+          <td>Assumed campaign-wide for all steps; confirm with one test send (step 1 + follow-up).</td>
+        </tr>
+        <tr>
+          <td>Kuber client today</td>
+          <td><span class="tag t-code">Confirmed — implementation</span></td>
+          <td><code>createInstantlyCampaign</code> / <code>patchInstantlyCampaignConfig</code> omit these fields</td>
+        </tr>
+        <tr>
+          <td>Unibox reply fields</td>
+          <td><span class="tag t-code">Confirmed — implementation</span></td>
+          <td>Different API: <code>cc_address_email_list</code> / <code>bcc_address_email_list</code> — out of scope</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="box crit">
+    <h4>Blocking verification</h4>
+    <p>Before releasing to production, create a throwaway Instantly campaign via API with an external non-workspace email on <code>cc_list</code> and another on <code>bcc_list</code>, activate a single test lead, and confirm headers on the delivered message. If Instantly rejects non-account emails, V1 UI must restrict pickers to Instantly sending accounts (same source as Settings → sending accounts) or show an explicit error from Instantly.</p>
+  </div>
+</section>
+
+<!-- 9 -->
+<section id="s9">
+  <div class="sec-head"><span class="sec-n">09</span><h2>Send / Fan-out Flow</h2></div>
+  <div class="flow">
+    <div><b>campaigns.cc_emails / bcc_emails</b></div>
+    <div class="a">↓ read in sendCampaign()</div>
+    <div><b>createInstantlyCampaign({ …, ccList, bccList })</b> per country × mailbox bucket</div>
+    <div class="a">↓ Instantly stores on sub-campaign</div>
+    <div><b>add leads + activate</b> (unchanged)</div>
+    <div class="a">↓ Instantly sends</div>
+    <div><b>To = lead · CC / BCC = campaign lists</b></div>
+  </div>
+  <ul>
+    <li>Select master campaign fields must include the new columns alongside <code>daily_limit</code>, <code>sender_name</code>, etc. in <code>campaign-fanout.ts</code>.</li>
+    <li>When reusing an existing Instantly sub-campaign row, ensure config is patched if master CC / BCC changed since last sync (same “settings may have drifted” concern as schedule).</li>
+    <li>Pause / resume / activate paths do not need CC/BCC changes unless config PATCH already ran.</li>
+  </ul>
+</section>
+
+<!-- 10 -->
+<section id="s10">
+  <div class="sec-head"><span class="sec-n">10</span><h2>Database Impact</h2></div>
+  <p><span class="tag t-prop">Proposed</span> Add two columns on <code>public.campaigns</code>:</p>
+<pre><code>alter table public.campaigns
+  add column if not exists cc_emails  text[] not null default '{}',
+  add column if not exists bcc_emails text[] not null default '{}';
+
+comment on column public.campaigns.cc_emails  is
+  'Campaign-level CC addresses passed to Instantly cc_list on every sub-campaign';
+comment on column public.campaigns.bcc_emails is
+  'Campaign-level BCC addresses passed to Instantly bcc_list on every sub-campaign';</code></pre>
+  <ul>
+    <li>No new table.</li>
+    <li>No mirror columns on <code>instantly_campaigns</code> for V1 (Instantly is the runtime store; master campaign is Kuber source of truth).</li>
+    <li>Do not reuse <code>unibox_emails.cc_emails</code> / <code>bcc_emails</code> (those are inbound message fields, type <code>text</code>, different lifecycle).</li>
+  </ul>
+</section>
+
+<!-- 11 -->
+<section id="s11">
+  <div class="sec-head"><span class="sec-n">11</span><h2>API &amp; Validation</h2></div>
+
+  <div class="sub">
+    <h3>11.1 Schemas</h3>
+    <p>Extend <code>CreateCampaignSchema</code> and <code>PatchCampaignSchema</code> in <code>lib/validators/campaigns.ts</code>:</p>
+<pre><code>cc_emails:  z.array(z.string().email()).max(10).optional()
+bcc_emails: z.array(z.string().email()).max(10).optional()</code></pre>
+    <p>Plus a refine: no address appears in both lists; normalize trim + lowercase before persist.</p>
+  </div>
+
+  <div class="sub">
+    <h3>11.2 Routes</h3>
+    <div class="tw">
+      <table>
+        <thead>
+          <tr><th>Route</th><th>Change</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>POST /api/v1/campaigns</code></td>
+            <td>Accept + persist <code>cc_emails</code> / <code>bcc_emails</code></td>
+          </tr>
+          <tr>
+            <td><code>PATCH /api/v1/campaigns/[id]/config</code></td>
+            <td>Accept + persist; if Instantly sub-campaigns exist, patch each with <code>cc_list</code> / <code>bcc_list</code></td>
+          </tr>
+          <tr>
+            <td><code>GET</code> campaign / drawer payloads</td>
+            <td>Return the new fields so UI can hydrate</td>
+          </tr>
+          <tr>
+            <td><code>POST …/send</code></td>
+            <td>No new body fields — fan-out reads from DB</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="sub">
+    <h3>11.3 Instantly client</h3>
+    <pre><code>// createInstantlyCampaign
+{ ..., cc_list?: string[], bcc_list?: string[] }
+
+// patchInstantlyCampaignConfig
+{ ..., ccList?: string[], bccList?: string[] }</code></pre>
+    <p>Scalars patch independently (like <code>daily_limit</code>). Unlike <code>campaign_schedule</code>, no read-merge required for list replacement — send the full arrays when provided.</p>
+  </div>
+</section>
+
+<!-- 12 -->
+<section id="s12">
+  <div class="sec-head"><span class="sec-n">12</span><h2>Files to Change</h2></div>
+  <div class="tw">
+    <table>
+      <thead>
+        <tr><th>Area</th><th>Path</th><th>Work</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Migration</td>
+          <td><code>supabase/migrations/…_campaign_cc_bcc.sql</code></td>
+          <td>Add <code>cc_emails</code> / <code>bcc_emails</code></td>
+        </tr>
+        <tr>
+          <td>Validators</td>
+          <td><code>lib/validators/campaigns.ts</code></td>
+          <td>Create + Patch schemas</td>
+        </tr>
+        <tr>
+          <td>Instantly</td>
+          <td><code>lib/services/instantly.ts</code></td>
+          <td>create + patch options</td>
+        </tr>
+        <tr>
+          <td>Fan-out</td>
+          <td><code>lib/services/campaign-fanout.ts</code></td>
+          <td>Select + pass lists</td>
+        </tr>
+        <tr>
+          <td>Config sync</td>
+          <td>Campaign config PATCH route / service</td>
+          <td>Persist + Instantly patch existing subs</td>
+        </tr>
+        <tr>
+          <td>Types / API client</td>
+          <td><code>lib/api-client.ts</code> (and DB types if generated)</td>
+          <td>Campaign payload fields</td>
+        </tr>
+        <tr>
+          <td>UI</td>
+          <td><code>create-campaign-modal.tsx</code>, <code>edit-campaign-modal.tsx</code>, <code>campaign-config-modal.tsx</code></td>
+          <td>Inputs + read-only display</td>
+        </tr>
+        <tr>
+          <td>Optional script</td>
+          <td><code>scripts/</code></td>
+          <td>Smoke test Instantly create with CC/BCC if useful</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- 13 -->
+<section id="s13">
+  <div class="sec-head"><span class="sec-n">13</span><h2>Edge Cases</h2></div>
+  <div class="tw">
+    <table>
+      <thead>
+        <tr><th>Case</th><th>Expected behaviour</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Both lists empty</td>
+          <td>Campaign works exactly as today; Instantly fields omitted on create</td>
+        </tr>
+        <tr>
+          <td>Clear lists after send</td>
+          <td>PATCH Instantly with <code>[]</code> so future emails stop copying</td>
+        </tr>
+        <tr>
+          <td>Address equals lead To</td>
+          <td>Allow at save time; Instantly/mailbox behaviour may drop duplicate — acceptable; do not special-case</td>
+        </tr>
+        <tr>
+          <td>Address equals sending mailbox</td>
+          <td>Allow; may look odd in headers — optional soft warning later, not V1</td>
+        </tr>
+        <tr>
+          <td>Partial Instantly patch failure</td>
+          <td>Same as schedule sync today: surface error, leave master DB updated or roll back consistently — follow existing config PATCH error pattern</td>
+        </tr>
+        <tr>
+          <td>Multi-step sequences</td>
+          <td>CC/BCC apply to follow-ups as well (Instantly campaign-level)</td>
+        </tr>
+        <tr>
+          <td>Human-in-loop / drafts</td>
+          <td>Unaffected; drafts remain subject/body only</td>
+        </tr>
+        <tr>
+          <td>Existing live campaigns</td>
+          <td>Default empty arrays; no Instantly change until someone edits Options</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- 14 -->
+<section id="s14">
+  <div class="sec-head"><span class="sec-n">14</span><h2>Acceptance Criteria</h2></div>
+  <ol class="ac">
+    <li>Create campaign with CC and BCC addresses; values persist and reload in Edit / config views.</li>
+    <li>Create campaign with neither list; send path behaves identically to current production.</li>
+    <li>On first send, Instantly campaign create payload includes the configured <code>cc_list</code> / <code>bcc_list</code> for every country × mailbox sub-campaign.</li>
+    <li>Delivered test email shows CC / BCC headers matching the campaign lists (subject to Instantly account rules — see §15).</li>
+    <li>Edit lists on an already-sent campaign; subsequent Instantly sequence emails use the new lists; already-sent messages unchanged.</li>
+    <li>Clearing both lists patches Instantly to empty and future sends have no CC/BCC.</li>
+    <li>Invalid emails, &gt;10 addresses, or overlapping CC/BCC are rejected by API validation with a clear error.</li>
+    <li>Users without Options edit permission cannot change the lists; they can still view them if the config UI is visible.</li>
+    <li>Unibox reply UI remains unchanged (no accidental scope creep).</li>
+  </ol>
+</section>
+
+<!-- 15 -->
+<section id="s15">
+  <div class="sec-head"><span class="sec-n">15</span><h2>Open Business Questions</h2></div>
+
+  <div class="bq">
+    <div class="lbl">BQ-1 · Blocking</div>
+    <h3>Must CC / BCC be Instantly workspace “accounts”?</h3>
+    <p>Instantly docs describe the fields as “List of accounts…”. If only connected sending accounts are accepted, the UI should be a multi-select of sending accounts rather than a free-text email chip input.</p>
+    <div class="impl"><strong>Owner:</strong> Engineering verification on Instantly sandbox · <strong>Blocks:</strong> final UI control choice</div>
+  </div>
+
+  <div class="bq">
+    <div class="lbl">BQ-2</div>
+    <h3>Default CC for all new campaigns?</h3>
+    <p>Should company settings gain a default CC / BCC that pre-fills new campaigns (e.g. always BCC a compliance inbox)?</p>
+    <div class="impl"><strong>V1 proposal:</strong> No defaults — opt-in per campaign. Defaults can be a follow-up.</div>
+  </div>
+
+  <div class="bq">
+    <div class="lbl">BQ-3</div>
+    <h3>Should replies also auto-CC?</h3>
+    <p>Campaign lists do not automatically apply to Unibox manual/AI replies. Do managers expect reply threads to keep the same CC?</p>
+    <div class="impl"><strong>V1 proposal:</strong> No. Document as non-goal; optional later using existing reply API fields.</div>
+  </div>
+
+  <div class="bq">
+    <div class="lbl">BQ-4</div>
+    <h3>Hard max addresses?</h3>
+    <p>Is 10 enough for the client’s regional manager + archive use case?</p>
+    <div class="impl"><strong>V1 proposal:</strong> Cap at 10; raise later if Instantly allows and client needs more.</div>
+  </div>
+</section>
+
+<!-- 16 -->
+<section id="s16">
+  <div class="sec-head"><span class="sec-n">16</span><h2>Implementation Notes</h2></div>
+  <ul>
+    <li>Normalize emails once at the API boundary; UI and Instantly both receive the normalized arrays.</li>
+    <li>Prefer passing lists only when defined on Instantly create; always pass full arrays on patch when the config endpoint is updating them so clears work.</li>
+    <li>Keep logging: when Instantly rejects a list, include Instantly error body in the existing campaign error path (<code>last_error</code> / API error), not a silent drop.</li>
+    <li>No change to draft generation, certification, or lead CRM status machine.</li>
+    <li>Respect existing UI surface contrast: field fills <code>bg-background</code> on <code>bg-card</code> panels.</li>
+  </ul>
+</section>
+
+<!-- 17 -->
+<section id="s17">
+  <div class="sec-head"><span class="sec-n">17</span><h2>Research Summary</h2></div>
+  <div class="cols">
+    <div class="card">
+      <h4>Already in Instantly</h4>
+      <ul>
+        <li><code>cc_list</code> / <code>bcc_list</code> on create + patch</li>
+        <li>Campaign-level, shared across leads/steps</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>Already in Kuber</h4>
+      <ul>
+        <li>Campaign Options create/edit/config UI</li>
+        <li>Fan-out + Instantly create/patch</li>
+        <li>Unibox reply CC/BCC API (unused by UI)</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>Missing today</h4>
+      <ul>
+        <li>DB columns on <code>campaigns</code></li>
+        <li>Validators / API / Instantly wire-up</li>
+        <li>Campaign Options UI fields</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>Highest risk</h4>
+      <ul>
+        <li>Instantly may only accept workspace accounts in those lists</li>
+        <li>Must verify with one live test send before locking UI</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- 18 -->
+<section id="s18">
+  <div class="sec-head"><span class="sec-n">18</span><h2>Implementation Readiness</h2></div>
+  <div class="box good">
+    <h4>Ready to implement after BQ-1</h4>
+    <p>Architecture is clear: store on <code>campaigns</code>, pass Instantly campaign fields in fan-out and config sync, expose in Options UI. No new provider integration. Estimated surface is small (migration + validators + Instantly client + fan-out + 2–3 modals).</p>
+  </div>
+  <div class="box crit">
+    <h4>Do not ship UI copy until verified</h4>
+    <p>If Instantly rejects arbitrary emails, switch from free-text chips to a multi-select of Instantly sending accounts before release.</p>
+  </div>
+  <p><strong>Suggested build order:</strong> Instantly smoke test (BQ-1) → migration → Instantly client → fan-out → config PATCH sync → validators/API → UI → acceptance test on a real mailbox.</p>
+</section>
+
+<footer>
+  <p>Kuber · Campaign-level CC / BCC PRD · Version 1 · 15 August 2026</p>
+  <p>Companion to Instantly campaign create/patch docs and existing fan-out in <code>lib/services/campaign-fanout.ts</code>.</p>
+</footer>
+
+</div>
+</body>
+</html>

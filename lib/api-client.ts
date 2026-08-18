@@ -817,9 +817,20 @@ export async function importExcelDirect(
 
 export type PreviewLead = { firstName: string; lastName: string; email: string; company: string; jobTitle: string; domain?: string };
 
+export type ApolloPeopleAdvanced = {
+  titles?: string[]; includeSimilarTitles?: boolean; seniorities?: string[];
+  organizationLocations?: string[]; domains?: string[]; employeeRanges?: string[];
+  revenueMin?: number; revenueMax?: number;
+  technologyAll?: string[]; technologyAny?: string[]; technologyNot?: string[];
+  jobTitles?: string[]; jobLocations?: string[];
+  numJobsMin?: number; numJobsMax?: number;
+  jobPostedAtMin?: string; jobPostedAtMax?: string;
+};
+
 export async function apolloPreview(token: string, body: {
   keywords: string[]; locations: string[];
   titles?: string[]; seniorities?: string[]; batch_name: string; color?: string;
+  advanced?: ApolloPeopleAdvanced;
 }): Promise<{ preview: true; leads: PreviewLead[] }> {
   return apiFetch("/api/v1/leads/apollo-search", {
     method: "POST",
@@ -831,6 +842,7 @@ export async function apolloSearch(token: string, body: {
   keywords: string[]; locations: string[];
   titles?: string[]; seniorities?: string[]; batch_name: string; color?: string;
   assigned_to?: string; assignment_strategy?: "round_robin" | "territory";
+  advanced?: ApolloPeopleAdvanced;
 }): Promise<{ inserted: number; skipped: number; orgs_created: number; assignment_skipped?: number; duplicate_owners?: DuplicateOwner[] }> {
   return apiFetch("/api/v1/leads/apollo-search", { method: "POST", body: JSON.stringify(body) }, token);
 }
@@ -1328,6 +1340,17 @@ export async function addLeadsToCampaign(token: string, campaignId: string, lead
   }, token);
 }
 
+/** Swap a bounced contact for another address at the same company. Creates (or
+ *  reuses) the lead, adds it to this campaign and starts its draft. */
+export async function replaceBouncedLead(token: string, campaignLeadId: string, body: {
+  email: string; first_name: string; last_name?: string; title?: string;
+}): Promise<{ lead_id: string; campaign_lead_id: string; reused: boolean }> {
+  return apiFetch(`/api/v1/campaign-leads/${campaignLeadId}/replace`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  }, token);
+}
+
 // ─── Imports / Batches ────────────────────────────────────────────────────────
 
 export interface ImportBatch {
@@ -1402,6 +1425,26 @@ export interface ThreadMessage {
   reply_body: string | null;
   received_at: string;
   reply_drafts: ReplyDraft[];
+  /** Real headers — the sender is not always the lead once someone is CC'd. */
+  instantly_email_id: string;
+  from_email: string | null;
+  to_emails: string | null;
+  cc_emails: string | null;
+}
+
+/** An outbound reply as actually sent, headers included. */
+export interface SentThreadMessage {
+  id: string;
+  instantly_email_id: string;
+  from_email: string | null;
+  to_emails: string | null;
+  cc_emails: string | null;
+  body_html: string | null;
+  body_text: string | null;
+  sent_at: string;
+  sent_by_name: string | null;
+  /** Which message this reply answered. */
+  in_reply_to_email_id: string | null;
 }
 
 export interface CampaignReplyThread {
@@ -1413,6 +1456,13 @@ export interface CampaignReplyThread {
   original_email: { subject: string | null; body: string | null } | null;
   latest_received_at: string;
   messages: ThreadMessage[];
+  sent_messages: SentThreadMessage[];
+  eaccount: string | null;
+  /** Thread addresses that are already live leads. */
+  known_lead_emails: string[];
+  /** Organisation and owner a promoted participant would inherit. */
+  lead_organization_name: string | null;
+  lead_owner_name: string | null;
 }
 
 export async function fetchCampaignReplies(token: string, campaignId: string): Promise<{ threads: CampaignReplyThread[] }> {
@@ -1430,8 +1480,16 @@ export async function approveReplyDraft(token: string, id: string, subject?: str
 export async function rejectReplyDraft(token: string, id: string, reason?: string): Promise<ReplyDraft> {
   return apiFetch(`/api/v1/reply-drafts/${id}`, { method: "PATCH", body: JSON.stringify({ action: "reject", rejection_reason: reason }) }, token);
 }
-export async function sendReplyDraft(token: string, id: string): Promise<{ sent: boolean }> {
-  return apiFetch(`/api/v1/reply-drafts/${id}/send`, { method: "POST" }, token);
+export async function sendReplyDraft(
+  token: string,
+  id: string,
+  opts?: { to?: string[]; cc?: string[]; bcc?: string[]; reply_to_uuid?: string },
+): Promise<{ sent: boolean }> {
+  return apiFetch(
+    `/api/v1/reply-drafts/${id}/send`,
+    { method: "POST", body: JSON.stringify(opts ?? {}) },
+    token,
+  );
 }
 export async function regenerateReplyDraft(token: string, id: string, instruction?: string): Promise<ReplyDraft> {
   return apiFetch(`/api/v1/reply-drafts/${id}/regenerate`, { method: "POST", body: JSON.stringify({ instruction }) }, token);
@@ -1459,6 +1517,9 @@ export type UniboxThreadSummary = {
   latest_at: string;
   latest_direction: string;
   has_reply: boolean;
+  /** Someone here asked something we have not answered THEM. */
+  needs_reply: boolean;
+  awaiting_reply_from: string[];
   unread_count: number;
   message_count: number;
   interest_status: number | null;
@@ -1485,6 +1546,8 @@ export type UniboxMessage = {
   // through our own reply endpoints, not messages synced from Instantly.
   sent_by: string | null;
   sent_by_name: string | null;
+  /** Which message this reply answered — only set on mail we sent. */
+  in_reply_to_email_id: string | null;
 };
 
 export async function fetchUniboxThreads(
@@ -1511,15 +1574,61 @@ export async function fetchUniboxThread(token: string, threadId: string, hydrate
   campaign_lead_id: string | null;
   interest_status: number | null;
   lead_temperature: string | null;
+  /** Thread addresses that are already live leads. */
+  known_lead_emails: string[];
+  /** Organisation and owner a promoted participant would inherit. */
+  lead_organization_name: string | null;
+  lead_owner_name: string | null;
 }> {
   return apiFetch(`/api/v1/unibox/threads/${threadId}${hydrate ? "?hydrate=1" : ""}`, {}, token);
 }
 
+/**
+ * Promote a third participant on a thread into a lead of the same organisation.
+ * Manager-only, and the address must genuinely be on the thread.
+ */
+export async function addThreadParticipantAsLead(
+  token: string,
+  threadId: string,
+  participant: { email: string; first_name: string; last_name?: string },
+): Promise<{ lead: { id: string; email: string; first_name: string | null; last_name: string | null } }> {
+  return apiFetch(
+    `/api/v1/unibox/threads/${threadId}/add-lead`,
+    { method: "POST", body: JSON.stringify(participant) },
+    token,
+  );
+}
+
 export async function sendUniboxReply(
   token: string,
-  body: { thread_id: string; subject: string; body_html: string; body_text?: string; reply_draft_id?: string },
+  body: {
+    thread_id: string;
+    subject: string;
+    body_html: string;
+    body_text?: string;
+    reply_draft_id?: string;
+    /** Full To list. The answered message's sender is always addressed anyway;
+     *  the rest ride in Instantly's additional_recipients (still To, not CC). */
+    to?: string[];
+    cc?: string[];
+    bcc?: string[];
+    /** Message to answer. Instantly addresses the reply to its sender, so this
+     *  is what picks the recipient. Omit for the newest inbound message. */
+    reply_to_uuid?: string;
+  },
 ) {
   return apiFetch("/api/v1/unibox/reply", { method: "POST", body: JSON.stringify(body) }, token);
+}
+
+export async function fetchReplyMailingList(
+  token: string,
+  opts?: { q?: string; limit?: number },
+): Promise<{ emails: string[] }> {
+  const qs = new URLSearchParams();
+  if (opts?.q) qs.set("q", opts.q);
+  if (opts?.limit) qs.set("limit", String(opts.limit));
+  const suffix = qs.toString() ? `?${qs}` : "";
+  return apiFetch(`/api/v1/reply-mailing-list${suffix}`, {}, token);
 }
 
 export async function setThreadStatus(token: string, threadId: string, interest_value: number | null, lead_email?: string) {

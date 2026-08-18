@@ -47,7 +47,7 @@ function FilterDropdown({
           type="button"
           variant="outline"
           onClick={onToggle}
-          className="w-full h-9 justify-between px-3.5 text-sm font-normal bg-card"
+          className="w-full h-9 justify-between px-3.5 text-sm font-normal bg-field"
         >
           <span className="truncate text-foreground/80">{summary}</span>
           <ChevronDown className={cn("size-4 shrink-0 text-muted-foreground transition-transform", expanded && "rotate-180")} />

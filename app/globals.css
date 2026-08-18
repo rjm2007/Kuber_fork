@@ -24,6 +24,7 @@
   --color-border:              var(--border);
   --color-input:               var(--input);
   --color-ring:                var(--ring);
+  --color-field:               var(--field);
   --radius-sm:  calc(var(--radius) - 4px);
   --radius-md:  calc(var(--radius) - 2px);
   --radius-lg:  var(--radius);
@@ -67,6 +68,7 @@
   --border:               hsl(0 0% 14.9%);
   --input:                hsl(0 0% 14.9%);
   --ring:                 hsl(0 0% 83.1%);
+  --field:                hsl(0 0% 3.9%);
   /* Tightened from 0.5rem — engineered/precision feel over "bubbly SaaS". */
   --radius:               0.375rem;
   /* One font, everywhere: Inter (self-hosted via next/font) with the system
@@ -80,21 +82,46 @@
 }
 
 /* ── Surface ladder ───────────────────────────────────────────────────────────
-   Each level must be visibly different from the one it sits on. Reusing a
-   level's fill on top of itself (e.g. bg-card inputs inside a bg-card panel,
-   or bg-secondary/20 inside a bg-card drawer) makes the nested element
-   disappear — pick the next level instead.
+   Each level must be visibly different from the one it sits on. Never reuse a
+   level's fill on top of itself (e.g. bg-field inputs inside a bg-field panel)
+   — pick the next level instead.
 
-     page      bg-background                 — page chrome
-     panel     bg-card + rounded-xl          — top-level card on the page
-     section   bg-secondary/30               — nested inside a panel, drawer, or modal
-     modal     bg-card + rounded-2xl         — Dialog default; sections inside still bg-secondary/30
-     field     bg-background                 — Input / Select / Textarea / field-like triggers
-                                             MUST contrast with the surrounding panel.
-                                             Never put bg-card fields on bg-card panels.
+     page      bg-background                 — page chrome (the "shade")
+     panel     bg-card + rounded-xl          — top-level card on the page (also the "shade" —
+                                             separated from the page by border + shadow only)
+     section   bg-secondary                  — nested inside a panel, drawer, or modal (the "shade")
+     modal     bg-card + rounded-2xl         — Dialog default; sections inside still bg-secondary
+     field     bg-field                      — Input / Select / Textarea / Checkbox / Radio /
+                                             DatePicker trigger and every other field-like control.
+                                             The ONLY white surface in light mode. MUST be the
+                                             shared component from components/ui — never a one-off
+                                             bg-* override, and never wrapped in its own bg-card
+                                             "for emphasis" (that just makes the field disappear).
+                                             See CLAUDE.md.
+
+   Light-mode color budget (client requirement, strict): every light-mode
+   token above resolves to exactly one of primary / a single primary-tinted
+   "shade" gray / full white (fields only) / black text — see
+   buildLightPalette() in lib/branding.ts. Do not reintroduce a second
+   near-white or near-gray value, and do not give a field's wrapper its own
+   white background; if something needs to stand out, use opacity on one of
+   the four, not a new hsl lightness step.
    ──────────────────────────────────────────────────────────────────────────── */
 
 * { border-color: var(--border); }
+
+/* Kill every native/utility focus ring everywhere — both the browser's
+   native outline AND our own Tailwind `ring-*` box-shadow utilities
+   (focus-visible:ring-2 focus-visible:ring-ring, used on Input/Select/
+   Textarea/Button/etc). In light mode `--ring` resolves to the primary
+   brand color, so that ring renders as a blue rectangle around every
+   focused field — this strips it everywhere instead of chasing it
+   component by component. See CLAUDE.md. */
+*:focus,
+*:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+}
 
 body {
   background-color: var(--background);
@@ -102,6 +129,22 @@ body {
   font-family: var(--font-sans), ui-sans-serif, system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* Chrome/Safari paint their own autofill background using the OS/browser
+   dark-mode preference, completely bypassing bg-field — this is why the
+   Sign in email/password fields rendered black regardless of the theme
+   tokens above. The 5000s transition delay is the standard trick to stop
+   the browser's own autofill yellow/dark flash from ever appearing before
+   this kicks in. */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active {
+  -webkit-text-fill-color: var(--foreground);
+  -webkit-box-shadow: 0 0 0px 1000px var(--field) inset;
+  box-shadow: 0 0 0px 1000px var(--field) inset;
+  transition: background-color 5000s ease-in-out 0s;
 }
 
 ::-webkit-scrollbar { width: 4px; height: 4px; }

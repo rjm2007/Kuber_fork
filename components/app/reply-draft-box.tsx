@@ -8,6 +8,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { RichTextEditor } from "@/components/ui/rich-text-editor";
 import { ReplyAttachButton, ReplyAttachmentChips } from "@/components/app/reply-attach-controls";
+import { ReplyCcBccFields, normalizeReplyEmails, validateCcBcc } from "@/components/app/reply-cc-bcc-fields";
+import { LeadExcludedWarning, ReplyToField } from "@/components/app/reply-recipients";
+import type { ReplyRecipientContext } from "@/components/app/manual-reply-box";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import {
@@ -51,6 +54,9 @@ interface ReplyDraftBoxProps {
    *  take an instruction. Omit to hide it. */
   onNewAiDraft?: () => void;
   newAiDraftPending?: boolean;
+  /** Thread participants, when the caller knows them (Unibox). Omitted by the
+   *  campaign Outbox, which keeps the previous answer-the-newest behaviour. */
+  recipients?: ReplyRecipientContext;
 }
 
 export function ReplyDraftBox({
@@ -60,6 +66,7 @@ export function ReplyDraftBox({
   startBlank = false,
   onNewAiDraft,
   newAiDraftPending = false,
+  recipients,
 }: ReplyDraftBoxProps) {
   const [draftId, setDraftId] = useState(draft.id);
   const [status, setStatus] = useState(draft.status);
@@ -73,6 +80,9 @@ export function ReplyDraftBox({
   const [regenQuery, setRegenQuery] = useState("");
   const [regenerating, setRegenerating] = useState(false);
   const [attachments, setAttachments] = useState<ReplyAttachment[]>([]);
+  const [to, setTo] = useState<string[]>(recipients?.to ?? []);
+  const [cc, setCc] = useState<string[]>([]);
+  const [bcc, setBcc] = useState<string[]>([]);
   const regenTextareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Toggling "Regenerate" only reveals a small panel right below the button —
@@ -91,6 +101,9 @@ export function ReplyDraftBox({
     setStatus(draft.status);
     setError(draft.error);
     setAttachments([]);
+    setTo(recipients?.to ?? []);
+    setCc([]);
+    setBcc([]);
     if (replyDraftHasContent(draft)) {
       setSubject(draft.subject ?? "");
       setBody(normalizeReplyBodyHtml(draft.body ?? ""));
@@ -101,6 +114,19 @@ export function ReplyDraftBox({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only when draft row identity changes
   }, [draft.id]);
+
+  // Re-seed To when the target or the Reply/Reply-all choice changes.
+  // Deliberately separate from the rehydrate effect above: folding it in there
+  // would also re-run the subject/body reset and wipe an in-progress edit every
+  // time the user picked a different message to answer.
+  const toKey = (recipients?.to ?? []).join(",");
+  useEffect(() => {
+    if (!recipients) return;
+    setTo(recipients.to);
+    setCc([]);
+    setBcc([]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- toKey stands in for the array identity
+  }, [recipients?.replyToUuid, toKey]);
 
   // Bake pending chips into the body as download links. TipTap has no Image
   // extension, so inline <img> would be stripped on the next editor sync —
@@ -150,6 +176,13 @@ export function ReplyDraftBox({
   }
 
   async function handleSend() {
+    const ccN = normalizeReplyEmails(cc);
+    const bccN = normalizeReplyEmails(bcc);
+    const listErr = validateCcBcc(ccN, bccN);
+    if (listErr) {
+      toast.error(listErr);
+      return;
+    }
     setSending(true);
     try {
       if (attachments.length > 0) {
@@ -158,7 +191,12 @@ export function ReplyDraftBox({
         setBody(nextBody);
         setAttachments([]);
       }
-      await sendReplyDraft(token, draftId);
+      await sendReplyDraft(token, draftId, {
+        ...(to.length ? { to: normalizeReplyEmails(to) } : {}),
+        ...(ccN.length ? { cc: ccN } : {}),
+        ...(bccN.length ? { bcc: bccN } : {}),
+        ...(recipients?.replyToUuid ? { reply_to_uuid: recipients.replyToUuid } : {}),
+      });
       setStatus("sent");
       toast.success("Reply sent");
       onChanged();
@@ -265,7 +303,33 @@ export function ReplyDraftBox({
         </div>
       </div>
       <div className="p-4 space-y-3">
+        {recipients && (
+          <>
+            <ReplyToField
+              to={to}
+              onChange={setTo}
+              lockedTo={recipients.lockedTo}
+              suggestions={recipients.participants}
+              disabled={saving || sending || regenerating}
+            />
+            <LeadExcludedWarning
+              to={to}
+              cc={cc}
+              bcc={bcc}
+              leadEmail={recipients.leadEmail}
+              leadName={recipients.leadName}
+            />
+          </>
+        )}
         <Input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Subject" className="text-sm font-medium" />
+        <ReplyCcBccFields
+          token={token}
+          cc={cc}
+          bcc={bcc}
+          onCcChange={setCc}
+          onBccChange={setBcc}
+          disabled={saving || sending || regenerating}
+        />
         <RichTextEditor value={body} onChange={setBody} minHeight={180} />
         <ReplyAttachmentChips
           attachments={attachments}

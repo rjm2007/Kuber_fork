@@ -8,7 +8,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { X, RotateCcw, Loader2, Lock } from "lucide-react";
 import type { RegenerationSkipped } from "@/lib/api-client";
 
-const FIELD_FILL = "bg-secondary/70 hover:bg-secondary focus-visible:bg-secondary transition-colors";
 const INSTRUCTION_MAX_LENGTH = 4000;
 
 interface RegenerateDraftsModalProps {
@@ -113,7 +112,7 @@ function RegenerateDraftsModalInner({
             disabled={submitting}
             rows={4}
             maxLength={INSTRUCTION_MAX_LENGTH}
-            className={`mt-2 text-sm resize-y ${FIELD_FILL}`}
+            className="mt-2 text-sm resize-y"
             onChange={(e) => setInstruction(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && !submitting) onConfirm(instruction.trim()); }}
             placeholder="e.g. Make it shorter and less salesy — multi-line instructions are fine"

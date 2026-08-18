@@ -21,7 +21,7 @@ const CSS_VARS = [
   "--secondary", "--secondary-foreground",
   "--muted", "--muted-foreground",
   "--accent", "--accent-foreground",
-  "--border", "--input", "--ring",
+  "--border", "--input", "--ring", "--field",
 ] as const;
 
 type CssVar = (typeof CSS_VARS)[number];
@@ -73,34 +73,59 @@ function buildDarkPalette(c: ColorDefinition): Palette {
     "--border":                `hsl(${h} ${s}% 14.9%)`,
     "--input":                `hsl(${h} ${s}% 14.9%)`,
     "--ring":                 `hsl(${h} ${c.accentSat}% ${c.accentLight}%)`,
+    // Field surface (Input/Select/Textarea/Checkbox/Radio/DatePicker fill) —
+    // matches the page background in dark mode, same as the rest of the ladder.
+    "--field":                `hsl(${h} ${mono ? 0 : 30}% 3.9%)`,
   };
 }
 
-/** Builds a full light-mode palette: near-white tinted background, light gray
- *  tinted panels, dark text, and the same saturated accent color. */
+/** Builds the light-mode palette under the client's strict 4-color rule:
+ *  every value is one of primary, a single primary-tinted "shade" (used at
+ *  full or reduced opacity — never a fifth arbitrary gray), full white, or
+ *  black text (also opacity-only for the muted variant). No more per-token
+ *  near-white lightness values (97%, 95.1%, 93.1%, 89.1%, ...).
+ *
+ *  White is reserved exclusively for actual field surfaces (--field, wired
+ *  through bg-field on Input/Select/Textarea/Checkbox/Radio/DatePicker).
+ *  Cards, popovers, and every panel/section fill are the same gray shade as
+ *  the page — a card is a bordered gray region, not a white block, so a
+ *  field placed inside it still contrasts. Never give a wrapper around a
+ *  field its own white/card background "for emphasis" — that's what breaks
+ *  the field's visibility (see CLAUDE.md). */
 function buildLightPalette(c: ColorDefinition): Palette {
   const mono = c.hue === null;
   const h = c.hue ?? 0;
   const s = mono ? 0 : 20;
-  const fgS = mono ? 0 : 10;
+  const shade = `hsl(${h} ${s}% 95%)`;
+  const white = "hsl(0 0% 100%)";
+  const black = "hsl(0 0% 9%)";
   return {
-    "--background":           `hsl(${h} ${mono ? 0 : 25}% 97%)`,
-    "--foreground":           `hsl(${h} ${fgS}% 9%)`,
-    "--card":                 `hsl(${h} ${mono ? 0 : 15}% 100%)`,
-    "--card-foreground":      `hsl(${h} ${fgS}% 9%)`,
-    "--popover":              `hsl(${h} ${mono ? 0 : 15}% 100%)`,
-    "--popover-foreground":   `hsl(${h} ${fgS}% 9%)`,
-    "--primary":              mono ? "hsl(0 0% 9%)" : `hsl(${h} ${c.accentSat}% ${c.accentLight}%)`,
-    "--primary-foreground":   mono ? "hsl(0 0% 98%)" : "hsl(0 0% 100%)",
-    "--secondary":            `hsl(${h} ${s}% 95.1%)`,
-    "--secondary-foreground": `hsl(${h} ${fgS}% 9%)`,
-    "--muted":                `hsl(${h} ${s}% 95.1%)`,
-    "--muted-foreground":     `hsl(${h} ${fgS}% 45.1%)`,
-    "--accent":               `hsl(${h} ${s}% 93.1%)`,
-    "--accent-foreground":    `hsl(${h} ${fgS}% 9%)`,
-    "--border":                `hsl(${h} ${s}% 89.1%)`,
-    "--input":                `hsl(${h} ${s}% 89.1%)`,
-    "--ring":                 mono ? "hsl(0 0% 3.9%)" : `hsl(${h} ${c.accentSat}% ${c.accentLight}%)`,
+    // Page / panel / card / nested-section fill — one flat "primary shade"
+    // gray everywhere. Depth comes from border + shadow, not a second tone.
+    "--background":           shade,
+    "--secondary":            shade,
+    "--muted":                shade,
+    "--accent":               shade,
+    "--card":                 shade,
+    "--popover":              shade,
+    // Field fill — the only white in the palette.
+    "--field":                white,
+    // Text — black, with the muted variant as an opacity of the same black
+    // rather than a separate gray.
+    "--foreground":           black,
+    "--card-foreground":      black,
+    "--popover-foreground":   black,
+    "--secondary-foreground": black,
+    "--accent-foreground":    black,
+    "--muted-foreground":     "hsl(0 0% 9% / 0.6)",
+    // Primary accent, unchanged.
+    "--primary":              mono ? black : `hsl(${h} ${c.accentSat}% ${c.accentLight}%)`,
+    "--primary-foreground":   mono ? "hsl(0 0% 98%)" : white,
+    "--ring":                 mono ? black : `hsl(${h} ${c.accentSat}% ${c.accentLight}%)`,
+    // Border/input line — same shade hue, one step darker so it stays visible
+    // against both the white card and the shade background.
+    "--border":               `hsl(${h} ${s}% 88%)`,
+    "--input":                `hsl(${h} ${s}% 88%)`,
   };
 }
 

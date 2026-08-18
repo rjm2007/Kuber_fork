@@ -60,7 +60,7 @@ export async function POST(req: NextRequest) {
   const parsed = ApolloSearchSchema.safeParse(body);
   if (!parsed.success) return fail(400, "VALIDATION_ERROR", "Invalid request", parsed.error.flatten());
 
-  const { keywords, locations, titles, seniorities, batch_name, color, preview, assigned_to, assignment_strategy, max_leads_per_keyword } = parsed.data;
+  const { keywords, locations, titles, seniorities, advanced, batch_name, color, preview, assigned_to, assignment_strategy, max_leads_per_keyword } = parsed.data;
   // Mutable: clamped down (never up) to Apollo's real remaining balance below,
   // once we have a DB client to check it with.
   let maxTotalLeads = parsed.data.max_total_leads;
@@ -82,6 +82,7 @@ export async function POST(req: NextRequest) {
         page: 1,
         titles: titles ?? undefined,
         seniorities: seniorities ?? undefined,
+        advanced,
       });
       previewPeople = (result.people ?? [])
         .filter((p) => p.has_email)
@@ -199,6 +200,7 @@ export async function POST(req: NextRequest) {
           keyword: query, locations, page,
           titles: titles ?? undefined,
           seniorities: seniorities ?? undefined,
+          advanced,
         });
       } catch (err) {
         const status = (err as { status?: number }).status;

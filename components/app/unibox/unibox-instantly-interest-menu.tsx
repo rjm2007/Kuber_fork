@@ -46,7 +46,7 @@ export function UniboxInstantlyInterestMenu({ interestStatus, onChange, disabled
           type="button"
           variant="outline"
           disabled={disabled}
-          className="h-8 px-2.5 bg-card text-xs font-mono font-medium uppercase tracking-wide"
+          className="h-8 px-2.5 bg-field text-xs font-mono font-medium uppercase tracking-wide"
         >
           <Zap className={cn("size-3.5", current.color)} />
           <span>{current.label}</span>

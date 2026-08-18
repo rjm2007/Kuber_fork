@@ -57,32 +57,36 @@ const THEME_INIT_SCRIPT = `
         "--accent-foreground": "hsl(" + h + " " + fgS + "% 98%)",
         "--border": "hsl(" + h + " " + s + "% 14.9%)",
         "--input": "hsl(" + h + " " + s + "% 14.9%)",
-        "--ring": "hsl(" + h + " " + c.accentSat + "% " + c.accentLight + "%)"
+        "--ring": "hsl(" + h + " " + c.accentSat + "% " + c.accentLight + "%)",
+        "--field": "hsl(" + h + " " + (mono ? 0 : 30) + "% 3.9%)"
       };
     }
     function lightPalette(c) {
       var mono = c.hue === null;
       var h = c.hue || 0;
       var s = mono ? 0 : 20;
-      var fgS = mono ? 0 : 10;
+      var shade = "hsl(" + h + " " + s + "% 95%)";
+      var white = "hsl(0 0% 100%)";
+      var black = "hsl(0 0% 9%)";
       return {
-        "--background": "hsl(" + h + " " + (mono ? 0 : 25) + "% 97%)",
-        "--foreground": "hsl(" + h + " " + fgS + "% 9%)",
-        "--card": "hsl(" + h + " " + (mono ? 0 : 15) + "% 100%)",
-        "--card-foreground": "hsl(" + h + " " + fgS + "% 9%)",
-        "--popover": "hsl(" + h + " " + (mono ? 0 : 15) + "% 100%)",
-        "--popover-foreground": "hsl(" + h + " " + fgS + "% 9%)",
-        "--primary": mono ? "hsl(0 0% 9%)" : "hsl(" + h + " " + c.accentSat + "% " + c.accentLight + "%)",
-        "--primary-foreground": mono ? "hsl(0 0% 98%)" : "hsl(0 0% 100%)",
-        "--secondary": "hsl(" + h + " " + s + "% 95.1%)",
-        "--secondary-foreground": "hsl(" + h + " " + fgS + "% 9%)",
-        "--muted": "hsl(" + h + " " + s + "% 95.1%)",
-        "--muted-foreground": "hsl(" + h + " " + fgS + "% 45.1%)",
-        "--accent": "hsl(" + h + " " + s + "% 93.1%)",
-        "--accent-foreground": "hsl(" + h + " " + fgS + "% 9%)",
-        "--border": "hsl(" + h + " " + s + "% 89.1%)",
-        "--input": "hsl(" + h + " " + s + "% 89.1%)",
-        "--ring": mono ? "hsl(0 0% 3.9%)" : "hsl(" + h + " " + c.accentSat + "% " + c.accentLight + "%)"
+        "--background": shade,
+        "--secondary": shade,
+        "--muted": shade,
+        "--accent": shade,
+        "--card": shade,
+        "--popover": shade,
+        "--field": white,
+        "--foreground": black,
+        "--card-foreground": black,
+        "--popover-foreground": black,
+        "--secondary-foreground": black,
+        "--accent-foreground": black,
+        "--muted-foreground": "hsl(0 0% 9% / 0.6)",
+        "--primary": mono ? black : "hsl(" + h + " " + c.accentSat + "% " + c.accentLight + "%)",
+        "--primary-foreground": mono ? "hsl(0 0% 98%)" : white,
+        "--ring": mono ? black : "hsl(" + h + " " + c.accentSat + "% " + c.accentLight + "%)",
+        "--border": "hsl(" + h + " " + s + "% 88%)",
+        "--input": "hsl(" + h + " " + s + "% 88%)"
       };
     }
     var id = localStorage.getItem("${THEME_STORAGE_KEY}");

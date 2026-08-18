@@ -180,7 +180,13 @@ export async function POST(req: NextRequest) {
         body: JSON.stringify({ campaign_id: campaignId, step_number: stepNumber }),
       }).catch(() => {});
     });
-  } else if (drivesStatus) {
+  } else if (drivesStatus && ["draft", "processing"].includes(campaign.status)) {
+    // Only a campaign that was still pre-send drops back to 'draft' when the
+    // queue empties. A LIVE campaign must not: drafting one late-added lead
+    // (a bounce replacement, a lead added to a running campaign) would
+    // otherwise drag the whole campaign back to Draft in the UI while
+    // Instantly is mid-sequence. Matches the same guard on the
+    // no-targets branch above.
     await cdb.from("campaigns").update({
       status: "draft",
       updated_at: new Date().toISOString(),

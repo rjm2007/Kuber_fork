@@ -69,8 +69,13 @@ export function CampaignConfigModal({ campaign, open }: { campaign: Campaign; op
       <div className="px-4 py-2.5 space-y-1.5">
         <span className="text-muted-foreground flex items-center gap-2 text-sm"><Clock className="size-3.5" /> Follow-up schedule</span>
         {stepsLoading ? (
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <Loader2 className="size-3 animate-spin" /> Loading…
+          <div className="space-y-2 animate-pulse">
+            {Array.from({ length: 2 }).map((_, i) => (
+              <div key={i} className="flex items-center justify-between">
+                <div className="h-3 w-24 bg-secondary rounded" />
+                <div className="h-3 w-32 bg-secondary rounded" />
+              </div>
+            ))}
           </div>
         ) : steps.filter((s) => s.step_order > 1).length === 0 ? (
           <p className="text-xs text-muted-foreground">No follow-ups configured.</p>

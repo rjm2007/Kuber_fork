@@ -66,7 +66,7 @@ export function InfoTip({
             transform: transformMap[side],
             zIndex: 9999,
           }}
-          className="w-52 rounded-lg border border-border bg-card px-2.5 py-2 text-[11px] leading-relaxed text-foreground shadow-lg pointer-events-none"
+          className="w-64 rounded-lg border border-border bg-card px-2.5 py-2 text-[11px] leading-relaxed text-foreground shadow-lg pointer-events-none"
         >
           {text}
         </span>,

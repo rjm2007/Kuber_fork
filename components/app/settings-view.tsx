@@ -581,15 +581,35 @@ export function SettingsView() {
   }
 
   const contentSkeleton = loading ? (
-    <div className="max-w-2xl mx-auto p-8 space-y-6 animate-pulse">
-      <div className="h-5 w-32 bg-secondary rounded" />
-      <div className="rounded-xl border border-border bg-card p-6 space-y-4">
-        <div className="grid grid-cols-2 gap-4">
-          <div className="h-9 bg-secondary rounded-lg" />
-          <div className="h-9 bg-secondary rounded-lg" />
+    <div className="mx-auto w-full max-w-5xl p-8 space-y-8 animate-pulse">
+      {/* Header row */}
+      <div className="flex items-center justify-between border-b border-border pb-4">
+        <div className="space-y-2">
+          <div className="h-3 w-16 bg-border/60 rounded" />
+          <div className="h-6 w-32 bg-border/60 rounded" />
+        </div>
+        <div className="h-6 w-20 bg-border/60 rounded-full" />
+      </div>
+
+      {/* Avatar + name row */}
+      <div className="flex items-center gap-4 py-4 border-b border-border">
+        <div className="size-12 rounded-md bg-border/60" />
+        <div className="space-y-2">
+          <div className="h-4 w-28 bg-border/60 rounded" />
+          <div className="h-3 w-40 bg-border/40 rounded" />
         </div>
       </div>
-      <div className="rounded-xl border border-border bg-card p-6 h-24" />
+
+      {/* Settings rows */}
+      {Array.from({ length: 4 }).map((_, i) => (
+        <div key={i} className="flex items-start justify-between gap-8 py-5 border-b border-border last:border-0">
+          <div className="space-y-1.5 w-48">
+            <div className="h-4 w-28 bg-border/60 rounded" />
+            <div className="h-3 w-full bg-border/40 rounded" />
+          </div>
+          <div className="h-9 flex-1 max-w-sm bg-border/40 rounded-lg" />
+        </div>
+      ))}
     </div>
   ) : null;
 
@@ -734,12 +754,12 @@ export function SettingsView() {
                             </div>
                           </div>
                           <span className={cn(
-                            "rounded-full border px-2.5 py-1 text-[11px] font-medium shrink-0",
+                            "rounded-full border px-2.5 py-1 text-[11px] leading-none font-medium shrink-0",
                             myDraftPrompt.trim()
                               ? "border-primary/20 bg-primary/10 text-primary"
                               : "border-border bg-secondary text-muted-foreground",
                           )}>
-                            {myDraftPrompt.trim() ? "Personal" : "Using company default"}
+                            <span className="translate-y-px inline-block">{myDraftPrompt.trim() ? "Personal" : "Using company default"}</span>
                           </span>
                         </div>
                         <p className="text-xs text-muted-foreground -mt-2">
@@ -772,12 +792,12 @@ export function SettingsView() {
                             </div>
                           </div>
                           <span className={cn(
-                            "rounded-full border px-2.5 py-1 text-[11px] font-medium shrink-0",
+                            "rounded-full border px-2.5 py-1 text-[11px] leading-none font-medium shrink-0",
                             myReplyPrompt.trim()
                               ? "border-primary/20 bg-primary/10 text-primary"
                               : "border-border bg-secondary text-muted-foreground",
                           )}>
-                            {myReplyPrompt.trim() ? "Personal" : "Using company default"}
+                            <span className="translate-y-px inline-block">{myReplyPrompt.trim() ? "Personal" : "Using company default"}</span>
                           </span>
                         </div>
                         <p className="text-xs text-muted-foreground -mt-2">
@@ -814,12 +834,12 @@ export function SettingsView() {
                             </div>
                           </div>
                           <span className={cn(
-                            "rounded-full border px-2.5 py-1 text-[11px] font-medium shrink-0",
+                            "rounded-full border px-2.5 py-1 text-[11px] leading-none font-medium shrink-0",
                             mySignature.trim()
                               ? "border-primary/20 bg-primary/10 text-primary"
                               : "border-border bg-secondary text-muted-foreground",
                           )}>
-                            {mySignature.trim() ? "Personal" : "Using company default"}
+                            <span className="translate-y-px inline-block">{mySignature.trim() ? "Personal" : "Using company default"}</span>
                           </span>
                         </div>
                         <p className="text-xs text-muted-foreground -mt-2">

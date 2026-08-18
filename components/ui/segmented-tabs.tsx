@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 
 /** Shared chrome for every segmented tab bar in the app. */
 export const segmentedListClassName =
-  "inline-flex items-center justify-center rounded-lg border border-border bg-card p-0.5 text-muted-foreground";
+  "inline-flex items-center justify-center rounded-lg border border-border bg-field p-0.5 text-muted-foreground";
 
 export function segmentedTriggerClassName(active: boolean, size: "sm" | "md" | "lg" = "md") {
   return cn(

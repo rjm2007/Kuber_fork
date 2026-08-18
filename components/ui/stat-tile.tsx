@@ -37,7 +37,7 @@ interface StatTileProps {
 export function StatTile({ label, value, icon: Icon, sub, tone = "neutral", className, layout = "card" }: StatTileProps) {
   if (layout === "row") {
     return (
-      <div className={cn("swatch-bar overflow-hidden rounded-xl border border-border bg-card p-3 flex items-center gap-3", className)}>
+      <div className={cn("swatch-bar overflow-hidden rounded-xl border border-border bg-field p-3 flex items-center gap-3", className)}>
         {Icon && (
           <div className={cn("size-8 rounded-lg flex items-center justify-center border shrink-0", TONE_ICON[tone])}>
             <Icon className="size-4" />
@@ -52,7 +52,7 @@ export function StatTile({ label, value, icon: Icon, sub, tone = "neutral", clas
     );
   }
   return (
-    <div className={cn("swatch-bar-top overflow-hidden rounded-xl border border-border bg-card p-3", Icon ? "flex flex-col gap-2" : "text-center py-3", className)}>
+    <div className={cn("swatch-bar-top overflow-hidden rounded-xl border border-border bg-field p-3", Icon ? "flex flex-col gap-2" : "text-center py-3", className)}>
       {Icon && (
         <div className={cn("size-7 rounded-lg flex items-center justify-center border", TONE_ICON[tone])}>
           <Icon className="size-3.5" />

@@ -19,7 +19,7 @@ export function UsageHeaderSkeleton() {
 
 export function StatTileSkeleton() {
   return (
-    <div className="rounded-xl border border-border bg-card p-3 flex flex-col gap-2">
+    <div className="rounded-xl border border-border bg-field p-3 flex flex-col gap-2">
       <Skeleton className="size-7 rounded-lg" />
       <div className="space-y-1.5">
         <Skeleton className="h-5 w-14" />

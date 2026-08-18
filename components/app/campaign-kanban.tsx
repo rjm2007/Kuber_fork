@@ -56,7 +56,7 @@ export function CampaignKanban({
                 minWidth: "180px",
               }}
             >
-              <div className={cn("swatch-bar overflow-hidden flex items-center gap-1.5 px-2.5 py-2 rounded-lg border bg-card shrink-0", col.header)}>
+              <div className={cn("swatch-bar overflow-hidden flex items-center gap-1.5 px-2.5 py-2 rounded-lg border bg-field shrink-0", col.header)}>
                 <span className={cn("size-2 rounded-full shrink-0", col.dot)} />
                 <span className="eyebrow truncate text-foreground/80!">{col.label}</span>
                 <span className="ml-auto font-mono text-[10px] font-medium text-muted-foreground bg-secondary rounded-full px-1.5 py-0.5 tabular-nums shrink-0">
@@ -74,9 +74,9 @@ export function CampaignKanban({
                     <div
                       key={cl.id}
                       className={cn(
-                        "shrink-0 rounded-lg border bg-card p-2.5 cursor-pointer transition-colors overflow-hidden",
+                        "shrink-0 rounded-lg border bg-field p-2.5 cursor-pointer transition-colors overflow-hidden",
                         isFailed ? "border-red-500/50" : "border-border",
-                        isSelected ? "swatch-bar ring-1 ring-primary/50 bg-primary/5" : "hover:bg-secondary/40",
+                        isSelected ? "swatch-bar ring-1 ring-primary/50 bg-primary/5" : "hover:bg-field",
                       )}
                       onClick={() => onSelect(cl.id)}
                       onKeyDown={(e) => {

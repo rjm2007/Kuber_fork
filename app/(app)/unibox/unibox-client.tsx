@@ -304,7 +304,16 @@ export function UniboxClient() {
               </div>
             </div>
             {detailLoading ? (
-              <div className="flex-1 flex items-center justify-center min-h-0"><Loader2 className="size-6 animate-spin text-muted-foreground" /></div>
+              <div className="flex-1 min-h-0 p-6 space-y-5 animate-pulse">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <div key={i} className={`flex ${i % 2 === 0 ? "" : "justify-end"}`}>
+                    <div className="space-y-1.5">
+                      <div className="h-3 w-20 bg-secondary rounded" />
+                      <div className="h-14 w-56 bg-secondary rounded-xl" />
+                    </div>
+                  </div>
+                ))}
+              </div>
             ) : (
               <div className="flex-1 overflow-y-auto min-h-0">
                 <UniboxThreadView
@@ -318,6 +327,12 @@ export function UniboxClient() {
                   canReply={!!threadDetail?.reply_to_uuid}
                   latestDraft={latestDraft}
                   replyToSubject={threadDetail?.messages?.find((m) => m.direction === "received")?.subject ?? null}
+                  // Our mailbox on this thread — keeps it out of the CC list we
+                  // build from the thread's participants.
+                  eaccount={threadDetail?.eaccount ?? null}
+                  knownLeadEmails={threadDetail?.known_lead_emails ?? []}
+                  organizationName={threadDetail?.lead_organization_name ?? null}
+                  ownerName={threadDetail?.lead_owner_name ?? null}
                   onChanged={() => { void loadThreads(false); void loadDetail(selectedId!, { silent: true }); }}
                 />
               </div>

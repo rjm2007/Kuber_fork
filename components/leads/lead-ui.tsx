@@ -1,5 +1,6 @@
 import { Check } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Pill } from "@/components/ui/pill";
 import {
   KANBAN_STAGES,
   STEP_DESCRIPTIONS,
@@ -30,32 +31,36 @@ export function StatusBadge({ status, lead }: { status: LeadStatus; lead?: Lead 
       ? "bg-red-500/10 text-red-400 border-red-500/30"
       : "bg-yellow-500/10 text-yellow-400 border-yellow-500/30";
     return (
-      <span
-        className={cn("inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm border font-mono text-[10px] font-semibold uppercase tracking-wider", cls)}
+      <Pill
+        shape="sm"
+        className={cn("gap-1 font-mono font-semibold uppercase tracking-wider", cls)}
         title={reason === "missing_data"
           ? "Enrichment finished but no email was found — add one before this lead can be contacted"
           : "No usable website/profile — campaigns will use the generic name-swap template"}
       >
         {inputRequiredLabel(lead)}
-      </span>
+      </Pill>
     );
   }
   return (
-    <span className={cn("inline-flex items-center px-1.5 py-0.5 rounded-sm border font-mono text-[10px] font-semibold uppercase tracking-wider", STATUS_STYLES[status])}>
+    <Pill shape="sm" className={cn("font-mono font-semibold uppercase tracking-wider", STATUS_STYLES[status])}>
       {STATUS_LABELS[status]}
-    </span>
+    </Pill>
   );
 }
 
 export function ScoreBadge({ score }: { score: LeadScore }) {
   if (score === "—") return <span className="font-mono text-xs text-muted-foreground/60">—</span>;
   return (
-    <span className={cn(
-      "inline-flex items-center px-1.5 py-0.5 rounded-sm border font-mono text-[10px] font-bold uppercase tracking-wider",
-      score === "Hot" ? "bg-orange-500/10 text-orange-400 border-orange-500/25" : "bg-blue-500/10 text-blue-400 border-blue-500/25"
-    )}>
+    <Pill
+      shape="sm"
+      className={cn(
+        "font-mono font-bold uppercase tracking-wider",
+        score === "Hot" ? "bg-orange-500/10 text-orange-400 border-orange-500/25" : "bg-blue-500/10 text-blue-400 border-blue-500/25",
+      )}
+    >
       {score}
-    </span>
+    </Pill>
   );
 }
 
@@ -97,7 +102,9 @@ export function PipelineStepper({ currentStatus }: { currentStatus: LeadStatus }
               )}>
                 {done
                   ? <Check className="size-2.5 text-primary-foreground" strokeWidth={3} />
-                  : <span className={cn("text-[10px] font-bold", active ? "text-primary" : "text-muted-foreground/30")}>{i + 1}</span>}
+                  // Digits have no descender, so a mathematically centered line box
+                  // reads as sitting visibly high — nudge down to its optical center.
+                  : <span className={cn("text-[10px] font-bold translate-y-px", active ? "text-primary" : "text-muted-foreground/30")}>{i + 1}</span>}
               </div>
               {!last && <div className={cn("w-px flex-1 my-1", (done && !active) ? "bg-primary" : "bg-border")} />}
             </div>

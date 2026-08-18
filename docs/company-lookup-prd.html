@@ -1,0 +1,1153 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PRD — Company Lookup (V1)</title>
+<style>
+  :root {
+    --page:      #FFFFFF;
+    --panel:     #F4F6F8;
+    --panel-2:   #EAEEF2;
+    --line:      #D3DAE2;
+    --line-soft: #E3E8EE;
+    --ink:       #161D26;
+    --ink-2:     #55616F;
+    --ink-3:     #7C8794;
+    --accent:    #5546D6;
+    --accent-bg: #EFEDFC;
+    --ok:        #0B6B5C;
+    --ok-bg:     #DFF1ED;
+    --prop:      #9A5A06;
+    --prop-bg:   #FBEDD8;
+    --ver:       #A32B22;
+    --ver-bg:    #FBE6E3;
+
+    --sans: "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, "Helvetica Neue", Arial, sans-serif;
+    --mono: "Cascadia Mono", Consolas, "SF Mono", Menlo, "Liberation Mono", monospace;
+  }
+
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--page); color: var(--ink);
+    font-family: var(--sans); font-size: 15px; line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+  .sheet { max-width: 60rem; margin: 0 auto; padding: 3rem 1.5rem 5rem; }
+
+  h1 { font-size: 2.4rem; line-height: 1.1; letter-spacing: -.022em; margin: .4rem 0 0; font-weight: 650; }
+  h2 { font-size: 1.35rem; line-height: 1.25; letter-spacing: -.014em; margin: 0; font-weight: 640; }
+  h3 { font-size: 1.02rem; margin: 0 0 .1rem; font-weight: 645; letter-spacing: -.006em; }
+  h4 { font-size: .875rem; margin: 0; font-weight: 650; }
+  p  { margin: 0 0 .85rem; max-width: 72ch; }
+  p:last-child { margin-bottom: 0; }
+
+  .eyebrow { font-size: .7rem; font-weight: 660; letter-spacing: .11em; text-transform: uppercase; color: var(--ink-3); margin: 0; }
+  .lede { font-size: 1.05rem; color: var(--ink-2); margin-top: .9rem; max-width: 64ch; }
+
+  code { font-family: var(--mono); font-size: .855em; background: var(--panel-2); padding: .1em .35em; border-radius: 3px; word-break: break-word; }
+  pre { font-family: var(--mono); font-size: .78rem; line-height: 1.6; background: var(--panel); border: 1px solid var(--line); border-radius: 5px; padding: .85rem 1rem; overflow-x: auto; margin: 0 0 .85rem; }
+  pre code { background: none; padding: 0; font-size: inherit; }
+
+  .meta { display: grid; grid-template-columns: repeat(auto-fit, minmax(8.5rem,1fr)); gap: 0 1.5rem; border: 1px solid var(--line); border-radius: 6px; padding: .9rem 1.15rem; margin: 1.75rem 0 0; background: var(--panel); }
+  .meta > div { padding: .4rem 0; }
+  .meta dt { font-size: .66rem; text-transform: uppercase; letter-spacing: .08em; color: var(--ink-3); font-weight: 650; }
+  .meta dd { margin: .1rem 0 0; font-weight: 570; font-size: .9rem; }
+
+  nav.toc { border: 1px solid var(--line); border-radius: 6px; padding: 1rem 1.2rem; margin: 2.5rem 0 0; background: var(--panel); }
+  nav.toc h4 { font-size: .68rem; text-transform: uppercase; letter-spacing: .1em; color: var(--ink-3); margin-bottom: .55rem; }
+  nav.toc ol { margin: 0; padding: 0; list-style: none; columns: 2; column-gap: 2rem; }
+  nav.toc li { font-size: .82rem; padding: .16rem 0; break-inside: avoid; }
+  nav.toc a { color: var(--ink-2); text-decoration: none; }
+  nav.toc a:hover, nav.toc a:focus-visible { color: var(--accent); text-decoration: underline; }
+  nav.toc .n { font-family: var(--mono); color: var(--ink-3); margin-right: .4rem; font-size: .92em; }
+  @media (max-width: 620px) { nav.toc ol { columns: 1; } }
+
+  section { margin-top: 2.75rem; scroll-margin-top: 1rem; }
+  .sec-head { border-top: 2px solid var(--ink); padding-top: .8rem; margin-bottom: 1.1rem; display: flex; align-items: baseline; gap: .65rem; flex-wrap: wrap; }
+  .sec-n { font-family: var(--mono); font-size: .74rem; font-weight: 700; color: var(--ink-3); }
+  .sub { margin-top: 1.6rem; }
+  .sub h3 { padding-bottom: .35rem; border-bottom: 1px solid var(--line); margin-bottom: .7rem; }
+
+  .tag { display: inline-block; font-family: var(--mono); font-size: .655rem; font-weight: 700; letter-spacing: .045em; padding: .15rem .4rem; border-radius: 3px; border: 1px solid; text-transform: uppercase; white-space: nowrap; vertical-align: .05em; }
+  .t-ok   { color: var(--ok);     background: var(--ok-bg);     border-color: #B5DCD3; }
+  .t-code { color: var(--accent); background: var(--accent-bg); border-color: #CFC9F4; }
+  .t-prop { color: var(--prop);   background: var(--prop-bg);   border-color: #EBD3AC; }
+  .t-ver  { color: var(--ver);    background: var(--ver-bg);    border-color: #EFC4BF; }
+
+  .legend { display: flex; gap: 1.25rem; flex-wrap: wrap; border: 1px solid var(--line); border-radius: 6px; padding: .85rem 1.1rem; background: var(--panel); margin-bottom: 1.1rem; }
+  .legend div { font-size: .78rem; color: var(--ink-2); display: flex; align-items: center; gap: .45rem; }
+
+  .box { border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 5px; padding: .95rem 1.15rem; margin: 0 0 .9rem; background: var(--panel); }
+  .box.crit { border-left-color: var(--ver); }
+  .box.good { border-left-color: var(--ok); }
+  .box h4 { text-transform: uppercase; letter-spacing: .07em; font-size: .7rem; color: var(--accent); margin-bottom: .45rem; }
+  .box.crit h4 { color: var(--ver); }
+  .box.good h4 { color: var(--ok); }
+  .box p, .box ul { font-size: .875rem; }
+
+  .tw { overflow-x: auto; border: 1px solid var(--line); border-radius: 5px; margin: 0 0 .9rem; }
+  table { border-collapse: collapse; width: 100%; font-size: .82rem; min-width: 34rem; background: var(--page); }
+  th, td { text-align: left; padding: .5rem .7rem; border-bottom: 1px solid var(--line-soft); vertical-align: top; }
+  th { font-weight: 650; color: var(--ink-2); text-transform: uppercase; letter-spacing: .05em; font-size: .655rem; background: var(--panel-2); border-bottom: 1px solid var(--line); }
+  tbody tr:last-child td { border-bottom: none; }
+  td.n { font-family: var(--mono); text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  td code { font-size: .8em; }
+
+  ul, ol.l { margin: 0 0 .9rem; padding-left: 1.15rem; max-width: 72ch; }
+  li { margin-bottom: .3rem; line-height: 1.6; }
+  li:last-child { margin-bottom: 0; }
+
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: .9rem; margin-bottom: .9rem; }
+  @media (max-width: 700px) { .cols { grid-template-columns: 1fr; } }
+  .card { border: 1px solid var(--line); border-radius: 5px; padding: .95rem 1.05rem; background: var(--page); }
+  .card h4 { margin-bottom: .5rem; }
+  .card ul { margin-bottom: 0; font-size: .84rem; }
+
+  .flow { font-family: var(--mono); font-size: .78rem; line-height: 1.85; border: 1px solid var(--line); border-radius: 5px; padding: .9rem 1.1rem; background: var(--panel); overflow-x: auto; margin-bottom: .9rem; }
+  .flow div { white-space: nowrap; color: var(--ink-2); }
+  .flow b { color: var(--ink); font-weight: 650; }
+  .flow .a { color: var(--ink-3); }
+
+  .step { border: 1px solid var(--line); border-radius: 5px; margin-bottom: .8rem; overflow: hidden; }
+  .step-h { display: flex; align-items: center; gap: .6rem; padding: .65rem .95rem; background: var(--panel); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  .step-h .sn { font-family: var(--mono); font-size: .72rem; font-weight: 700; width: 1.35rem; height: 1.35rem; border-radius: 3px; background: var(--ink); color: #fff; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .step-h h4 { flex: 1; min-width: 7rem; }
+  .step-b { padding: .9rem .95rem; }
+  .step-b ul, .step-b p { margin-bottom: .6rem; font-size: .875rem; }
+  .step-b > :last-child { margin-bottom: 0; }
+
+  .bq { border: 1px solid var(--line); border-top: 3px solid var(--accent); border-radius: 5px; padding: 1.1rem 1.2rem; margin-bottom: 1rem; }
+  .bq .lbl { font-family: var(--mono); font-size: .7rem; font-weight: 700; color: var(--accent); letter-spacing: .06em; text-transform: uppercase; }
+  .bq h3 { margin: .4rem 0 .7rem; }
+  .opts { display: grid; grid-template-columns: 1fr 1fr; gap: .7rem; margin-bottom: .8rem; }
+  @media (max-width: 620px) { .opts { grid-template-columns: 1fr; } }
+  .opt { border: 1px solid var(--line); border-radius: 4px; padding: .7rem .8rem; background: var(--panel); }
+  .opt .t { font-weight: 645; font-size: .875rem; display: block; margin-bottom: .2rem; }
+  .opt .d { font-size: .8rem; color: var(--ink-2); line-height: 1.55; }
+  .impl { font-size: .84rem; color: var(--ink-2); border-top: 1px solid var(--line-soft); padding-top: .65rem; }
+
+  ol.ac { counter-reset: ac; list-style: none; padding: 0; margin: 0; }
+  ol.ac li { display: flex; gap: .6rem; border: 1px solid var(--line); border-radius: 4px; padding: .55rem .75rem; margin-bottom: .4rem; font-size: .85rem; align-items: flex-start; }
+  ol.ac li::before { counter-increment: ac; content: "AC-" counter(ac, decimal-leading-zero); font-family: var(--mono); font-size: .655rem; font-weight: 700; color: var(--accent); background: var(--accent-bg); border: 1px solid #CFC9F4; padding: .12rem .3rem; border-radius: 3px; flex-shrink: 0; margin-top: .12rem; }
+
+  footer { margin-top: 3rem; border-top: 1px solid var(--line); padding-top: 1.1rem; color: var(--ink-3); font-size: .8rem; }
+  footer p { margin-bottom: .4rem; }
+  a { color: var(--accent); }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  @media print {
+    body { font-size: 11pt; }
+    .sheet { max-width: none; padding: 0; }
+    section { break-inside: avoid-page; }
+    nav.toc { break-after: page; }
+  }
+</style>
+</head>
+<body>
+<div class="sheet">
+
+<header>
+  <p class="eyebrow">Kuber Polyplast · Lead Sourcing Platform</p>
+  <h1>Company Lookup — Product Requirements</h1>
+  <p class="lede">Search a company by name, identify the correct organization among similar matches, review the people who work there, and reveal contact details for only the contacts that are actually needed.</p>
+  <dl class="meta">
+    <div><dt>Document</dt><dd>PRD, Version 1</dd></div>
+    <div><dt>Status</dt><dd>Draft — pending business decisions</dd></div>
+    <div><dt>Date</dt><dd>10 August 2026</dd></div>
+    <div><dt>Scope</dt><dd>V1 — email enrichment only</dd></div>
+    <div><dt>Database</dt><dd>No migration required</dd></div>
+  </dl>
+</header>
+
+<nav class="toc" aria-label="Table of contents">
+  <h4>Contents</h4>
+  <ol>
+    <li><a href="#s1"><span class="n">1</span>Feature Overview</a></li>
+    <li><a href="#s2"><span class="n">2</span>Problem / Client Use Case</a></li>
+    <li><a href="#s3"><span class="n">3</span>Goals</a></li>
+    <li><a href="#s4"><span class="n">4</span>Non-Goals</a></li>
+    <li><a href="#s5"><span class="n">5</span>User Flow</a></li>
+    <li><a href="#s6"><span class="n">6</span>Detailed UI Flow</a></li>
+    <li><a href="#s7"><span class="n">7</span>Apollo API Flow</a></li>
+    <li><a href="#s8"><span class="n">8</span>Credit / Cost Behaviour</a></li>
+    <li><a href="#s9"><span class="n">9</span>Lead &amp; Enrichment Flow</a></li>
+    <li><a href="#s10"><span class="n">10</span>Database Impact</a></li>
+    <li><a href="#s11"><span class="n">11</span>Existing Files / New Files</a></li>
+    <li><a href="#s12"><span class="n">12</span>Existing Systems Reused</a></li>
+    <li><a href="#s13"><span class="n">13</span>Duplicate / Existing Organization Behaviour</a></li>
+    <li><a href="#s14"><span class="n">14</span>Safety / Credit Protection</a></li>
+    <li><a href="#s15"><span class="n">15</span>Edge Cases</a></li>
+    <li><a href="#s16"><span class="n">16</span>Acceptance Criteria</a></li>
+    <li><a href="#s17"><span class="n">17</span>Open Business Questions</a></li>
+    <li><a href="#s18"><span class="n">18</span>Implementation Notes</a></li>
+    <li><a href="#s19"><span class="n">19</span>Research &amp; Verification Summary</a></li>
+    <li><a href="#s20"><span class="n">20</span>Implementation Readiness</a></li>
+    <li><a href="#s21"><span class="n">21</span>Changes Made Based on Senior Review</a></li>
+  </ol>
+</nav>
+
+<section id="legend" style="margin-top:2rem">
+  <div class="legend">
+    <div><span class="tag t-ok">Confirmed — Apollo docs</span> Stated in official Apollo API documentation</div>
+    <div><span class="tag t-code">Confirmed — implementation</span> Verified in the existing codebase or database</div>
+    <div><span class="tag t-prop">Proposed</span> A product or implementation decision made for V1</div>
+    <div><span class="tag t-ver">Requires verification</span> Needs a live Apollo request before implementation</div>
+  </div>
+</section>
+
+<!-- 1 -->
+<section id="s1">
+  <div class="sec-head"><span class="sec-n">01</span><h2>Feature Overview</h2></div>
+  <p>Company Lookup is a fourth lead source inside the existing <strong>Add Leads</strong> dialog, alongside Apollo Search, Excel / CSV and Manual Entry.</p>
+  <p>Where the existing Apollo Search finds people by <em>industry segment</em>, Company Lookup finds them at <em>one named company</em>. A manager enters a company name, selects the correct organization from Apollo's matches, reviews the people who work there at no credit cost, selects up to five, and only those five enter the paid enrichment pipeline.</p>
+  <div class="flow">
+    <div><b>Company name</b> <span class="a">→</span> find companies <span class="a">→</span> select company <span class="a">→</span> find people <span class="a">→</span> select up to 5 <span class="a">→</span> reveal emails <span class="a">→</span> existing lead pipeline</div>
+  </div>
+  <p>The feature adds no new enrichment logic. Selected contacts join the existing lead, reveal, scraping, drafting, assignment and campaign systems at the same point the current Apollo Search joins them.</p>
+</section>
+
+<!-- 2 -->
+<section id="s2">
+  <div class="sec-head"><span class="sec-n">02</span><h2>Problem / Client Use Case</h2></div>
+  <p>The client regularly hears — through trade contacts, exhibitions or industry word of mouth — that a particular company exports or manufactures plastic in volume. For example, <em>"ABC Plastics"</em>.</p>
+  <p>They know the name. They typically do not know the domain, the exact legal entity, or who to contact there. The platform currently offers no way to act on this: Apollo Search filters by industry, title and location only, so reaching one specific named company means searching an entire segment and paying to reveal everyone in it.</p>
+  <p>A company name alone creates two distinct problems:</p>
+  <ul>
+    <li><strong>Ambiguity.</strong> Many companies share a name. "ABC Plastics Ltd" in Kenya is a different business from "ABC Plastic Group" in Nigeria. Only the client can determine which one was meant.</li>
+    <li><strong>Cost.</strong> Once the correct company is identified, revealing every employee wastes credits on people who will never be contacted.</li>
+  </ul>
+  <p>Company Lookup addresses both: an explicit disambiguation step controlled by the user, followed by a selection step that bounds the spend.</p>
+</section>
+
+<!-- 3 -->
+<section id="s3">
+  <div class="sec-head"><span class="sec-n">03</span><h2>Goals</h2></div>
+  <ul>
+    <li>Enable a manager to go from a company <strong>name</strong> to usable, emailable contacts without knowing the domain.</li>
+    <li>Make company disambiguation explicit and user-driven; the system must never guess which company was intended.</li>
+    <li>Keep credit spend proportionate and predictable — one credit to search, one per contact revealed.</li>
+    <li>Display only contacts that can actually be emailed (<code>has_email = true</code>).</li>
+    <li>Surface the most commercially relevant people first through job-title ranking.</li>
+    <li>Route selected contacts into the existing lead and enrichment systems without creating a parallel pipeline.</li>
+    <li>Guarantee that candidates the user did not select can never trigger Apollo spend.</li>
+  </ul>
+</section>
+
+<!-- 4 -->
+<section id="s4">
+  <div class="sec-head"><span class="sec-n">04</span><h2>Non-Goals</h2></div>
+  <ul>
+    <li><strong>Mobile / WhatsApp enrichment.</strong> Out of scope for V1. No webhook infrastructure will be designed or built. Raised as Business Question 1.</li>
+    <li><strong>Unrestricted pagination.</strong> V1 supports bounded, explicitly requested paging up to three Apollo pages — see §6 Step 2. Walking Apollo's full 500-page limit is not supported, because each page consumes a credit.</li>
+    <li><strong>Exposing the full Apollo filter set.</strong> Advanced Search offers a small, curated group of organization filters rather than every supported parameter.</li>
+    <li><strong>Adding contacts at organizations already held.</strong> Organizations already in the system are blocked from proceeding — see §13.2. Expanding coverage at a known company is a separate workflow.</li>
+    <li><strong>Bulk lookup.</strong> One company per lookup. No multi-company paste workflow.</li>
+    <li><strong>A new <code>lead_source</code> value.</strong> V1 uses the existing <code>apollo</code> source — see §9 for why this is load-bearing.</li>
+    <li><strong>Rebuilding downstream systems.</strong> Enrichment, reveal, duplicate handling, scraping, AI drafting, campaigns, assignment, imports and watchdogs are reused without modification.</li>
+    <li><strong>New database tables.</strong> None are required — see §10.</li>
+    <li><strong>Automatic contact selection.</strong> The system never pre-selects contacts on the user's behalf.</li>
+  </ul>
+</section>
+
+<!-- 5 -->
+<section id="s5">
+  <div class="sec-head"><span class="sec-n">05</span><h2>User Flow</h2></div>
+  <div class="flow">
+    <div>01 <span class="a">·</span> Manager opens <b>Add Leads → Company Lookup</b></div>
+    <div>02 <span class="a">·</span> Enters <b>Company Name</b> (required), <b>Country</b> and <b>Website</b> (optional)</div>
+    <div>03 <span class="a">·</span> Optionally opens <b>Advanced Search</b> to narrow a common name</div>
+    <div>04 <span class="a">·</span> Runs <b>Search Companies</b> <span class="a">— consumes 1 credit when results are returned</span></div>
+    <div>05 <span class="a">·</span> Reviews matches; organizations already held are labelled <b>Already in system</b> and cannot be selected</div>
+    <div>06 <span class="a">·</span> If the company is not visible: pages through the returned results free of charge,</div>
+    <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="a">then either</span> refines the search <span class="a">or</span> requests another Apollo page <span class="a">— 1 further credit</span></div>
+    <div>07 <span class="a">·</span> Explicitly selects <b>one</b> company — never auto-selected</div>
+    <div>08 <span class="a">·</span> System lists people at that organization <span class="a">— 0 credits</span></div>
+    <div>09 <span class="a">·</span> Only <b>has_email = true</b> people are shown, ranked by job title</div>
+    <div>10 <span class="a">·</span> Manager selects up to <b>5</b> contacts <span class="a">(counter reads "3 / 5 selected")</span></div>
+    <div>11 <span class="a">·</span> Names the batch, sets colour and assignment, confirms</div>
+    <div>12 <span class="a">·</span> Only selected contacts are inserted; the existing pipeline reveals their emails</div>
+  </div>
+  <p>Access control mirrors the existing Apollo Search exactly: <strong>managers only</strong>, and blocked for the internal/development workspace, since both draw on the same shared Apollo credit pool. <span class="tag t-code">Confirmed — implementation</span></p>
+</section>
+
+<!-- 6 -->
+<section id="s6">
+  <div class="sec-head"><span class="sec-n">06</span><h2>Detailed UI Flow</h2></div>
+  <p>Company Lookup is added as a fourth entry in the Add Leads source rail. Inside it, a four-step wizard reuses the shared <code>Stepper</code> component so the flow matches the existing Apollo Search form rather than introducing a separate design language.</p>
+
+  <div class="step">
+    <div class="step-h"><span class="sn">1</span><h4>Find Company</h4><span class="tag t-prop">Proposed</span></div>
+    <div class="step-b">
+      <ul>
+        <li><strong>Company Name</strong> — required. Maps to Apollo's <code>q_organization_name</code>. <span class="tag t-ok">Confirmed — Apollo docs</span></li>
+        <li><strong>Country</strong> — optional. Maps to <code>organization_locations[]</code>. <span class="tag t-ok">Confirmed — Apollo docs</span></li>
+        <li><strong>Website</strong> — optional. Maps to <code>q_organization_domains_list[]</code>. <span class="tag t-ok">Confirmed — Apollo docs</span></li>
+      </ul>
+      <p>The credit cost is displayed before the search action, not after it. Primary action: <strong>Search Companies</strong>.</p>
+
+      <h4 style="margin-top:1rem">Advanced Search — collapsed by default</h4>
+      <p>The basic form stays at three fields. A collapsed <strong>Advanced Search</strong> panel exposes <strong>every remaining filter Organization Search supports</strong>, grouped so the panel stays navigable. Nothing is withheld: the basic form covers the common case, and Advanced gives full access for anyone who needs it.</p>
+      <div class="tw">
+        <table>
+          <thead><tr><th>Group</th><th>Filter</th><th>Apollo parameter</th></tr></thead>
+          <tbody>
+            <tr><td rowspan="4"><strong>Company profile</strong></td><td>Employee range</td><td><code>organization_num_employees_ranges[]</code></td></tr>
+            <tr><td>Industry keywords</td><td><code>q_organization_keyword_tags[]</code></td></tr>
+            <tr><td>Revenue range</td><td><code>revenue_range[min]</code>, <code>revenue_range[max]</code></td></tr>
+            <tr><td>Technologies used</td><td><code>currently_using_any_of_technology_uids[]</code></td></tr>
+            <tr><td><strong>Location</strong></td><td>Exclude location</td><td><code>organization_not_locations[]</code></td></tr>
+            <tr><td rowspan="3"><strong>Funding</strong></td><td>Latest funding amount</td><td><code>latest_funding_amount_range[min]</code>, <code>[max]</code></td></tr>
+            <tr><td>Total funding</td><td><code>total_funding_range[min]</code>, <code>[max]</code></td></tr>
+            <tr><td>Latest funding date</td><td><code>latest_funding_date_range[min]</code>, <code>[max]</code></td></tr>
+            <tr><td rowspan="4"><strong>Hiring signals</strong></td><td>Hiring for job titles</td><td><code>q_organization_job_titles[]</code></td></tr>
+            <tr><td>Job posting locations</td><td><code>organization_job_locations[]</code></td></tr>
+            <tr><td>Number of open jobs</td><td><code>organization_num_jobs_range[min]</code>, <code>[max]</code></td></tr>
+            <tr><td>Job posted date</td><td><code>organization_job_posted_at_range[min]</code>, <code>[max]</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>All of the above are confirmed as supported on this endpoint. <span class="tag t-ok">Confirmed — Apollo docs</span> The only parameters not surfaced are those the system controls itself: <code>q_organization_name</code>, <code>organization_locations[]</code> and <code>q_organization_domains_list[]</code> (already the three basic fields), plus <code>organization_ids[]</code>, <code>page</code> and <code>per_page</code>, which are internal.</p>
+      <p>Advanced filters change which companies are returned; they do not change the cost, which remains one credit per page. Two usability guards apply, because a filter that accidentally excludes the target company still costs a credit: the panel opens empty so an unopened Advanced section can never silently narrow a search, and any active filters stay visible as removable chips once the panel is collapsed. The Company profile group is ordered first because employee range and industry keywords are the filters that most often separate two companies sharing a name.</p>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-h"><span class="sn">2</span><h4>Select Company</h4><span class="tag t-prop">Proposed</span></div>
+    <div class="step-b">
+      <p>A table of returned matches, structured so near-identical names can be distinguished at a glance:</p>
+      <div class="tw">
+        <table>
+          <thead><tr><th>Company</th><th>Location</th><th style="text-align:right">Employees</th><th>Website</th><th>Status</th></tr></thead>
+          <tbody>
+            <tr><td>ABC Plastics Ltd</td><td>Kenya</td><td class="n">120</td><td>abcplastics.co.ke</td><td>New</td></tr>
+            <tr><td>ABC Industries</td><td>Kenya</td><td class="n">80</td><td>abcindustries.com</td><td>Already in system</td></tr>
+            <tr><td>ABC Plastic Group</td><td>Nigeria</td><td class="n">450</td><td>abcgroup.com</td><td>New</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Company name, website and Apollo organization ID are confirmed as available in the response. The exact field names for employee count and location require confirmation against a live response — see §19. <span class="tag t-ver">Requires verification</span></p>
+
+      <h4 style="margin-top:1rem">Result states</h4>
+      <div class="tw">
+        <table>
+          <thead><tr><th>State</th><th>Behaviour</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><strong>One company found</strong></td>
+              <td>Display the company with its identifying details and require an explicit selection. A single result is <em>never</em> auto-selected and never auto-advances to People Search — a sole match is not proof of the right match.</td>
+            </tr>
+            <tr>
+              <td><strong>Multiple similar companies</strong></td>
+              <td>Display name, location, employee count, website and system status so near-identical names can be told apart. The user must explicitly select one. The system never assumes the first result is correct, and applies no relevance-based auto-selection.</td>
+            </tr>
+            <tr>
+              <td><strong>No companies found</strong></td>
+              <td>Display an empty state naming what can be changed — company name spelling, country, website, or Advanced filters. Apollo consumes no credits for a no-result search, so refining and re-running is free in this state. <span class="tag t-ok">Confirmed — Apollo docs</span></td>
+            </tr>
+            <tr>
+              <td><strong>Many results</strong></td>
+              <td>Show the total available from Apollo's <code>pagination</code> object and offer both routes: page through what has already been paid for at no cost, or narrow the search. Requesting a further Apollo page is explicit and priced — see below.</td>
+            </tr>
+            <tr>
+              <td><strong>Company already in the system</strong></td>
+              <td>Labelled <strong>Already in system</strong>, displayed for information, and <strong>not selectable</strong>. The row is disabled with a short explanation. People Search is not called for that organization through this workflow. See §13.2.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h4 style="margin-top:1rem">Pagination and refinement</h4>
+      <p>Apollo charges <strong>one credit per page of up to 100 results</strong>, and returns a <code>pagination</code> object carrying <code>page</code>, <code>per_page</code>, <code>total_entries</code> and <code>total_pages</code>. <span class="tag t-ok">Confirmed — Apollo docs</span> Two consequences shape the design:</p>
+      <ul>
+        <li><strong>Request <code>per_page = 100</code>.</strong> The credit is charged per page regardless of how many results are returned, so requesting fewer wastes the credit already spent. One credit should buy the maximum available.</li>
+        <li><strong>Page through those results in the browser at no cost.</strong> Displaying 100 rows at once is unusable, so the interface pages through the already-retrieved set — roughly 20 at a time — with free Previous / Next controls. This is the paging users will actually need, and it costs nothing.</li>
+      </ul>
+      <p>Fetching Apollo <em>page 2</em> is a separate, explicit action labelled with its cost — for example <strong>Search 100 more companies (1 credit)</strong> — placed only at the end of the already-retrieved results, and requiring confirmation. It is never triggered by scrolling, by the free in-page controls, or automatically.</p>
+      <p><strong>V1 caps this at three Apollo pages</strong>, or 300 companies, per search session. Beyond that the interface stops offering more pages and directs the user to refine instead. The reasoning: if the intended company is not among 300 relevance-ordered candidates, further paging is a poor use of credits compared with adding a country, a website, or an Advanced filter. The cap is a product decision, not an Apollo limit — Apollo itself permits 500 pages. <span class="tag t-prop">Proposed</span></p>
+      <p>The header of the results area always states the position plainly, for example: <em>"Showing 1–20 of 100 retrieved · 342 companies match in Apollo · 1 credit spent"</em>. This tells the user how much exists, how much has been paid for, and what another page would cost, before any further spend.</p>
+      <p>Single-select only. Re-running the search with changed inputs is a new search and consumes another credit, so that action carries an explicit cost warning.</p>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-h"><span class="sn">3</span><h4>Select People</h4><span class="tag t-prop">Proposed</span></div>
+    <div class="step-b">
+      <ul>
+        <li>Only people with an available email are displayed. This is filtered <strong>at the Apollo request</strong> via <code>contact_email_status</code>, so Apollo returns only contactable people rather than the platform fetching a full roster and discarding half of it. The existing <code>searchPeople()</code> already sends this parameter. <span class="tag t-code">Confirmed — implementation</span> The returned <code>has_email</code> flag is still checked on our side as a safety net.</li>
+        <li>Apollo does not return the address itself at this stage, only an indicator that one exists. <span class="tag t-ok">Confirmed — Apollo docs</span></li>
+        <li><strong>Surnames are partially masked at this stage.</strong> People Search returns <code>last_name_obfuscated</code> (for example <code>Do***e</code>) rather than the full surname, so the selection list displays first name, masked surname and job title. The full name arrives only after the paid reveal. <span class="tag t-ok">Confirmed — Apollo docs</span></li>
+        <li>Results are <strong>ranked by job title</strong>, with senior and commercially relevant roles first — CEO, Founder, Managing Director, Director, Head, Export Manager, Procurement Manager, then all others.</li>
+        <li>Seniority is <strong>not</strong> returned by People Search, which is why ranking is derived from the job title rather than a seniority field. <span class="tag t-ok">Confirmed — Apollo docs</span></li>
+        <li>Multi-select with a hard ceiling of <strong>5</strong>. A persistent counter reads <code>n / 5 selected</code> and remaining checkboxes disable once the limit is reached.</li>
+        <li>Contacts already present as leads, or already recorded as unenrichable, are shown but not selectable.</li>
+        <li>Nothing on this screen is written to the database.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-h"><span class="sn">4</span><h4>Import / Enrich</h4><span class="tag t-prop">Proposed</span></div>
+    <div class="step-b">
+      <p>Batch name, colour swatch and assignment controls reuse the components shared by every other import, so these leads appear in the same lists, filters and campaigns.</p>
+      <p>The confirmation states the spend explicitly — for example, <em>"Import 3 contacts — 3 credits"</em>. On confirmation, only the selected contacts are inserted and the existing enrichment pipeline takes over.</p>
+    </div>
+  </div>
+</section>
+
+<!-- 7 -->
+<section id="s7">
+  <div class="sec-head"><span class="sec-n">07</span><h2>Apollo API Flow</h2></div>
+
+  <div class="tw">
+    <table>
+      <thead><tr><th>Stage</th><th>Endpoint</th><th>Key parameters</th><th style="text-align:right">Credits</th><th>Status</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>Find companies</td>
+          <td><code>POST /api/v1/mixed_companies/search</code></td>
+          <td><code>q_organization_name</code>, <code>organization_locations[]</code>, <code>q_organization_domains_list[]</code>, <code>page</code>, <code>per_page</code></td>
+          <td class="n">1 / page</td>
+          <td><span class="tag t-ok">Apollo docs</span></td>
+        </tr>
+        <tr>
+          <td>List people</td>
+          <td><code>POST /api/v1/mixed_people/api_search</code></td>
+          <td><code>organization_ids[]</code>, <code>contact_email_status</code>, <code>page</code>, <code>per_page</code></td>
+          <td class="n">0</td>
+          <td><span class="tag t-ok">Apollo docs</span></td>
+        </tr>
+        <tr>
+          <td>Reveal emails</td>
+          <td><code>POST /api/v1/people/bulk_match</code></td>
+          <td>existing call; <code>reveal_phone_number=false</code></td>
+          <td class="n">1 / person</td>
+          <td><span class="tag t-code">Implementation</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="box good">
+    <h4>Key research outcome — endpoint alignment</h4>
+    <p>Apollo's People Search documentation specifies the endpoint path <code>/api/v1/mixed_people/api_search</code>, which is <strong>exactly the path this platform already calls</strong>, and that documentation lists <code>organization_ids[]</code> as a supported parameter. The organization-scoped people search this feature depends on is therefore documented on the same endpoint already in production use, and no new Apollo integration pattern is introduced.</p>
+  </div>
+
+  <div class="sub">
+    <h3>Organization Search — request and response</h3>
+    <p>Confirmed request parameters relevant to this feature: <code>q_organization_name</code>, <code>organization_locations[]</code>, <code>organization_not_locations[]</code>, <code>q_organization_domains_list[]</code>, <code>organization_num_employees_ranges[]</code>, <code>organization_ids[]</code>, <code>q_organization_keyword_tags[]</code>, <code>revenue_range[min|max]</code>, <code>page</code>, <code>per_page</code>. <span class="tag t-ok">Confirmed — Apollo docs</span></p>
+    <p>The response returns an <code>organizations</code> array. Each organization carries an <code>id</code> — Apollo's organization identifier — together with <code>primary_domain</code>, <code>website_url</code>, <code>linkedin_url</code>, <code>logo_url</code>, <code>founded_year</code> and <code>phone</code>. <span class="tag t-ok">Confirmed — Apollo docs</span></p>
+    <p><strong>Ambiguity to resolve.</strong> The published field listing does not clearly enumerate employee count, country, city, state or industry on this response, while secondary API references describe employee count and location as present. This documentation is ambiguous and the exact field names must be confirmed against a live response before the results table in §6 Step 2 is finalised. <span class="tag t-ver">Requires verification</span></p>
+    <p>Authentication: a Master API key is described as acceptable but not required for this endpoint. <span class="tag t-ok">Confirmed — Apollo docs</span></p>
+  </div>
+
+  <div class="sub">
+    <h3>People Search — response fields</h3>
+    <p>Per person, the response provides <code>id</code> (Apollo person identifier), <code>first_name</code>, <code>last_name_obfuscated</code>, <code>title</code>, availability indicators including <code>has_email</code>, and an <code>organization</code> object describing the employer. <span class="tag t-ok">Confirmed — Apollo docs</span></p>
+    <p>The response explicitly does <strong>not</strong> include the full surname, the email address, phone numbers, or a seniority field. Contact details require the paid enrichment endpoint. <span class="tag t-ok">Confirmed — Apollo docs</span></p>
+    <p>Whether the nested <code>organization</code> object on People Search returns actual employee counts or only availability booleans is unclear from the documentation and is not required by this feature, since organization attributes are taken from the Organization Search response instead.</p>
+  </div>
+
+  <div class="sub">
+    <h3>Pagination behaviour and limits</h3>
+    <p>Organization Search permits a maximum of 100 records per page and 500 pages, for a documented display limit of 50,000 records. <span class="tag t-ok">Confirmed — Apollo docs</span></p>
+    <p>The response includes a <code>pagination</code> object containing <code>page</code>, <code>per_page</code>, <code>total_entries</code> and <code>total_pages</code>. <span class="tag t-ok">Confirmed — Apollo docs</span> This is what allows the interface to tell the user how many companies match in total, and therefore whether refining or paging is the better next step.</p>
+    <p>Credits are charged <strong>per page requested</strong>, not per result returned — a page yielding three companies costs the same as one yielding a hundred. <span class="tag t-ok">Confirmed — Apollo docs</span> V1 therefore always requests the maximum page size and treats each additional Apollo page as a separate, explicitly priced action, capped at three pages per search session. The behavioural detail is specified in §6 Step 2.</p>
+  </div>
+</section>
+
+<!-- 8 -->
+<section id="s8">
+  <div class="sec-head"><span class="sec-n">08</span><h2>Credit / Cost Behaviour</h2></div>
+
+  <p>Representative lookup in which the user selects three contacts:</p>
+  <div class="tw">
+    <table>
+      <thead><tr><th>Stage</th><th>Detail</th><th style="text-align:right">Credits</th></tr></thead>
+      <tbody>
+        <tr><td>Organization Search</td><td>page 1, results returned</td><td class="n">1</td></tr>
+        <tr><td>People Search</td><td>any number of people at that organization</td><td class="n">0</td></tr>
+        <tr><td>Email reveal</td><td>3 selected contacts, first attempt</td><td class="n">3</td></tr>
+        <tr><td><strong>Intended total</strong></td><td>one company, three usable contacts</td><td class="n"><strong>4</strong></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>At the V1 maximum of five contacts and a single Apollo page, the intended spend is <strong>1 + 5 = 6 credits</strong>. If the user requests the maximum of three Apollo pages and selects five contacts, the intended spend is <strong>3 + 5 = 8 credits</strong>.</p>
+
+  <div class="sub">
+    <h3>Credit visibility — cost is stated before every charge</h3>
+    <p>No action in this feature consumes a credit without the cost being displayed on the control that triggers it. There are exactly three credit-consuming moments, and each is surfaced:</p>
+    <div class="tw">
+      <table>
+        <thead><tr><th>Action</th><th>Cost</th><th>How it is surfaced</th></tr></thead>
+        <tbody>
+          <tr><td>Search Companies</td><td class="n">1</td><td>Stated on the search button and beside the form before the first search.</td></tr>
+          <tr><td>Request another Apollo page</td><td class="n">1</td><td>Explicit labelled action — "Search 100 more companies (1 credit)" — requiring confirmation. Never automatic. Capped at three pages.</td></tr>
+          <tr><td>Re-run a changed search</td><td class="n">1</td><td>Treated as a new search; the cost warning is repeated when inputs change.</td></tr>
+          <tr><td>Import selected contacts</td><td class="n">1 each</td><td>The running counter shows the reveal cost as contacts are selected; the confirmation restates it, e.g. "Import 3 contacts — 3 credits".</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>Free actions are also labelled as free, so users are not deterred from using them: paging within already-retrieved results, listing people at a selected organization, and refining a search that returned no companies all carry no charge.</p>
+    <p>The results header additionally reports credits already spent in the current session alongside the number of companies retrieved and the total matching in Apollo, so the decision to page again or refine is always an informed one.</p>
+  </div>
+
+  <div class="box crit">
+    <h4>Intended spend is not a guaranteed ceiling</h4>
+    <p>Apollo bills a <code>bulk_match</code> request on receipt, including requests that fail or return no email. The existing pipeline therefore permits a <strong>second and final attempt</strong> per person — <code>MAX_ENRICH_ATTEMPTS = 2</code>, enforced at the point of candidate selection so the limit holds even if downstream cleanup fails. <span class="tag t-code">Confirmed — implementation</span></p>
+    <p><strong>Absolute worst case for a single lookup: 1 search credit plus 2 credits per selected contact</strong> — 11 credits if all five contacts require their retry. In normal operation a reveal succeeds on the first attempt and the retry is never used.</p>
+    <p>Three existing protections bound this further. A wholesale Apollo refusal such as an exhausted balance or a rate limit releases leads <em>unpenalised</em> and reverts their attempt counters, so an outage never consumes a lifetime attempt. The candidate list is trimmed to the real remaining balance before anything is claimed. A person Apollo cannot resolve is archived permanently rather than re-queried. <span class="tag t-code">Confirmed — implementation</span></p>
+  </div>
+
+  <div class="box good">
+    <h4>No-result searches are free</h4>
+    <p>Apollo documents that a search returning no results consumes 0 credits, and this behaviour is described consistently across its search endpoints. A company name that matches nothing therefore costs nothing. <span class="tag t-ok">Confirmed — Apollo docs</span></p>
+  </div>
+
+  <div class="sub">
+    <h3>Credit ledger accuracy</h3>
+    <p>The Organization Search credit must be written to the existing credit ledger so that Settings → Keys → Usage remains accurate. That screen totals credits by reading the logged payload across Apollo-sourced log rows without filtering on event name, so exactly <strong>one</strong> ledger row per search keeps the figure correct. A duplicate row double-counts; a missing row silently under-reports. <span class="tag t-code">Confirmed — implementation</span></p>
+    <p><strong>Open technical risk.</strong> Apollo operates several credit categories. Secondary documentation indicates that API search endpoints draw on export credits and that API usage shares the same monthly pool as the platform interface, but this is not stated unambiguously in the primary endpoint documentation. The platform's balance check reads one specific counter; if Organization Search decrements a different one, the pre-flight balance check will not account for this spend and the usage screen will under-report it. This is resolvable definitively by reading the balance, issuing one Organization Search request, and reading the balance again. <span class="tag t-ver">Requires verification</span></p>
+  </div>
+</section>
+
+<!-- 9 -->
+<section id="s9">
+  <div class="sec-head"><span class="sec-n">09</span><h2>Lead &amp; Enrichment Flow</h2></div>
+  <p>Selected contacts join the existing pipeline at precisely the point the current Apollo Search joins it. No second enrichment path is created.</p>
+  <div class="flow">
+    <div>Company Lookup <span class="a">→</span> selected contact</div>
+    <div><span class="a">→</span> create <b>imports</b> row <span class="a">+</span> reuse or create <b>organizations</b> row</div>
+    <div><span class="a">→</span> insert <b>leads</b> row: <b>lead_source = 'apollo'</b>, <b>has_email = true</b>, <b>email = null</b></div>
+    <div><span class="a">→</span> existing enrich route claims the lead</div>
+    <div><span class="a">→</span> Apollo <b>people/bulk_match</b> <span class="a">(1 credit)</span></div>
+    <div><span class="a">→</span> email written to <b>leads.email</b>; status recomputed by database trigger</div>
+    <div><span class="a">→</span> organization scraping <span class="a">·</span> AI drafting <span class="a">·</span> assignment <span class="a">·</span> campaigns</div>
+  </div>
+
+  <div class="box crit">
+    <h4>Implementation constraint — lead_source must remain 'apollo'</h4>
+    <p>Both the enrichment route and the daily rescue watchdog filter candidates on <code>lead_source = 'apollo'</code>. A lead labelled <code>apollo_company</code> would be selected by neither, and would remain in the <code>has_email = true, email = null</code> state permanently — never revealed and never rescued. <span class="tag t-code">Confirmed — implementation</span></p>
+    <p>Using <code>apollo</code> therefore requires no changes to the enrichment pipeline. Introducing a separate label would require editing both filters and the source enum used by the leads list. This underpins the V1 decision; the trade-off is restated as Business Question 2.</p>
+  </div>
+
+  <div class="box crit">
+    <h4>Implementation constraint — has_email must be set explicitly</h4>
+    <p><code>leads.has_email</code> is nullable with <strong>no database default</strong>. An insert that omits the field stores <code>NULL</code>, and every enrichment selector matches on <code>has_email = true</code>. The contact would appear imported but would never be enriched, with no error raised anywhere. The insert must set this field explicitly. <span class="tag t-code">Confirmed — implementation</span></p>
+  </div>
+</section>
+
+<!-- 10 -->
+<section id="s10">
+  <div class="sec-head"><span class="sec-n">10</span><h2>Database Impact</h2></div>
+  <div class="box good">
+    <h4>No migration required</h4>
+    <p>Every field this feature stores already exists. The <code>organizations</code> table carries the Apollo organization ID, domain, website, industry, keywords, employee count, city and country. <code>leads</code> and <code>imports</code> require no new columns. <code>lead_source</code> and <code>imports.source</code> are free-text with no CHECK constraint, so labelling requires no DDL. The credit ledger totals spend by reading log payloads, so the new search credit appears in Settings usage without schema work. <span class="tag t-code">Confirmed — implementation</span></p>
+  </div>
+  <p><strong>No temporary storage table for candidate people.</strong> None is technically necessary: every enrichment selector reads exclusively from <code>leads</code>, so unselected candidates can be held in browser state and discarded. Persisting them would create the exact risk §14 exists to prevent.</p>
+
+  <div class="sub">
+    <h3>Existing uniqueness constraints that must be respected</h3>
+    <div class="tw">
+      <table>
+        <thead><tr><th>Table</th><th>Constraint</th><th>Consequence for this feature</th></tr></thead>
+        <tbody>
+          <tr><td><code>organizations</code></td><td>unique <code>(company_id, apollo_org_id)</code></td><td>Company Lookup is the first flow to know the Apollo organization ID at insert time; it must merge rather than insert.</td></tr>
+          <tr><td><code>organizations</code></td><td>unique <code>(company_id, domain)</code> where domain is not null</td><td>A second collision path: an organization already stored under a different name but the same domain.</td></tr>
+          <tr><td><code>leads</code></td><td>unique <code>(company_id, apollo_id)</code></td><td>Prevents re-inserting a contact that has already been imported.</td></tr>
+          <tr><td><code>leads</code></td><td>unique <code>(company_id, lower(email))</code> where active</td><td>Two Apollo person records sharing one mailbox. Handled by existing logic added 8 August 2026.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>All four constraints are scoped per <code>company_id</code>, which makes tenant-scoped database access mandatory — see §18.</p>
+  </div>
+
+  <p><strong>Deferred by design.</strong> A cache of company searches would prevent a repeated identical search from consuming a second credit. At the expected volume this does not justify a table and its expiry rules; holding results in browser state already covers navigating back and forth within a single session. This should be revisited if the usage log shows repeat searches occurring in practice.</p>
+</section>
+
+<!-- 11 -->
+<section id="s11">
+  <div class="sec-head"><span class="sec-n">11</span><h2>Existing Files / New Files</h2></div>
+
+  <div class="sub">
+    <h3>New files</h3>
+    <div class="tw">
+      <table>
+        <thead><tr><th>File</th><th>Responsibility</th></tr></thead>
+        <tbody>
+          <tr><td><code>app/api/v1/leads/company-search/route.ts</code></td><td>Organization Search. Manager gate, development-workspace block, balance pre-flight, then exactly one credit-ledger row. Flags results that already exist in the organizations table.</td></tr>
+          <tr><td><code>app/api/v1/leads/company-people/route.ts</code></td><td>People Search scoped by <code>organization_ids[]</code>. Filters to <code>has_email = true</code>, applies title ranking, and flags contacts already present as leads or already recorded as unenrichable.</td></tr>
+          <tr><td><code>app/api/v1/leads/company-import/route.ts</code></td><td>Merge or create the organization, create the <code>imports</code> row, insert only the selected contacts, and hand off to the existing enrich route.</td></tr>
+          <tr><td><code>components/app/company-lookup-form.tsx</code></td><td>The four-step wizard. A new file rather than an extension of <code>lead-forms.tsx</code>, which is already approximately 1,460 lines.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="sub">
+    <h3>Existing files to modify</h3>
+    <div class="tw">
+      <table>
+        <thead><tr><th>File</th><th>Change</th></tr></thead>
+        <tbody>
+          <tr><td><code>lib/services/apollo.ts</code></td><td>Add <code>searchOrganizations()</code> and its response type. Extend <code>searchPeople()</code> to accept <code>organization_ids</code>, and to allow bypassing the hard-coded title, seniority and employee-range filters so a full company roster can be listed.</td></tr>
+          <tr><td><code>lib/validators/leads.ts</code></td><td>Three new schemas — company search, company people, company import — including server-side enforcement of the five-contact selection limit.</td></tr>
+          <tr><td><code>components/app/add-leads-drawer.tsx</code></td><td>One entry in <code>SECTIONS</code> and one render line; approximately six lines.</td></tr>
+          <tr><td><code>lib/constants.ts</code></td><td>Maximum contacts per lookup, and the job-title ranking list.</td></tr>
+          <tr><td><code>components/app/lead-forms.tsx</code></td><td>Reuse only. <code>buildImportAssignment</code> is already exported; batch-name and colour controls may require extraction for shared use. Whether extraction is needed should be determined during implementation.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="sub">
+    <h3>Files and systems that must not be modified</h3>
+    <div class="tw">
+      <table>
+        <thead><tr><th>File / system</th><th>Reason</th></tr></thead>
+        <tbody>
+          <tr><td><code>lib/services/enrich-leads.ts</code></td><td>Core reveal logic, credit accounting and retry ceiling. Reused verbatim.</td></tr>
+          <tr><td><code>app/api/v1/leads/enrich/route.ts</code></td><td>Already accepts both <code>import_id</code> and <code>lead_ids</code>. No change required.</td></tr>
+          <tr><td><code>lib/services/enrichment-watchdog.ts</code></td><td>Daily rescue path. Functions unchanged because <code>lead_source = 'apollo'</code> is retained.</td></tr>
+          <tr><td><code>claim_unenriched_leads</code> (database function)</td><td>Atomic claim and lock. Reused unchanged.</td></tr>
+          <tr><td><code>app/api/v1/leads/apollo-search/route.ts</code></td><td>The existing keyword import. Company Lookup is a sibling flow, not a modification of it.</td></tr>
+          <tr><td>Scraping, drafting, campaigns, assignment</td><td>Triggered automatically downstream. No awareness of this feature is required.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- 12 -->
+<section id="s12">
+  <div class="sec-head"><span class="sec-n">12</span><h2>Existing Systems Reused</h2></div>
+  <div class="cols">
+    <div class="card">
+      <h4>Backend</h4>
+      <ul>
+        <li>Apollo email reveal via <code>bulk_match</code></li>
+        <li>Attempt ceiling and archive-on-exhaustion</li>
+        <li>Atomic lead claiming and ten-minute lock</li>
+        <li>Credit pre-flight and balance trimming</li>
+        <li>Duplicate detection by Apollo person ID</li>
+        <li>Unenrichable-contact exclusion</li>
+        <li>Website scraping and AI draft generation</li>
+        <li>Campaigns, deferred assignment, lead events</li>
+        <li>Credit ledger and Settings usage screen</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>Frontend</h4>
+      <ul>
+        <li>Add Leads dialog and its source rail</li>
+        <li>Shared <code>Stepper</code> component</li>
+        <li>Batch name, colour swatch, assignment controls</li>
+        <li>Leads list, filters and detail drawers</li>
+        <li>Service-health banner</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- 13 -->
+<section id="s13">
+  <div class="sec-head"><span class="sec-n">13</span><h2>Duplicate / Existing Organization Behaviour</h2></div>
+
+  <div class="sub">
+    <h3>13.1 Determining whether an Apollo company already exists</h3>
+    <p>Apollo assigns every organization a stable identifier, returned as <code>id</code> on the Organization Search response. <span class="tag t-ok">Confirmed — Apollo docs</span> The platform stores this value as <code>organizations.apollo_org_id</code>, protected by a unique index on <code>(company_id, apollo_org_id)</code>. <span class="tag t-code">Confirmed — implementation</span></p>
+    <p>Matching must proceed in a defined order, because the three available identifiers differ sharply in reliability:</p>
+
+    <div class="tw">
+      <table>
+        <thead><tr><th>Order</th><th>Match on</th><th>Reliability</th><th>Action on match</th></tr></thead>
+        <tbody>
+          <tr>
+            <td class="n">1</td>
+            <td><code>apollo_org_id</code></td>
+            <td>Highest. Apollo's own identifier, stable across searches and unique per company in our schema.</td>
+            <td>Definitive match. Reuse the existing organization row.</td>
+          </tr>
+          <tr>
+            <td class="n">2</td>
+            <td>Normalised <code>domain</code></td>
+            <td>High. Backed by a unique index, but nullable and occasionally changes.</td>
+            <td>Treat as the same organization. Reuse the row and populate the missing <code>apollo_org_id</code>.</td>
+          </tr>
+          <tr>
+            <td class="n">3</td>
+            <td>Company <code>name</code></td>
+            <td>Low. Name collision is the entire premise of this feature.</td>
+            <td>Never merge automatically. Surface as a possible duplicate for the user to judge.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="box">
+      <h4>Why the order matters — organizations with a NULL Apollo organization ID</h4>
+      <p>Organizations created by the existing keyword search are inserted with <code>apollo_org_id = NULL</code> and no domain; those fields are populated later, during the paid reveal. <span class="tag t-code">Confirmed — implementation</span> A substantial number of existing organization records will therefore not match on step 1 even though they represent the same company.</p>
+      <p>Step 2 exists precisely to catch these. When a domain match is found on a record whose <code>apollo_org_id</code> is <code>NULL</code>, the correct action is to <strong>enrich the existing record</strong> with the Apollo organization ID now known — not to create a second row. This progressively repairs historical records as the feature is used.</p>
+      <p>Step 3 must never trigger an automatic merge. The existing keyword-import flow matches organizations by name, which is a known source of near-duplicate organization records. Extending name matching into an automatic merge would compound that problem rather than contain it.</p>
+    </div>
+
+    <p><strong>Tenant scoping.</strong> All uniqueness constraints are scoped per <code>company_id</code>. Every existence check must run through the tenant-scoped database client so that one tenant's organizations are never matched against another's. The scoped client applies this filter automatically; the unscoped administrative client does not. <span class="tag t-code">Confirmed — implementation</span></p>
+  </div>
+
+  <div class="sub">
+    <h3>13.2 Existing organizations — blocked from proceeding</h3>
+    <div class="box">
+      <h4>Product decision for V1 — settled</h4>
+      <p>If the organization already exists in the system, Company Lookup <strong>does not allow the user to proceed to People Search for that organization</strong>.</p>
+      <p>Company Lookup exists to discover a company we do <em>not</em> already have and to add contacts from it. Where the organization is already present and already has leads, finding additional people at that same organization is not part of this workflow.</p>
+    </div>
+
+    <p>Required behaviour when a search result matches an existing organization:</p>
+    <ul>
+      <li>Display the company, labelled <strong>Already in system</strong>.</li>
+      <li>Do <strong>not</strong> allow it to be selected; the row is disabled with a brief explanation.</li>
+      <li>Do <strong>not</strong> call People Search for that organization through this workflow.</li>
+      <li>Do <strong>not</strong> create another organization record.</li>
+      <li>Do <strong>not</strong> create duplicate leads.</li>
+    </ul>
+    <p>This decision simplifies the flow: the organization matching described in §13.1 is used to <em>exclude</em> results rather than to merge into them, and no lookup-initiated write to an existing organization occurs. The merge-not-insert rule in §13.1 still governs the organization created for a genuinely new company, and remains necessary because a company absent from the organizations table can still collide on domain at insert time.</p>
+    <p>Users who need additional contacts at a company already held are directed to the existing organization record, where the current lead-management tools apply. Adding a dedicated route for expanding coverage at a known company may be considered for a later version; it is explicitly outside V1.</p>
+  </div>
+
+  <div class="sub">
+    <h3>13.3 Duplicate contacts</h3>
+    <p>Duplicate detection for contacts is performed on the <strong>Apollo person ID</strong>, scoped to the tenant — not on email address, and not on name. <span class="tag t-code">Confirmed — implementation</span> This is appropriate here because the email address is unknown at selection time and the surname is partially masked, leaving the Apollo person ID as the only reliable identifier available before payment.</p>
+    <p>Two existing exclusion checks are reused:</p>
+    <ul>
+      <li>Contacts already present in <code>leads</code> are surfaced as already imported and cannot be selected.</li>
+      <li>Contacts recorded in <code>unenrichable_leads</code> — previously paid for and confirmed to have no usable email — are excluded so they are never re-imported and re-charged.</li>
+    </ul>
+    <p>Because organizations already held are blocked at step 2 (§13.2), contacts reaching the selection screen belong to an organization new to the system. These exclusion checks nonetheless remain necessary: the same person can exist as a lead under a different organization record, or can have been archived as unenrichable from an earlier import, and either case must not be paid for a second time.</p>
+  </div>
+</section>
+
+<!-- 14 -->
+<section id="s14">
+  <div class="sec-head"><span class="sec-n">14</span><h2>Safety / Credit Protection</h2></div>
+  <div class="box crit">
+    <h4>The controlling rule</h4>
+    <p>In this platform, a lead row carrying <code>has_email = true</code> and <code>email = null</code> <em>is</em> the instruction to spend a credit. Background jobs claim any such row and reveal it automatically. <span class="tag t-code">Confirmed — implementation</span></p>
+    <p>If People Search returned 20 candidates and all 20 were written to <code>leads</code> purely to display them, the background job would reveal all 20 — spending up to 20 credits on contacts the user never selected.</p>
+    <p><strong>Only user-selected contacts are ever inserted.</strong> Unselected candidates are held in browser state and discarded. Because every enrichment selector reads exclusively from <code>leads</code>, a contact that is never inserted is structurally invisible to the enrichment system. This is a guarantee by omission, which is stronger than any flag or filter.</p>
+  </div>
+  <p>Layered protections, all pre-existing:</p>
+  <ul>
+    <li><strong>Selection cap</strong> — maximum five contacts, enforced in the server-side validator, not only in the interface.</li>
+    <li><strong>Attempt ceiling</strong> — two lifetime attempts per person, enforced when candidates are selected.</li>
+    <li><strong>Balance pre-flight</strong> — checked before the Organization Search and again before any reveal; the candidate list is trimmed to what the balance can actually fund.</li>
+    <li><strong>Development-workspace block</strong> — the internal workspace cannot spend from the shared client pool.</li>
+    <li><strong>Ledger row</strong> — the Organization Search credit is logged so the usage screen remains accurate.</li>
+    <li><strong>Unenrichable exclusion</strong> — contacts already proven to have no email are never offered for selection.</li>
+  </ul>
+</section>
+
+<!-- 15 -->
+<section id="s15">
+  <div class="sec-head"><span class="sec-n">15</span><h2>Edge Cases</h2></div>
+  <div class="tw">
+    <table>
+      <thead><tr><th>Case</th><th>Expected behaviour</th></tr></thead>
+      <tbody>
+        <tr><td>No companies match the name</td><td>Display an empty state naming what can be changed — spelling, country, website or Advanced filters. Apollo documents that no-result searches consume 0 credits, so refining and re-running is free in this state. <span class="tag t-ok">Apollo docs</span></td></tr>
+        <tr><td>Exactly one company returned</td><td>Display it and require explicit selection. Never auto-select and never auto-advance — a single result is not proof of the correct match.</td></tr>
+        <tr><td>Apollo returns a full page of 100 companies</td><td>Page through the retrieved 100 in the browser at no cost. Offer a further Apollo page as an explicit, priced action, and show the total matching from the <code>pagination</code> object so the user can judge between paging and refining.</td></tr>
+        <tr><td>Correct company not found within three Apollo pages</td><td>Paging stops at the V1 cap of 300 companies. The interface directs the user to refine using country, website or Advanced filters rather than continuing to spend credits on further pages.</td></tr>
+        <tr><td>All results on a page are already in the system</td><td>All rows render disabled with the <strong>Already in system</strong> label and nothing is selectable. The user is directed to the existing organization records, or can refine to find a different company.</td></tr>
+        <tr><td>Company found, but no people with an available email</td><td>Display an explicit empty state: the organization exists but has no contactable people in Apollo. The search credit has already been spent and this must be stated rather than hidden.</td></tr>
+        <tr><td>All people at the company already exist as leads</td><td>Display them as already imported with nothing selectable, and direct the user to the existing organization.</td></tr>
+        <tr><td>Apollo balance exhausted at step 1</td><td>Block the search using the existing out-of-credits message. Later wizard steps are not opened.</td></tr>
+        <tr><td>Balance exhausted between selection and reveal</td><td>Existing behaviour: leads are inserted, the reveal is skipped, leads are released unpenalised, and the daily job retries. Leads remain un-revealed rather than being lost.</td></tr>
+        <tr><td>Revealed email already belongs to another lead</td><td>Existing behaviour since 8 August 2026: settled and archived as a duplicate; one credit, never re-queried.</td></tr>
+        <tr><td>Apollo has no email despite <code>has_email = true</code></td><td>Existing behaviour: archived to <code>unenrichable_leads</code>, removed from <code>leads</code>, never queried again. The credit is spent; this reflects a gap in Apollo's data rather than a defect.</td></tr>
+        <tr><td>Organization exists with a NULL Apollo organization ID</td><td>Detected by domain match (§13.1) and treated as already in the system: labelled and blocked, not selectable. No second organization row is created.</td></tr>
+        <tr><td>Company matches an existing organization only by name</td><td>Not treated as a match. Name alone never blocks selection or triggers a merge, since name collision is the premise of this feature. The user may proceed, and the organization is created under the §13.1 merge rules.</td></tr>
+        <tr><td>Two managers look up the same company simultaneously</td><td>Existing unique constraints and the atomic claim prevent duplicate organizations, duplicate leads and double reveals.</td></tr>
+        <tr><td>User abandons the wizard after searching</td><td>The search credit is spent and nothing is inserted. This is unavoidable and is the reason the cost warning appears at step 1.</td></tr>
+        <tr><td>User selects contacts, then returns and changes the company</td><td>Selection is cleared and the new organization's people list begins empty. The previous search credit is not recoverable.</td></tr>
+        <tr><td>Company name matches an organization outside the plastics sector</td><td>No filtering is applied on industry. The user is responsible for selecting the correct organization, which is the purpose of step 2.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- 16 -->
+<section id="s16">
+  <div class="sec-head"><span class="sec-n">16</span><h2>Acceptance Criteria</h2></div>
+  <p>Criteria marked <span class="tag t-ver">Requires verification</span> depend on a live Apollo response and should be finalised once that verification is complete.</p>
+  <ol class="ac">
+    <li><span>Company Lookup appears as a fourth source in Add Leads, visible to managers only, and blocked in the internal/development workspace.</span></li>
+    <li><span>A company-name search issues one Organization Search request with <code>per_page = 100</code> and writes exactly one credit-ledger row, which appears in Settings → Keys → Usage.</span></li>
+    <li><span>The ledger row reflects the same credit counter used by the pre-flight balance check. <span class="tag t-ver">Requires verification</span></span></li>
+    <li><span>A search returning no companies consumes no credits and displays an empty state that names what can be changed — spelling, country, website or Advanced filters.</span></li>
+    <li><span>Country and Website are optional; a search using only a company name succeeds.</span></li>
+    <li><span>Advanced Search is collapsed by default, opens empty, and exposes every remaining Organization Search parameter grouped as company profile, location, funding and hiring signals. The basic form remains three fields.</span></li>
+    <li><span>Active Advanced filters remain visible as removable chips when the panel is collapsed, so results are never narrowed by a filter the user cannot see.</span></li>
+    <li><span>The people request sends <code>contact_email_status</code> so Apollo returns only contactable people; <code>has_email</code> is additionally checked on the response.</span></li>
+    <li><span>Applying Advanced filters changes the results returned and does not change the per-page credit cost.</span></li>
+    <li><span>Results display enough information to distinguish similarly named companies — name, location, employees, website and system status. Exact fields displayed depend on the confirmed response shape. <span class="tag t-ver">Requires verification</span></span></li>
+    <li><span>Selection is always explicit. A result set of exactly one company is not auto-selected and does not auto-advance; the first result is never assumed correct; no relevance-based auto-selection occurs in any result state.</span></li>
+    <li><span>Paging within already-retrieved results consumes no credits and is available without confirmation.</span></li>
+    <li><span>Requesting a further Apollo page is an explicit, labelled, confirmed action stating its one-credit cost, is never triggered by scrolling or by in-page controls, and is capped at three Apollo pages per search session.</span></li>
+    <li><span>The results header reports companies retrieved, total matching in Apollo from the <code>pagination</code> object, and credits spent in the session.</span></li>
+    <li><span>Every credit-consuming control states its cost before activation; free actions are labelled as free.</span></li>
+    <li><span>Organizations already present in the system are labelled <strong>Already in system</strong>, rendered non-selectable, and cannot be advanced past step 2.</span></li>
+    <li><span>No People Search request is issued for an organization already present in the system.</span></li>
+    <li><span>Blocked organizations produce no new organization row, no organization update and no leads.</span></li>
+    <li><span>An organization matched only by company name is not treated as already in the system and does not block selection.</span></li>
+    <li><span>Selecting a new company lists its people using <code>organization_ids[]</code> and consumes zero credits.</span></li>
+    <li><span>Only people with <code>has_email = true</code> are shown, ranked with senior and commercial titles first, displaying first name, masked surname and job title.</span></li>
+    <li><span>A maximum of five people can be selected. The counter reads <code>n / 5 selected</code>, and the limit is enforced server-side as well as in the interface.</span></li>
+    <li><span>On confirmation, only the selected people exist in <code>leads</code>. A database check immediately after import returns no rows for unselected candidates.</span></li>
+    <li><span>Inserted leads carry <code>lead_source = 'apollo'</code>, <code>has_email = true</code>, <code>email = null</code>, and valid <code>company_id</code>, <code>organization_id</code> and <code>import_id</code> values.</span></li>
+    <li><span>The existing enrichment pipeline reveals those leads with no code change to the enrich route, the watchdog or the claim function.</span></li>
+    <li><span>Total credits for a single-page, three-contact lookup equal four in the ledger — one search plus three reveals — with no unexplained additional spend.</span></li>
+    <li><span>Organization matching follows the order defined in §13.1 — Apollo organization ID, then domain, then name as a non-binding signal only — and name-only matches never trigger an automatic merge.</span></li>
+    <li><span>The organization created for a new company merges rather than blind-inserts, so neither the Apollo-organization-ID nor the domain uniqueness constraint can be violated.</span></li>
+    <li><span>All organization and lead lookups are tenant-scoped; a company held by another tenant is never matched or reused.</span></li>
+    <li><span>People already imported, or already recorded as unenrichable, cannot be selected.</span></li>
+    <li><span>Revealed leads flow into scraping, drafting, assignment and campaigns exactly as leads from the existing Apollo Search do.</span></li>
+    <li><span>No new database table or migration is required to ship V1.</span></li>
+  </ol>
+</section>
+
+<!-- 17 -->
+<section id="s17">
+  <div class="sec-head"><span class="sec-n">17</span><h2>Open Business Questions</h2></div>
+  <p>The following items require business or product judgement and are deliberately unresolved in this document. Neither blocks V1 implementation.</p>
+
+  <div class="box good">
+    <h4>Previously open, now settled</h4>
+    <p>The question of whether Company Lookup should allow users to add new contacts at a company already held has been <strong>decided</strong>: it does not. Existing organizations are labelled and blocked from proceeding. The behaviour is specified in §13.2 and is no longer an open question.</p>
+  </div>
+
+  <div class="bq">
+    <span class="lbl">Business Question 1 — Mobile / Phone Enrichment</span>
+    <h3>Should mobile or phone enrichment be supported in a future version of Company Lookup?</h3>
+    <p>Out of scope for V1 and not being built. Relevant context for the decision: Apollo charges substantially more for a returned mobile number than for an email address, and delivers phone data asynchronously to a webhook rather than in the API response.</p>
+    <p class="impl"><strong>Implications.</strong> Supporting mobile numbers is a meaningful cost and infrastructure commitment rather than a configuration toggle. It would require new webhook infrastructure, asynchronous result handling, and a substantially revised credit model. Apollo also does not indicate whether a mobile number is reachable on WhatsApp specifically, so any WhatsApp-related expectation should be confirmed against what Apollo actually provides before commitments are made. No V1 work depends on this decision.</p>
+  </div>
+
+  <div class="bq">
+    <span class="lbl">Business Question 2 — Source and Reporting Label</span>
+    <h3>Do Company Lookup leads require a separate source or reporting label, or is the existing <code>apollo</code> source sufficient?</h3>
+    <p>V1 uses <code>apollo</code>, which requires no changes to the enrichment pipeline. A separate label would make these leads independently filterable and reportable.</p>
+    <p class="impl"><strong>Implications.</strong> Introducing a distinct source value requires editing the enrichment route filter, the daily watchdog filter and the leads-list source enum, as set out in §9. Omitting any of those changes would leave the affected leads permanently un-enriched. These leads also remain distinguishable today through their own import batch, so part of the reporting requirement may already be satisfied without a new source value. The decision should be based on whether batch-level reporting is sufficient for the business.</p>
+  </div>
+</section>
+
+<!-- 18 -->
+<section id="s18">
+  <div class="sec-head"><span class="sec-n">18</span><h2>Implementation Notes / Technical Considerations</h2></div>
+
+  <div class="sub">
+    <h3>Non-negotiable implementation constraints</h3>
+    <ul>
+      <li><strong>Use the tenant-scoped database client</strong> for all reads and writes. It automatically applies the <code>company_id</code> filter, stamps <code>company_id</code> on insert — a <code>NOT NULL</code> column on <code>leads</code> — and rewrites upsert conflict targets to include it. The unscoped administrative client does none of these.</li>
+      <li><strong>Set <code>has_email = true</code> explicitly.</strong> The column is nullable with no default; omitting it produces a lead that is never enriched (§9).</li>
+      <li><strong>Merge organizations following the order in §13.1.</strong> Two unique indexes can collide, and name matching must never merge automatically.</li>
+      <li><strong>Never persist unselected candidates</strong> in any table the enrichment system reads (§14).</li>
+      <li><strong>Write exactly one ledger row</strong> per Organization Search (§8).</li>
+      <li><strong>Enforce the five-contact limit server-side</strong>, not only in the interface.</li>
+    </ul>
+  </div>
+
+  <div class="sub">
+    <h3>Points to settle during implementation</h3>
+    <ul>
+      <li><strong>Job-title ranking rules.</strong> The ordering principle is agreed; the exact keyword list and matching strategy — exact, prefix or contains — should be defined in <code>lib/constants.ts</code> and kept editable without a deployment where practical. Title is confirmed as returned by People Search; seniority is not, so ranking must be derived from the title string alone.</li>
+      <li><strong>Full company roster.</strong> The existing <code>searchPeople()</code> applies fixed title, seniority and employee-range filters suited to segment searching. A named-company lookup requires the full roster, so those filters need a bypass. This is a deliberate behavioural divergence from the existing search and should not be applied to it.</li>
+      <li><strong>Masked surnames in the interface.</strong> Because People Search returns only an obfuscated surname, the selection list cannot display full names. Interface copy should make clear that the complete name is revealed after import rather than appearing to display incomplete data.</li>
+      <li><strong>Handing off to enrichment.</strong> Both <code>import_id</code> and <code>lead_ids</code> are already accepted by the enrich route. <code>import_id</code> matches the existing pattern and inherits self-chaining and daily rescue behaviour; <code>lead_ids</code> is more explicit for a set of five. Either is acceptable.</li>
+      <li><strong>Applying the optional website input.</strong> <code>q_organization_domains_list[]</code> is confirmed as a supported Organization Search parameter. Whether supplying it should narrow the search or merely re-rank results is a product refinement to settle during implementation.</li>
+      <li><strong>Search-session state.</strong> Retrieved companies, the page count reached and the credits spent must persist while the user pages, refines within the wizard, or steps backwards, so that returning to the results does not silently re-purchase a page already paid for. Session state is held client-side; nothing is persisted to the database.</li>
+      <li><strong>Existence checks run once per retrieved page.</strong> Each newly returned page is checked against the organizations table in a single batched query rather than per row, using the §13.1 matching order. Results are cached for the session so that free in-browser paging performs no further database work.</li>
+      <li><strong>Advanced filter defaults.</strong> Advanced Search opens empty and applies nothing unless the user sets a value, so an unopened panel can never silently narrow a search. Active filters remain visible once the panel is collapsed, so a user cannot forget why results are limited.</li>
+      <li><strong>Three-page cap placement.</strong> The cap is a product decision and should be a named constant alongside the contact limit, not a literal buried in the interface, so it can be adjusted once real usage shows whether three pages is the right ceiling.</li>
+    </ul>
+  </div>
+
+  <div class="sub">
+    <h3>Recommended pre-implementation verification</h3>
+    <p>A single Organization Search request against a known company, paired with a balance reading immediately before and after, resolves the majority of outstanding technical unknowns: the exact response field names for employee count and location, and which credit counter the search decrements. A companion People Search request scoped by <code>organization_ids[]</code> confirms roster behaviour at no credit cost.</p>
+    <p>The Organization Search request costs one credit. Spending it is preferable to designing the results table and the credit accounting against an assumed response shape.</p>
+  </div>
+</section>
+
+<!-- 19 -->
+<section id="s19">
+  <div class="sec-head"><span class="sec-n">19</span><h2>Research &amp; Verification Summary</h2></div>
+  <div class="tw">
+    <table>
+      <thead><tr><th>Area</th><th>Finding</th><th>Evidence</th><th>Status</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>Organization Search endpoint</td>
+          <td><code>POST /api/v1/mixed_companies/search</code>. Supports <code>q_organization_name</code>, <code>organization_locations[]</code>, <code>q_organization_domains_list[]</code>, <code>page</code>, <code>per_page</code>. Master API key acceptable but not required.</td>
+          <td>Apollo documentation</td>
+          <td><span class="tag t-ok">Confirmed</span></td>
+        </tr>
+        <tr>
+          <td>Organization ID</td>
+          <td>Returned as <code>id</code> on each organization in the <code>organizations</code> array; usable directly as the company identifier and as the People Search filter value.</td>
+          <td>Apollo documentation</td>
+          <td><span class="tag t-ok">Confirmed</span></td>
+        </tr>
+        <tr>
+          <td>Domain / website fields</td>
+          <td><code>primary_domain</code> and <code>website_url</code> confirmed present, alongside <code>linkedin_url</code>, <code>logo_url</code>, <code>founded_year</code> and <code>phone</code>.</td>
+          <td>Apollo documentation</td>
+          <td><span class="tag t-ok">Confirmed</span></td>
+        </tr>
+        <tr>
+          <td>Employee count and location fields</td>
+          <td>Documentation is ambiguous: the published field listing does not clearly enumerate employee count, country, city, state or industry, while secondary API references describe employee count and location as present. Exact field names are unconfirmed.</td>
+          <td>Apollo documentation (ambiguous); secondary API references</td>
+          <td><span class="tag t-ver">Requires verification</span></td>
+        </tr>
+        <tr>
+          <td>People Search endpoint</td>
+          <td><code>POST /api/v1/mixed_people/api_search</code> — the same path already used in production by this platform.</td>
+          <td>Apollo documentation; existing implementation</td>
+          <td><span class="tag t-ok">Confirmed</span></td>
+        </tr>
+        <tr>
+          <td>Organization filtering on People Search</td>
+          <td><code>organization_ids[]</code> is a documented parameter on that exact endpoint, allowing people to be scoped to a selected organization.</td>
+          <td>Apollo documentation</td>
+          <td><span class="tag t-ok">Confirmed</span></td>
+        </tr>
+        <tr>
+          <td>People Search credit cost</td>
+          <td>Documented as 0 credits. No indication that scoping by organization changes this.</td>
+          <td>Apollo documentation</td>
+          <td><span class="tag t-ok">Confirmed</span></td>
+        </tr>
+        <tr>
+          <td>People Search response fields</td>
+          <td>Returns <code>id</code>, <code>first_name</code>, <code>last_name_obfuscated</code>, <code>title</code>, <code>has_email</code> and a nested <code>organization</code> object. Does not return full surname, email, phone or seniority.</td>
+          <td>Apollo documentation</td>
+          <td><span class="tag t-ok">Confirmed</span></td>
+        </tr>
+        <tr>
+          <td>Organization Search credit cost</td>
+          <td>1 credit per page, up to 100 results per page.</td>
+          <td>Apollo documentation</td>
+          <td><span class="tag t-ok">Confirmed</span></td>
+        </tr>
+        <tr>
+          <td>No-result behaviour</td>
+          <td>A search returning no results consumes 0 credits; this is consistent across Apollo's search endpoints.</td>
+          <td>Apollo documentation; corroborated by secondary sources</td>
+          <td><span class="tag t-ok">Confirmed</span></td>
+        </tr>
+        <tr>
+          <td>Credit pool attribution</td>
+          <td>Secondary sources indicate API search endpoints draw on export credits and that API usage shares the platform's monthly pool. Not stated unambiguously in the primary endpoint documentation, and not reconciled against the counter this platform reads.</td>
+          <td>Secondary sources; not confirmed in primary documentation</td>
+          <td><span class="tag t-ver">Requires verification</span></td>
+        </tr>
+        <tr>
+          <td>Pagination limits</td>
+          <td>100 records per page, 500 pages maximum, 50,000-record display limit. V1 caps itself at three pages by product decision, well inside Apollo's limit.</td>
+          <td>Apollo documentation</td>
+          <td><span class="tag t-ok">Confirmed</span></td>
+        </tr>
+        <tr>
+          <td>Pagination metadata</td>
+          <td>The response includes a <code>pagination</code> object with <code>page</code>, <code>per_page</code>, <code>total_entries</code> and <code>total_pages</code>, allowing the interface to report how many companies match in total before any further page is purchased.</td>
+          <td>Apollo documentation; corroborated by secondary sources</td>
+          <td><span class="tag t-ok">Confirmed</span></td>
+        </tr>
+        <tr>
+          <td>Per-page credit charging</td>
+          <td>One credit per page requested regardless of how many results that page returns, so requesting fewer than 100 per page wastes part of the credit already spent.</td>
+          <td>Apollo documentation</td>
+          <td><span class="tag t-ok">Confirmed</span></td>
+        </tr>
+        <tr>
+          <td>Advanced Search parameters</td>
+          <td>Organization Search supports employee ranges, keyword tags, revenue range, technologies, location exclusion, three funding filters and four job-posting filters — all exposed under Advanced.</td>
+          <td>Apollo documentation</td>
+          <td><span class="tag t-ok">Confirmed</span></td>
+        </tr>
+        <tr>
+          <td>Email filtering on People Search</td>
+          <td><code>contact_email_status</code> filters the request so only contactable people are returned. Already sent by the platform's existing <code>searchPeople()</code>.</td>
+          <td>Existing implementation</td>
+          <td><span class="tag t-code">Confirmed</span></td>
+        </tr>
+        <tr>
+          <td>Name-match behaviour</td>
+          <td>Whether <code>q_organization_name</code> performs exact, partial or fuzzy matching is not specified, which affects how many candidates a typical search returns.</td>
+          <td>Not specified in documentation</td>
+          <td><span class="tag t-ver">Requires verification</span></td>
+        </tr>
+        <tr>
+          <td>Email reveal cost and retry ceiling</td>
+          <td>1 credit per person per request, billed on receipt; two lifetime attempts per person enforced at candidate selection.</td>
+          <td>Existing implementation</td>
+          <td><span class="tag t-code">Confirmed</span></td>
+        </tr>
+        <tr>
+          <td>Enrichment trigger conditions</td>
+          <td>Candidates are selected on <code>lead_source = 'apollo'</code>, <code>has_email = true</code>, <code>email IS NULL</code>, not deleted, and below the attempt ceiling.</td>
+          <td>Existing implementation</td>
+          <td><span class="tag t-code">Confirmed</span></td>
+        </tr>
+        <tr>
+          <td>Organization uniqueness constraints</td>
+          <td>Unique on <code>(company_id, apollo_org_id)</code> and on <code>(company_id, domain)</code> where domain is not null. Organizations created by the keyword search carry a NULL Apollo organization ID.</td>
+          <td>Existing implementation</td>
+          <td><span class="tag t-code">Confirmed</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="sub">
+    <h3>Sources</h3>
+    <ul>
+      <li><a href="https://docs.apollo.io/reference/organization-search">Apollo API Reference — Organization Search</a></li>
+      <li><a href="https://docs.apollo.io/reference/people-api-search">Apollo API Reference — People API Search</a></li>
+      <li><a href="https://docs.apollo.io/reference/bulk-people-enrichment">Apollo API Reference — Bulk People Enrichment</a></li>
+      <li><a href="https://docs.apollo.io/reference/organization-enrichment">Apollo API Reference — Organization Enrichment</a></li>
+      <li><a href="https://docs.apollo.io/docs/api-pricing">Apollo API Documentation — API Pricing</a></li>
+      <li><a href="https://docs.apollo.io/reference/view-api-usage-stats">Apollo API Reference — View API Usage Stats</a></li>
+      <li><a href="https://knowledge.apollo.io/hc/en-us/articles/9527776320781-What-Are-Credits">Apollo Knowledge Base — What Are Credits</a></li>
+      <li>Secondary API references consulted for cross-checking response shape and credit-pool behaviour, treated as indicative only and marked as requiring verification where relied upon.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- 20 -->
+<section id="s20">
+  <div class="sec-head"><span class="sec-n">20</span><h2>Implementation Readiness</h2></div>
+
+  <div class="sub">
+    <h3>Ready to implement</h3>
+    <ul>
+      <li>Add Leads integration, access control and the four-step wizard structure.</li>
+      <li>Organization Search request construction — endpoint, name, country and website parameters are confirmed, as are all four Advanced Search filters.</li>
+      <li>Pagination model: <code>per_page = 100</code>, free in-browser paging, explicitly priced Apollo page requests, three-page cap, and the results-header counts drawn from the <code>pagination</code> object.</li>
+      <li>Credit visibility across every consuming and free action.</li>
+      <li>Company-result states — one, many, none — and the rule that selection is always explicit.</li>
+      <li>Blocking organizations already held, including the label, the disabled state and the suppression of People Search.</li>
+      <li>People Search scoped by <code>organization_ids[]</code>, including the zero-credit expectation and the <code>has_email</code> filter.</li>
+      <li>Job-title ranking, given that seniority is confirmed absent from the response.</li>
+      <li>Five-contact selection limit and its server-side enforcement.</li>
+      <li>Insert-only-selected-contacts behaviour and all credit-protection measures.</li>
+      <li>Organization matching order, merge behaviour and tenant scoping (§13.1).</li>
+      <li>Lead creation fields, <code>lead_source = 'apollo'</code>, and hand-off to the existing enrichment pipeline.</li>
+      <li>Duplicate contact and unenrichable-contact exclusions.</li>
+      <li>Confirmation that no database migration is required.</li>
+    </ul>
+  </div>
+
+  <div class="sub">
+    <h3>Requires live API verification</h3>
+    <ul>
+      <li><strong>Organization Search response shape</strong> — exact field names for employee count and location, which determine the columns in the company results table.</li>
+      <li><strong>Credit counter attribution</strong> — whether the Organization Search credit decrements the counter used by the pre-flight balance check and the usage screen.</li>
+      <li><strong>Name-match behaviour</strong> — whether <code>q_organization_name</code> matches exactly, partially or fuzzily, which determines how many candidates a typical search returns and whether additional narrowing guidance is needed.</li>
+      <li><strong>Roster completeness</strong> — confirmation that an organization-scoped People Search returns the full roster once the existing title and seniority filters are bypassed.</li>
+    </ul>
+    <p>All four are resolved by one Organization Search request with balance readings taken either side, plus one People Search request. Combined cost: one credit.</p>
+  </div>
+
+  <div class="sub">
+    <h3>Requires business decision</h3>
+    <ul>
+      <li><strong>Business Question 1 — Mobile / Phone Enrichment.</strong> Does not block V1.</li>
+      <li><strong>Business Question 2 — Source and Reporting Label.</strong> Does not block V1; the default is the existing <code>apollo</code> source.</li>
+    </ul>
+    <p>The existing-company behaviour that previously appeared here has been decided and is specified in §13.2.</p>
+  </div>
+
+  <div class="box">
+    <h4>Summary position</h4>
+    <p>No outstanding business decision blocks V1. Engineering can begin immediately on the wizard, search and pagination behaviour, company blocking, lead creation, credit protection and organization matching.</p>
+    <p>Two items should be finalised only after the verification request described above: the columns in the company results table, which depend on the confirmed response field names, and the credit-accounting assertions, which depend on which counter Organization Search decrements. Neither prevents the surrounding work from starting.</p>
+  </div>
+</section>
+
+<!-- 21 -->
+<section id="s21">
+  <div class="sec-head"><span class="sec-n">21</span><h2>Changes Made Based on Senior Review</h2></div>
+  <p>The following revisions were made to this document following review. Sections not listed here are unchanged.</p>
+  <div class="tw">
+    <table>
+      <thead><tr><th>#</th><th>Change</th><th>Sections affected</th></tr></thead>
+      <tbody>
+        <tr>
+          <td class="n">1</td>
+          <td><strong>Pagination reconsidered and replaced.</strong> The page-1-only rule is withdrawn. Because Apollo charges per page regardless of result count and permits 100 results per page, V1 now requests <code>per_page = 100</code>, pages through those results in the browser at no cost, and treats each further Apollo page as an explicit, priced, confirmed action capped at three pages per session.</td>
+          <td>§4, §5, §6.2, §7, §8, §15, §16, §20</td>
+        </tr>
+        <tr>
+          <td class="n">2</td>
+          <td><strong>Result totals now surfaced.</strong> Research confirmed the response carries a <code>pagination</code> object with <code>total_entries</code> and <code>total_pages</code>, so the interface reports how many companies match in Apollo, how many have been retrieved, and how many credits have been spent — before any decision to page again.</td>
+          <td>§6.2, §7, §19</td>
+        </tr>
+        <tr>
+          <td class="n">3</td>
+          <td><strong>Advanced Search added.</strong> The basic form remains three fields. A collapsed panel adds four curated organization filters — employee range, industry keywords, exclude location, revenue range — all confirmed as supported. The full Apollo parameter set is deliberately not exposed.</td>
+          <td>§4, §5, §6.1, §16, §19, §20</td>
+        </tr>
+        <tr>
+          <td class="n">4</td>
+          <td><strong>Company-search result states specified explicitly.</strong> Documented behaviour for one result, multiple similar results, no results, and many results, including the rule that selection is always explicit — a single result is never auto-selected and the first result is never assumed correct.</td>
+          <td>§6.2, §15, §16</td>
+        </tr>
+        <tr>
+          <td class="n">5</td>
+          <td><strong>Existing-company behaviour settled and removed from open questions.</strong> The V1 decision is to block: organizations already in the system are labelled <em>Already in system</em>, are not selectable, and never reach People Search. No organization is created or updated and no leads are produced for them. The Allow-versus-Block framing has been removed.</td>
+          <td>§4, §5, §13.2, §13.3, §15, §16, §17, §20</td>
+        </tr>
+        <tr>
+          <td class="n">6</td>
+          <td><strong>Open business questions reduced from three to two</strong> and renumbered: mobile/phone enrichment, and the source/reporting label. Neither blocks V1.</td>
+          <td>§9, §17, §20</td>
+        </tr>
+        <tr>
+          <td class="n">7</td>
+          <td><strong>Credit visibility made explicit.</strong> Every credit-consuming action now states its cost before activation, free actions are labelled as free, and the worst-case figure has been updated to reflect multi-page searching.</td>
+          <td>§8, §16</td>
+        </tr>
+        <tr>
+          <td class="n">8</td>
+          <td><strong>Acceptance criteria rewritten</strong> to cover disambiguation, explicit selection, all result states, pagination and refinement, Advanced Search, credit visibility, and the blocking of existing organizations.</td>
+          <td>§16</td>
+        </tr>
+        <tr>
+          <td class="n">9</td>
+          <td><strong>Advanced Search widened to the full parameter set.</strong> Rather than four curated filters, Advanced now exposes every remaining Organization Search parameter — company profile, location exclusion, funding and hiring signals — grouped for navigability. Only the three basic fields and the system-controlled parameters are withheld.</td>
+          <td>§4, §6.1, §16, §19</td>
+        </tr>
+        <tr>
+          <td class="n">10</td>
+          <td><strong>Email filtering moved to the Apollo request.</strong> The people list is now filtered by <code>contact_email_status</code> in the request rather than by discarding rows after they are returned, so Apollo sends only contactable people. The existing <code>searchPeople()</code> already sends this parameter; <code>has_email</code> remains checked on our side as a safety net.</td>
+          <td>§6.3, §7, §16</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="box good">
+    <h4>Preserved unchanged</h4>
+    <p>The five-contact maximum and its server-side enforcement; insertion of selected contacts only; the guarantee that unselected candidates cannot trigger enrichment; <code>has_email = true</code> with <code>email = null</code> before reveal; <code>lead_source = 'apollo'</code>; duplicate-contact and unenrichable-contact protection; tenant scoping; organization merge-not-insert rules; reuse of the existing enrichment pipeline; no database migration; mobile and WhatsApp enrichment out of V1; and the internal/development workspace restriction.</p>
+  </div>
+</section>
+
+<footer>
+  <p><strong>Status:</strong> Draft PRD, revised following senior review. No implementation work has been carried out and no application code or database objects have been modified.</p>
+  <p>Platform behaviour described in this document was verified against the existing codebase and database schema. Apollo endpoint capabilities, response fields and credit costs were taken from Apollo's official API documentation, cross-checked against secondary sources where the primary documentation was incomplete. Items that could not be established from either source are marked as requiring verification rather than presented as settled.</p>
+</footer>
+
+</div>
+</body>
+</html>
