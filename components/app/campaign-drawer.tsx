@@ -2860,26 +2860,26 @@ export function CampaignDetail({
                     )}
                     onClick={() => setSelectedId(cl.id)}
                   >
-                    <div
-                      className="w-9 shrink-0 py-2.5 pl-2.5 flex items-center"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (!canCheck || !showCheckbox) return;
-                        setCheckedIds((prev) => {
-                          const next = new Set(prev);
-                          if (next.has(cl.id)) next.delete(cl.id); else next.add(cl.id);
-                          return next;
-                        });
-                      }}
-                    >
-                      {showCheckbox ? (
+                    {showCheckbox && (
+                      <div
+                        className="w-9 shrink-0 py-2.5 pl-2.5 flex items-center"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (!canCheck) return;
+                          setCheckedIds((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(cl.id)) next.delete(cl.id); else next.add(cl.id);
+                            return next;
+                          });
+                        }}
+                      >
                         <AppCheckbox
                           checked={isChecked && canCheck}
                           disabled={!canCheck}
                         />
-                      ) : null}
-                    </div>
-                    <div className="flex items-center gap-2 flex-1 min-w-0 py-2.5 pl-1 pr-3">
+                      </div>
+                    )}
+                    <div className={cn("flex items-center gap-2 flex-1 min-w-0 py-2.5 pr-3", showCheckbox ? "pl-1" : "pl-3")}>
                       <Avatar name={name} size="sm" />
                       <div className="flex-1 min-w-0">
                         <p className={cn("text-xs font-medium truncate", isActive ? "text-primary" : "text-foreground")}>{name}</p>
