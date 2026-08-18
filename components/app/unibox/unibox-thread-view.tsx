@@ -515,7 +515,7 @@ export function UniboxThreadView({
         onCancel={() => setAddLeadFor(null)}
         onConfirm={(f, l) => void handleConfirmAddLead(f, l)}
       />
-      <div className="enter rounded-xl border border-border bg-card overflow-hidden mx-6 mt-6">
+      <div className="enter rounded-xl border border-border bg-field dark:bg-card overflow-hidden mx-6 mt-6">
         {topLevelMessages.map((m) => {
           const row = (msg: UniboxMessage) => (
             <MessageRow
