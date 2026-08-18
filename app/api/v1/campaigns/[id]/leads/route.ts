@@ -31,8 +31,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     .from("campaign_leads")
     .select(
       `*, attachment_path, attachment_name, attachment_mime, attachment_size, attachment_url,
+       replaced_by_user:profiles!replaced_by_user_id(id, full_name),
        email_drafts(id, subject, body, status, created_at, step_number),
-       leads!lead_id!inner(first_name, last_name, email, title, country, assigned_to, organization_id, organizations(id, name, domain, country, city, website))`,
+       leads!lead_id!inner(first_name, last_name, email, title, country, assigned_to, organization_id, replaces_lead_id, organizations(id, name, domain, country, city, website))`,
       { count: "exact" }
     )
     .eq("campaign_id", id);
@@ -105,11 +106,97 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     } as ReturnType<typeof mapLeadRow>;
   }
 
+  // How far into the sequence each lead actually got. campaign_leads only
+  // records first_sent_at — written once, on the opening email — so nothing on
+  // the row itself changes when follow-up 1, 2 or 3 lands, and every contacted
+  // lead reads the same forever. The step number is on the email_sent webhooks,
+  // so take the highest one per lead. Only steps past 1 are worth fetching:
+  // step 1 is what first_sent_at already covers.
+  // The bounce timestamp rides along in the same query: it lives only on the
+  // email_bounced webhook (campaign_leads records no bounce time of its own),
+  // and the Outbox handoff panel states when the address rejected us. Fetching
+  // both event types together keeps this to one round-trip; the step filter
+  // that used to run in SQL now runs on the rows, since it only applies to
+  // email_sent.
+  const pageLeadIds = (data ?? []).map((cl) => cl.id as string);
+  const stepByLead = new Map<string, number>();
+  const bouncedAtByLead = new Map<string, string>();
+  // Which mail the address rejected. A lead can bounce on the OPENING email (we
+  // never chase them again) or on a follow-up, meaning the mailbox died between
+  // the two sends — the same red badge for two different stories.
+  const bouncedStepByLead = new Map<string, number>();
+  if (pageLeadIds.length > 0) {
+    const { data: events } = await db
+      .from("reply_events")
+      .select("campaign_lead_id, step, event_type, received_at")
+      .eq("campaign_id", id)
+      .in("event_type", ["email_sent", "email_bounced"])
+      .in("campaign_lead_id", pageLeadIds)
+      .limit(5000); // one page of leads × every step; well clear of PostgREST's default 1000
+    for (const ev of events ?? []) {
+      const clId = ev.campaign_lead_id as string | null;
+      if (!clId) continue;
+      if (ev.event_type === "email_bounced") {
+        // Earliest bounce is the one that ended this address.
+        const at = ev.received_at as string | null;
+        const seen = bouncedAtByLead.get(clId);
+        if (at && (!seen || at < seen)) {
+          bouncedAtByLead.set(clId, at);
+          const bStep = ev.step as number | null;
+          if (bStep) bouncedStepByLead.set(clId, bStep);
+        }
+        continue;
+      }
+      const step = ev.step as number | null;
+      if (!step || step <= 1) continue; // step 1 is what first_sent_at already covers
+      if (step > (stepByLead.get(clId) ?? 0)) stepByLead.set(clId, step);
+    }
+  }
+
+  // Our own sequence sends, mirrored back by Instantly. The Outbox thread used
+  // to be reconstructed from the step-1 draft alone, so a lead reading
+  // "Follow-up 1 sent" in the list still showed a single email in their thread.
+  // The follow-ups were never missing — unibox_emails has held them all along
+  // (direction 'sent_campaign'), they were simply not on any read path.
+  //
+  // Fetched here rather than through getCampaignReplyThreads because that walks
+  // one thread at a time at roughly five queries each, and it only covers leads
+  // who REPLIED — which is precisely the wrong set: a lead who never answered is
+  // the one whose follow-ups you most need to see. One query for the page.
+  const sequenceByLead = new Map<string, Array<Record<string, unknown>>>();
+  if (pageLeadIds.length > 0) {
+    const { data: sends } = await db
+      .from("unibox_emails")
+      .select("id, campaign_lead_id, step, subject, body_html, body_text, timestamp_email, to_emails, cc_emails")
+      .eq("campaign_id", id)
+      .eq("direction", "sent_campaign")
+      .in("campaign_lead_id", pageLeadIds)
+      .order("timestamp_email", { ascending: true })
+      .limit(5000);
+    for (const m of sends ?? []) {
+      const clId = m.campaign_lead_id as string | null;
+      if (!clId) continue;
+      if (!sequenceByLead.has(clId)) sequenceByLead.set(clId, []);
+      sequenceByLead.get(clId)!.push(m);
+    }
+  }
+
   // Compute resolved attachment per lead
   const items = (data ?? []).map((cl: Record<string, unknown>) => ({
     ...cl,
     leads: mapLeadRow(cl.leads as Record<string, unknown> | null),
     draft_activity: activityByLead.get(cl.lead_id as string) ?? null,
+    last_step_sent: stepByLead.get(cl.id as string) ?? null,
+    sequence_messages: sequenceByLead.get(cl.id as string) ?? [],
+    bounced_at: bouncedAtByLead.get(cl.id as string) ?? null,
+    bounced_step: bouncedStepByLead.get(cl.id as string) ?? null,
+    // PostgREST hands a to-one embed back as an object, but types it loosely —
+    // flatten to the one field the UI needs so the client isn't unwrapping.
+    replaced_by_user_name: (() => {
+      const u = cl.replaced_by_user as { full_name?: string | null } | { full_name?: string | null }[] | null;
+      const row = Array.isArray(u) ? u[0] : u;
+      return row?.full_name ?? null;
+    })(),
     attachment: {
       perLead: cl.attachment_name
         ? { name: cl.attachment_name, size: cl.attachment_size, mime: cl.attachment_mime }
@@ -156,9 +243,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const leadIds = parsed.data.lead_ids;
 
   // Bulk-fetch all leads in one query — employees can only add leads assigned to them.
+  // is_deleted is not just list cosmetics here: a deleted lead is either one a
+  // manager retired or a bounced address a replacement already stood in for.
+  // Neither may be campaigned again, and the ids arrive from the client — so the
+  // filter has to live on the fetch, not only on the pickers that feed it. A
+  // filtered-out id falls through to `not_found` below, which the UI reports.
   let leadsQuery = db
     .from("leads")
     .select("id, email, status, organization_id, assigned_to, organizations(domain, enrichment_stage, unsubscribed)")
+    .eq("is_deleted", false)
     .in("id", leadIds);
   if (user.role === "employee") leadsQuery = leadsQuery.eq("assigned_to", user.id);
   const { data: leads } = await leadsQuery;

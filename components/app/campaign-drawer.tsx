@@ -5,7 +5,7 @@ import {
   Megaphone, Users, Send, MessageSquare, Clock, Gauge, ArrowUp,
   Globe, Calendar, ExternalLink, Loader2, CheckCircle2, RotateCcw, RefreshCw, Check, Save, History, ChevronDown, ArrowLeft,
   List, LayoutGrid, BarChart2, Flame, Snowflake, ThumbsDown, Layers, Paperclip, X, Sparkles, Pencil, Reply, AlertTriangle,
-  Building2, MapPin, ReplyAll, CornerDownRight, UserPlus,
+  Building2, MapPin, ReplyAll, CornerDownRight, UserPlus, ArrowRight,
 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
@@ -102,7 +102,8 @@ import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, BarChart, Bar, XAxis
 import { EmptyState } from "@/components/ui/empty-state";
 import { ServiceHealthBanner } from "@/components/app/service-health-banner";
 import {
-  computeCampaignStats, deliveryBucket, DELIVERY_BUCKET_LABELS,
+  computeCampaignStats, deliveryBucket, deliveryLabel, DELIVERY_BUCKET_LABELS,
+  sequenceStepLabel,
   type DeliveryBucket,
 } from "@/lib/campaign-status";
 
@@ -194,6 +195,8 @@ type CampaignLead = {
     company_country?: string | null;
     company_city?: string | null;
     company_website?: string | null;
+    /** Set when this contact was added to stand in for a bounced one. */
+    replaces_lead_id?: string | null;
   } | null;
   email_drafts: { id: string; subject: string | null; body: string | null; status: string; step_number?: number | null; created_at?: string } | null;
   /**
@@ -206,10 +209,36 @@ type CampaignLead = {
   /** Set by Instantly's email_sent webhook — the mail actually went out. NULL
    *  while crm_status='sent' means queued in the drip, not yet delivered. */
   first_sent_at?: string | null;
+  /** Highest sequence step delivered so far (step 1 = opening mail, so step N
+   *  is follow-up N-1). first_sent_at alone cannot show this — it is stamped
+   *  once and never moves as the follow-ups go out. */
+  last_step_sent?: number | null;
+  /** Which sequence step the address rejected (1 = the opening email), so a
+   *  mailbox that died between sends reads differently from one dead all along. */
+  bounced_step?: number | null;
+  /** Every mail the sequence itself sent this lead — the opening email and each
+   *  follow-up — mirrored back by Instantly. Empty until the Unibox sync has
+   *  picked them up, which is why the step-1 draft is still used as a fallback. */
+  sequence_messages?: Array<{
+    id: string;
+    step: string | null;
+    subject: string | null;
+    body_html: string | null;
+    body_text: string | null;
+    timestamp_email: string | null;
+    to_emails: string | null;
+    cc_emails: string | null;
+  }>;
   /** Set once someone answered this bounce by adding another contact at the same
    *  company. The row stays bounced (and still counts as one) — this only marks
    *  it as dealt with, so nobody redoes the work. */
   replaced_by_lead_id?: string | null;
+  /** Who answered the bounce, and when. Null on bounces replaced before the
+   *  attribution columns existed — the panel then omits the line. */
+  replaced_at?: string | null;
+  replaced_by_user_name?: string | null;
+  /** From the email_bounced webhook — the day the address rejected us. */
+  bounced_at?: string | null;
   attachment?: AttachmentInfo;
 };
 
@@ -403,6 +432,7 @@ function OutboxMessageRow({
   isUnanswered,
   isReplyTarget,
   inReplyToLabel,
+  stepLabel,
   onReplyTo,
   onReplyAll,
   onAddAsLead,
@@ -423,6 +453,8 @@ function OutboxMessageRow({
   isReplyTarget: boolean;
   /** For our own replies: who wrote the message this one answered. */
   inReplyToLabel: string | null;
+  /** "Opening email" / "Follow-up 1" — which sequence send this is. */
+  stepLabel: string | null;
   /** Set for inbound messages that can be answered directly. */
   onReplyTo: (() => void) | null;
   onReplyAll: (() => void) | null;
@@ -454,6 +486,13 @@ function OutboxMessageRow({
         {fromThirdParty && (
           <Badge variant="outline" className="shrink-0 rounded font-mono text-[9px] px-1.5 py-0 text-muted-foreground">
             via cc
+          </Badge>
+        )}
+        {/* Which sequence send this is. On the collapsed row because that is the
+            glanceable one — the whole point is reading the thread at a glance. */}
+        {stepLabel && (
+          <Badge variant="outline" className="shrink-0 rounded font-mono text-[9px] px-1.5 py-0 border-primary/40 text-primary">
+            {stepLabel}
           </Badge>
         )}
         {/* Same reason as the Unibox: the collapsed row is the glanceable one. */}
@@ -644,6 +683,9 @@ export function CampaignDetail({
   const [retryingAll, setRetryingAll] = useState(false);
   const [drawerLead, setDrawerLead] = useState<Lead | null>(null);
   const [drawerOrgId, setDrawerOrgId] = useState<string | null>(null);
+  /** "View the email that bounced" — the dead thread is folded away, not
+   *  deleted, so a disputed bounce can still be checked. Resets per selection. */
+  const [bouncedThreadOpen, setBouncedThreadOpen] = useState(false);
   const [replaceTarget, setReplaceTarget] = useState<ReplaceLeadTarget | null>(null);
   const [replaceSubmitting, setReplaceSubmitting] = useState(false);
   const [replaceError, setReplaceError] = useState("");
@@ -1085,6 +1127,7 @@ export function CampaignDetail({
     setPreviewVersionId(null);
     setError("");
     setOutboxExpandOverrides(new Set());
+    setBouncedThreadOpen(false);
   }, [selected?.id, selected?.email_drafts?.subject, selected?.email_drafts?.body]);
 
   useEffect(() => {
@@ -1159,7 +1202,7 @@ export function CampaignDetail({
     // Prefer delivery outcome over draft status once mail has left (or bounced) —
     // otherwise a bounced lead still reads as "Sent" because email_drafts stays sent.
     const delivery = deliveryBucket(cl);
-    if (delivery !== "not_queued") return DELIVERY_BUCKET_LABELS[delivery];
+    if (delivery !== "not_queued") return deliveryLabel(cl);
     if (cl.email_drafts?.status) return DRAFT_STATUS_LABEL[cl.email_drafts.status] ?? cl.crm_status;
     if (cl.crm_status === "new" || cl.crm_status === "enriched") return isGenerating ? "Pending" : "No draft";
     return cl.crm_status;
@@ -1611,6 +1654,34 @@ export function CampaignDetail({
     return who ? `Replaced by ${who}` : "A replacement contact was added at this company";
   }
 
+  /** The other direction: the bounced contact this one stands in for. The
+   *  bounced row stays in the campaign after being retired, so it is still here
+   *  to name and to open. */
+  function originalFor(cl: CampaignLead): CampaignLead | null {
+    const id = cl.leads?.replaces_lead_id;
+    if (!id) return null;
+    return campaignLeads.find((c) => c.lead_id === id) ?? null;
+  }
+
+  function replacesTooltip(cl: CampaignLead): string {
+    const original = originalFor(cl);
+    const who = [original?.leads?.first_name, original?.leads?.last_name].filter(Boolean).join(" ")
+      || original?.leads?.email;
+    return who ? `Added to replace ${who}, whose address bounced` : "Added to replace a bounced contact";
+  }
+
+  /** The two chips are a two-way door: a bounce opens its replacement, a
+   *  replacement opens the bounce it answers. Neither is a dead end. */
+  function openReplacementOf(cl: CampaignLead) {
+    const r = replacementFor(cl);
+    if (r) handleOpenInOutbox(r.id);
+  }
+
+  function openOriginalOf(cl: CampaignLead) {
+    const o = originalFor(cl);
+    if (o) handleOpenInOutbox(o.id);
+  }
+
   /** A bounce cost us a door into that company, not the company itself — this
    *  opens the dialog that adds another address there. */
   function openReplace(cl: CampaignLead) {
@@ -1688,6 +1759,13 @@ export function CampaignDetail({
 
   const selectedThread = threads.find((t) => t.campaign_lead_id === selectedId) ?? null;
 
+  // A bounce that has already been answered. Its email was never read, so the
+  // Outbox shows the handoff to the replacement instead of a thread nobody can
+  // act on — the dead mail stays one click away, not deleted.
+  const isReplacedBounce = !!selected && !!selected.replaced_by_lead_id && deliveryBucket(selected) === "bounced";
+  const selectedReplacement = selected ? replacementFor(selected) : null;
+  const selectedOriginal = selected ? originalFor(selected) : null;
+
   const outboxReplyName = selected
     ? [selected.leads?.first_name, selected.leads?.last_name].filter(Boolean).join(" ") || selectedThread?.lead_email || "Unknown"
     : "Unknown";
@@ -1706,6 +1784,8 @@ export function CampaignDetail({
     inReplyToLabel: string | null;
     /** Third participant not yet a lead — the address to promote. */
     promotableEmail: string | null;
+    /** "Opening email" / "Follow-up 1" for a sequence send; null for a manual reply. */
+    stepLabel: string | null;
     timestamp: string | null;
     bodyHtml: string | null;
     bodyText: string | null;
@@ -1788,7 +1868,31 @@ export function CampaignDetail({
   );
 
   const outboxMessageItems: OutboxMessageItem[] = [];
-  if (selected?.email_drafts?.status === "sent") {
+  // What the sequence actually sent — the opening email AND every follow-up —
+  // straight from the mirrored mail. This is the real record of what left; the
+  // draft below is only what we composed.
+  const outboxSequenceSends = selected?.sequence_messages ?? [];
+  for (const m of outboxSequenceSends) {
+    outboxMessageItems.push({
+      id: `seq-${m.id}`,
+      sender: "You",
+      to: parseAddressList(m.to_emails).join(", ") || (selectedThread?.lead_email ?? outboxReplyName),
+      cc: parseAddressList(m.cc_emails).join(", "),
+      fromThirdParty: false,
+      replyTargetId: null,
+      isUnanswered: false,
+      inReplyToLabel: null,
+      promotableEmail: null,
+      stepLabel: sequenceStepLabel(m.step),
+      timestamp: m.timestamp_email,
+      bodyHtml: m.body_html,
+      bodyText: m.body_text,
+    });
+  }
+  // Fallback for the opening email only: the Unibox sync runs on a schedule, so
+  // a just-sent lead has no mirrored copy yet. Never both — that would show the
+  // same email twice.
+  if (outboxSequenceSends.length === 0 && selected?.email_drafts?.status === "sent") {
     outboxMessageItems.push({
       id: `initial-${selected.email_drafts.id}`,
       sender: "You",
@@ -1799,6 +1903,7 @@ export function CampaignDetail({
       isUnanswered: false,
       inReplyToLabel: null,
       promotableEmail: null,
+      stepLabel: "Opening email",
       timestamp: selected.email_drafts.created_at ?? null,
       bodyHtml: selectedThread?.original_email?.body ?? selected.email_drafts.body ?? "",
       bodyText: null,
@@ -1819,6 +1924,7 @@ export function CampaignDetail({
         inReplyToLabel: null,
         promotableEmail:
           thirdParty && from && !outboxKnownLeadSet.has(from) && !outboxOurEmails.has(from) ? from : null,
+        stepLabel: null,
         timestamp: msg.received_at,
         bodyHtml: null,
         bodyText: stripQuotedLines(msg.reply_body) ?? "",
@@ -1841,13 +1947,16 @@ export function CampaignDetail({
           ? outboxSenderByEmailId.get(sent.in_reply_to_email_id) ?? null
           : null,
         promotableEmail: null,
+        stepLabel: null, // a manual reply is not a sequence step
         timestamp: sent.sent_at,
         bodyHtml: sent.body_html,
         bodyText: sent.body_text,
       });
     }
-    outboxMessageItems.sort((a, b) => (a.timestamp ?? "").localeCompare(b.timestamp ?? ""));
   }
+  // Outside the thread block: a lead who never replied has no thread at all, but
+  // now still has sequence sends to order.
+  outboxMessageItems.sort((a, b) => (a.timestamp ?? "").localeCompare(b.timestamp ?? ""));
   const outboxLastItemId = outboxMessageItems.length > 0 ? outboxMessageItems[outboxMessageItems.length - 1].id : null;
 
   const TEMP_BADGE: Record<string, { label: string; cls: string; icon?: React.ReactNode }> = {
@@ -2124,7 +2233,8 @@ export function CampaignDetail({
               <Button
                 variant="outline"
                 size="sm"
-                disabled={certifying}
+                disabled={certifying || regenJobActive}
+                title={regenJobActive ? "A regeneration is running — certifying is paused until it finishes" : undefined}
                 onClick={handleCertifyAll}
               >
                 {certifying ? <Loader2 className="size-3.5 animate-spin mr-1.5" /> : null}
@@ -2545,7 +2655,7 @@ export function CampaignDetail({
                                 // above already says where such a lead stands.
                                 const delivery = deliveryBucket(cl);
                                 if (delivery !== "not_queued") {
-                                  pills.push({ label: DELIVERY_BUCKET_LABELS[delivery], cls: DELIVERY_PILL_CLS[delivery] });
+                                  pills.push({ label: deliveryLabel(cl), cls: DELIVERY_PILL_CLS[delivery] });
                                 }
 
                                 // Fallback if nothing matched
@@ -2559,19 +2669,35 @@ export function CampaignDetail({
                                   </span>
                                 ));
                               })()}
+                              {/* Where this contact came from — otherwise a
+                                  person nobody imported just appears inside a
+                                  running campaign. */}
+                              {cl.leads?.replaces_lead_id && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => { e.stopPropagation(); openOriginalOf(cl); }}
+                                  title={`${replacesTooltip(cl)} — open them`}
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-secondary border border-border font-mono text-[10px] font-semibold uppercase tracking-wide text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
+                                >
+                                  <CornerDownRight className="size-3" />
+                                  Replacement
+                                </button>
+                              )}
                               {/* The only action a bounce allows: try another
                                   address at the same company — until someone
                                   has, at which point it reads as handled so the
                                   next person doesn't do it twice. */}
                               {deliveryBucket(cl) === "bounced" && (
                                 cl.replaced_by_lead_id ? (
-                                  <span
-                                    title={replacedTooltip(cl)}
-                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-green-500/15 border border-green-500/30 font-mono text-[10px] font-semibold uppercase tracking-wide text-green-600"
+                                  <button
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); openReplacementOf(cl); }}
+                                    title={`${replacedTooltip(cl)} — open them`}
+                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-green-500/15 border border-green-500/30 font-mono text-[10px] font-semibold uppercase tracking-wide text-green-600 transition-colors hover:bg-green-500/25"
                                   >
                                     <Check className="size-3" />
                                     Replaced
-                                  </span>
+                                  </button>
                                 ) : (
                                   <button
                                     type="button"
@@ -2724,7 +2850,8 @@ export function CampaignDetail({
                       variant="outline"
                       size="sm"
                       className="h-7 shrink-0 px-2 text-[11px]"
-                      disabled={certifying}
+                      disabled={certifying || regenJobActive}
+                      title={regenJobActive ? "A regeneration is running — certifying is paused until it finishes" : undefined}
                       onClick={() => void handleBulkCertify(outboxCertifyDraftIds)}
                     >
                       {certifying ? <Loader2 className="size-3 animate-spin mr-1" /> : null}
@@ -2847,7 +2974,7 @@ export function CampaignDetail({
                 const sc = activity
                   ? { label: DRAFT_ACTIVITY_LABEL[activity], cls: inFlightCls }
                   : delivery !== "not_queued"
-                    ? { label: DELIVERY_BUCKET_LABELS[delivery], cls: DELIVERY_PILL_CLS[delivery] }
+                    ? { label: deliveryLabel(cl), cls: DELIVERY_PILL_CLS[delivery] }
                     : statusConfig[status] ?? statusConfig.none;
                 const showCheckbox = status !== "sent" && delivery === "not_queued";
                 const canCheck = showCheckbox;
@@ -2964,6 +3091,15 @@ export function CampaignDetail({
                         );
                       })()}
                     </button>
+                    {selected.leads?.replaces_lead_id && (
+                      <span
+                        title={replacesTooltip(selected)}
+                        className="shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-secondary border border-border font-mono text-[10px] font-semibold uppercase tracking-wider text-muted-foreground"
+                      >
+                        <UserPlus className="size-3.5" />
+                        Replacement
+                      </span>
+                    )}
                     {/* Sits outside the card's open-lead button so the click
                         opens the replace dialog, not the lead drawer. */}
                     {deliveryBucket(selected) === "bounced" && (
@@ -3065,7 +3201,106 @@ export function CampaignDetail({
                   )}
                 </div>
 
+                {/* A replacement carries its origin wherever it is opened —
+                    otherwise a contact nobody imported just appears in a
+                    running campaign with no explanation. */}
+                {selectedOriginal && (
+                  <div className="max-w-2xl mx-auto w-full flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border border-border bg-secondary/30 px-3 py-2 text-xs text-muted-foreground">
+                    <span className="font-mono text-[10px] font-semibold uppercase tracking-wider text-foreground/70">
+                      Replacement for
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleOpenInOutbox(selectedOriginal.id)}
+                      className="font-semibold text-primary underline-offset-2 hover:underline"
+                    >
+                      {[selectedOriginal.leads?.first_name, selectedOriginal.leads?.last_name].filter(Boolean).join(" ") || "the bounced contact"}
+                    </button>
+                    {selectedOriginal.leads?.email && (
+                      <span className="font-mono text-[11px] line-through opacity-70">{selectedOriginal.leads.email}</span>
+                    )}
+                    <span>
+                      bounced{selectedOriginal.bounced_at ? ` ${format(new Date(selectedOriginal.bounced_at), "d MMM")}` : ""}
+                    </span>
+                  </div>
+                )}
+
+                {/* The handoff: what a replaced bounce shows instead of a dead
+                    thread. What happened, who covers it now, who decided that. */}
+                {isReplacedBounce && !bouncedThreadOpen && (
+                  <div className="max-w-2xl mx-auto w-full rounded-xl border border-border bg-card p-6 flex flex-col items-center gap-4 text-center">
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-red-500/15 border border-red-500/30 font-mono text-[10px] font-semibold uppercase tracking-wide text-red-500">
+                      Bounced{selected.bounced_at ? ` ${format(new Date(selected.bounced_at), "d MMM yyyy")}` : ""}
+                    </span>
+                    <div className="space-y-1.5">
+                      <p className="font-display text-sm font-semibold text-foreground">This mailbox rejected our email.</p>
+                      <p className="text-xs text-muted-foreground max-w-sm mx-auto">
+                        The message was never read, so there is nothing here to review or send.
+                        {" "}Outreach to {selected.leads?.company_name || "this company"} continues with the contact below.
+                      </p>
+                    </div>
+
+                    {selectedReplacement ? (
+                      <button
+                        type="button"
+                        onClick={() => handleOpenInOutbox(selectedReplacement.id)}
+                        className="w-full max-w-sm flex items-center gap-3 rounded-lg border border-primary/40 bg-primary/5 px-3 py-2.5 text-left transition-colors hover:border-primary hover:bg-primary/10"
+                      >
+                        <Avatar
+                          name={[selectedReplacement.leads?.first_name, selectedReplacement.leads?.last_name].filter(Boolean).join(" ") || "?"}
+                          size="sm"
+                        />
+                        <span className="min-w-0">
+                          <span className="block text-sm font-semibold text-foreground truncate">
+                            {[selectedReplacement.leads?.first_name, selectedReplacement.leads?.last_name].filter(Boolean).join(" ") || "Replacement contact"}
+                          </span>
+                          <span className="block font-mono text-[11px] text-muted-foreground truncate">
+                            {selectedReplacement.leads?.email}
+                          </span>
+                        </span>
+                        <ArrowRight className="ml-auto size-4 shrink-0 text-primary" />
+                      </button>
+                    ) : (
+                      // The replacement exists but isn't on this screen — a
+                      // co-worker owns it, so an employee can't see it.
+                      <p className="text-xs text-muted-foreground">A replacement contact was added at this company.</p>
+                    )}
+                    {selectedReplacement && (
+                      <p className="text-[11px] text-muted-foreground">Opens their email, ready to certify</p>
+                    )}
+
+                    <div className="w-full border-t border-border pt-3 text-[11px] text-muted-foreground">
+                      {selected.replaced_by_user_name && (
+                        <>
+                          Added by {selected.replaced_by_user_name}
+                          {selected.replaced_at ? ` on ${format(new Date(selected.replaced_at), "d MMM")}` : ""}
+                          {" · "}
+                        </>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setBouncedThreadOpen(true)}
+                        className="underline underline-offset-2 hover:text-foreground"
+                      >
+                        View the email that bounced
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {isReplacedBounce && bouncedThreadOpen && (
+                  <div className="max-w-2xl mx-auto w-full flex items-center justify-between gap-3 rounded-lg border border-border bg-secondary/30 px-3 py-2">
+                    <p className="text-xs text-muted-foreground">
+                      This email bounced and was never read — kept only as a record.
+                    </p>
+                    <Button size="sm" variant="ghost" className="shrink-0 text-xs" onClick={() => setBouncedThreadOpen(false)}>
+                      Hide
+                    </Button>
+                  </div>
+                )}
+
                 {/* Initial email — editor while pending, bubble once sent */}
+                {(!isReplacedBounce || bouncedThreadOpen) && (<>
                 {selected.email_drafts?.status === "generating" || regenerating || getDraftActivity(selected) ? (
                   <div className="max-w-2xl mx-auto rounded-xl border border-border bg-card p-6 space-y-4 animate-pulse">
                     <div className="flex items-center gap-2 mb-2">
@@ -3170,7 +3405,7 @@ export function CampaignDetail({
                             {saving ? <Loader2 className="size-3.5 animate-spin" /> : <Save className="size-3.5" />}
                             Save edits
                           </Button>
-                          <Button className="gap-1.5" disabled={certifying} onClick={() => handleCertifyOne(selected.email_drafts!.id)}>
+                          <Button className="gap-1.5" disabled={certifying || regenJobActive} title={regenJobActive ? "A regeneration is running — certifying is paused until it finishes" : undefined} onClick={() => handleCertifyOne(selected.email_drafts!.id)}>
                             {certifying ? <Loader2 className="size-3.5 animate-spin" /> : <Check className="size-3.5" />}
                             Certify
                           </Button>
@@ -3312,6 +3547,7 @@ export function CampaignDetail({
                         isUnanswered={item.isUnanswered}
                         isReplyTarget={outboxReplyOpen && !!item.replyTargetId && item.replyTargetId === outboxActiveTargetId}
                         inReplyToLabel={item.inReplyToLabel}
+                        stepLabel={item.stepLabel}
                         addingLead={outboxSavingLead && outboxAddLeadFor === item.promotableEmail}
                         onAddAsLead={item.promotableEmail
                           ? () => setOutboxAddLeadFor(item.promotableEmail)
@@ -3345,6 +3581,7 @@ export function CampaignDetail({
                 ) : (
                   <EmptyState message="No draft available for this lead." className="max-w-2xl mx-auto" />
                 )}
+                </>)}
 
                 {/* Reply to the latest inbound message. Opens a plain composer;
                     the AI only writes a draft when "AI draft" is pressed. */}
