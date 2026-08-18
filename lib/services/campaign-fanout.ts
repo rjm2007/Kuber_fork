@@ -341,8 +341,26 @@ export async function sendCampaign(
           await patchInstantlySequences(instId, steps);
         }
 
+        // A lead is eligible on crm_status='approved', but that column does NOT
+        // move when the draft underneath it is regenerated — reopening a certified
+        // email leaves the lead 'approved' while its step-1 draft sits in
+        // 'generating'. draftsForLead then returns nothing for step 1, and the
+        // fallback below only seeds FOLLOW-UP steps, so Instantly would render the
+        // step-1 template's {{customBody}} as empty: a blank opening email to a
+        // real prospect. Drop those leads instead; they stay eligible and go out
+        // on the next send, once the rewrite has landed and been certified.
+        const notReady = b.rows.filter(
+          (r) => !draftMap.get(r.lead_id)?.has(1),
+        );
+        if (notReady.length > 0) {
+          bucketErrors.push(
+            `${notReady.length} lead(s) skipped — their opening email is still being written or is not certified yet.`,
+          );
+        }
+        const readyRows = b.rows.filter((r) => draftMap.get(r.lead_id)?.has(1));
+
         // Build per-lead payloads (carry leadId so we can flip their drafts to 'sent')
-        const payloads = b.rows.map((r) => {
+        const payloads = readyRows.map((r) => {
           const lead = Array.isArray(r.leads) ? r.leads[0] : r.leads;
           const firstName = (lead?.first_name ?? "").trim() || "there";
           const vars = buildCustomVariables(draftsForLead(r.lead_id), campaign.sender_name);
@@ -433,8 +451,10 @@ export async function sendCampaign(
         }
 
         // Update sub-campaign counters with the ACTUAL accepted count.
+        // readyRows, not b.rows: leads held back for an unfinished draft were
+        // never pushed, so counting them here would overstate the sub-campaign.
         await db.from("instantly_campaigns").update({
-          lead_count: b.rows.length,
+          lead_count: readyRows.length,
           sent_count: bucketSent,
           updated_at: new Date().toISOString(),
         }).eq("id", sub!.id);

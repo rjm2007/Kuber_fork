@@ -101,11 +101,29 @@ export async function regenerateOneDraft(
 
   const nextVersion = (oldDraft.version ?? 1) + 1;
 
-  await db.from("email_drafts").update({
+  // Re-assert `allowed` in the WHERE clause, not just in the check above. Several
+  // database round-trips separate that check from this write, and a user pressing
+  // Certify inside that window used to be steamrolled: the status read said
+  // 'draft', the approval landed, and this update then demoted an APPROVED draft
+  // to 'rejected' anyway. One lead on APOLLO CAMPAIGN 1 was certified 1.3s before
+  // a bulk job reached it, got regenerated out from under the approval, and was
+  // sent and followed up on while still displaying "Certified".
+  //
+  // A single UPDATE ... WHERE status IN (...) is atomic, so the loser of the race
+  // now matches zero rows and backs out instead of overwriting the winner.
+  const { data: demoted } = await db.from("email_drafts").update({
     status: "rejected",
     rejection_reason: "superseded by regeneration",
     updated_at: new Date().toISOString(),
-  }).eq("id", draftId);
+  }).eq("id", draftId).in("status", allowed).select("id");
+
+  if (!demoted || demoted.length === 0) {
+    return {
+      ok: false,
+      code: "CONFLICT",
+      reason: "Draft changed status while regeneration was starting — not regenerated",
+    };
+  }
 
   /** Puts the previous draft back the way it was, so a failure loses nothing. */
   async function revertOldDraft() {

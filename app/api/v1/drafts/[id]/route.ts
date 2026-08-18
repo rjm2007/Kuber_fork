@@ -6,6 +6,7 @@ import { syncApprovedDraftToInstantly } from "@/lib/services/draft-sync";
 import { assertDraftAccess } from "@/lib/auth/scope";
 import { logLeadEvent } from "@/lib/services/lead-events";
 import { dbForUser } from "@/lib/supabase/scoped";
+import { getActiveJob } from "@/lib/services/regeneration-jobs";
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   let user: Awaited<ReturnType<typeof requireAuth>>;
@@ -37,10 +38,31 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (parsed.data.action === "approve") {
     if (draft.status !== "draft") return fail(409, "CONFLICT", `Cannot approve a draft with status '${draft.status}'`);
 
+    // A bulk regeneration is about to rewrite these drafts, so certifying one
+    // mid-run is work the run is going to throw away — and it is what produced
+    // the certified-yet-already-sent lead on APOLLO CAMPAIGN 1. The status check
+    // above cannot see it: a lead still sitting in the job queue reads 'draft'
+    // right up until the worker reaches it. Refuse for the whole campaign+step
+    // while a run is live rather than let reviewers race a background job.
+    const activeJob = await getActiveJob(db, draft.campaign_id, draft.step_number ?? 1);
+    if (activeJob) {
+      return fail(409, "CONFLICT", "A regeneration is running for this campaign — wait for it to finish before certifying.");
+    }
+
     await db.from("email_drafts").update({ status: "approved", approved_at: now, reviewed_by: user.id, updated_at: now }).eq("id", id);
     // Follow-ups never own campaign_leads.draft_id (see generateOneDraft), so
     // this naturally no-ops for them — only step 1 drives the primary status.
-    await db.from("campaign_leads").update({ crm_status: "approved", updated_at: now }).eq("draft_id", id);
+    //
+    // instantly_campaign_id IS NULL is the "not handed off yet" guard, the same
+    // predicate campaign-fanout uses to pick eligible leads. Without it, approving
+    // a draft that finished regenerating AFTER the send had already gone out
+    // rewound the lead from 'sent' back to 'approved' — leaving a lead Instantly
+    // had genuinely mailed (and later followed up on) still wearing a "Certified"
+    // pill. Seen live on APOLLO CAMPAIGN 1: sent 11:12:20, approved 11:13:04.
+    await db.from("campaign_leads")
+      .update({ crm_status: "approved", updated_at: now })
+      .eq("draft_id", id)
+      .is("instantly_campaign_id", null);
     await syncApprovedDraftToInstantly(db, draft.lead_id, draft.campaign_id);
     await logLeadEvent(db, draft.lead_id, "draft_approved", `Email draft approved${which}`, { actorId: user.id, metadata: draftMeta });
     return ok({ id, status: "approved" });

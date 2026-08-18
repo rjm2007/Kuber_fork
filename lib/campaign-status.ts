@@ -62,6 +62,12 @@ export type DeliveryBucket =
 export type DeliveryLeadLike = {
   crm_status: string;
   first_sent_at?: string | null;
+  /** Highest Instantly sequence step actually delivered to this lead, from the
+   *  email_sent webhooks (`reply_events.step`). Step 1 is the opening email, so
+   *  step N is follow-up N-1. NULL/1 = no follow-up has gone out yet. */
+  last_step_sent?: number | null;
+  /** Which sequence step the address rejected (1 = the opening email). */
+  bounced_step?: number | null;
 };
 
 /**
@@ -115,6 +121,51 @@ export const DELIVERY_BUCKET_LABELS: Record<DeliveryBucket, string> = {
   bounced:     "Bounced",
   send_failed: "Send failed",
 };
+
+/**
+ * Per-lead badge text. Same buckets as above — this only makes the "sent" one
+ * say WHICH mail was the last to land, because `first_sent_at` is written once
+ * on the opening email and never again, so a lead three follow-ups deep read
+ * identically to one that had just been contacted.
+ *
+ * Derived from the highest step actually delivered, so a campaign with a single
+ * follow-up can never render past "Follow-up 1 sent" — there is no step 3 to
+ * report. No per-campaign cap to configure.
+ *
+ * Replied/send_failed keep their plain labels — which step triggered them is
+ * timeline detail, not the headline. Bounced is the exception: see below.
+ */
+export function deliveryLabel(cl: DeliveryLeadLike): string {
+  const bucket = deliveryBucket(cl);
+  const step = cl.last_step_sent ?? 1;
+  if (bucket === "sent" && step > 1) return `Follow-up ${step - 1} sent`;
+  // Two very different stories wear the same red badge: an address that was dead
+  // from the start (bounced on the opening mail, never chased again) and one that
+  // died between sends — reachable in August, gone by the follow-up. Only the
+  // second is worth a second look at the contact, so say which happened.
+  const bStep = cl.bounced_step ?? 1;
+  if (bucket === "bounced" && bStep > 1) return `Bounced on follow-up ${bStep - 1}`;
+  return DELIVERY_BUCKET_LABELS[bucket];
+}
+
+/**
+ * Human name for one send in the sequence.
+ *
+ * Instantly tags a campaign send `sequence_step_variant` — "0_0_0" is the
+ * opening email, "0_1_0" the first follow-up — and the Unibox was printing that
+ * raw as "Step 0_1_0", which tells a salesperson nothing. Also accepts the plain
+ * one-based number `reply_events.step` stores, so both sources share one label.
+ */
+export function sequenceStepLabel(step: string | number | null | undefined): string | null {
+  if (step === null || step === undefined || step === "") return null;
+  const raw = String(step);
+  const parts = raw.split("_");
+  // Instantly's middle segment is a ZERO-based step index; a bare number is the
+  // one-based step, so it has to come down by one to mean the same thing.
+  const index = parts.length >= 2 ? Number(parts[1]) : Number(raw) - 1;
+  if (!Number.isFinite(index) || index < 0) return null;
+  return index === 0 ? "Opening email" : `Follow-up ${index}`;
+}
 
 /** Chip order in the leads filter — worst news last so it stays noticeable. */
 export const DELIVERY_BUCKET_ORDER: DeliveryBucket[] = [

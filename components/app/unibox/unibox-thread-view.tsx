@@ -7,6 +7,7 @@ import { ChevronDown, CornerDownRight, ExternalLink, Loader2, Reply, ReplyAll, U
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { splitQuotedBody, emailPreview } from "@/lib/email-display";
+import { sequenceStepLabel } from "@/lib/campaign-status";
 import { convertResidualMarkdownInHtml } from "@/lib/utils/email-html";
 import type { ReplyDraft, UniboxMessage } from "@/lib/api-client";
 import { addThreadParticipantAsLead, generateReplyDraftForThread } from "@/lib/api-client";
@@ -262,9 +263,12 @@ function MessageRow({
           <p className="text-muted-foreground italic">(empty message)</p>
         )}
         {quoted && <QuotedBlock quoted={quoted} isHtml={isHtml} />}
-        {m.step && isOutbound && (
+        {/* Instantly's raw step tag is "0_1_0" — meaningless to a salesperson.
+            Same wording as the campaign Outbox so one thread reads identically
+            in both places. */}
+        {m.step && isOutbound && sequenceStepLabel(m.step) && (
           <span className="inline-block mt-2 font-mono text-[10px] uppercase tracking-wide text-muted-foreground">
-            Step {m.step}
+            {sequenceStepLabel(m.step)}
           </span>
         )}
         {/* Answering a specific message is the only way to choose the

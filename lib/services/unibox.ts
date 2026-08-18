@@ -1164,6 +1164,11 @@ export async function getCampaignReplyThreads(db: Db, campaignId: string) {
     // Outbound replies read from the mirrored mail itself rather than
     // reconstructed from reply_drafts: a draft records what we composed, only
     // the sent message records who actually received it.
+    //
+    // Manual replies ONLY. The sequence's own sends ('sent_campaign') reach the
+    // Outbox through the campaign leads API instead — pulling them here would
+    // mean running getThreadMessages for every lead in the campaign, not just
+    // the handful who replied, which is ~5 queries each.
     const sentMessages = detail.messages
       .filter((m) => m.direction === "sent_manual")
       .map((m) => ({
@@ -1177,6 +1182,8 @@ export async function getCampaignReplyThreads(db: Db, campaignId: string) {
         sent_at: m.timestamp_email,
         sent_by_name: m.sent_by_name,
         in_reply_to_email_id: m.in_reply_to_email_id,
+        /** Instantly's "0_1_0"; null on a manual reply, which is not a sequence step. */
+        step: m.direction === "sent_campaign" ? (m.step as string | null) : null,
       }));
 
     out.push({
