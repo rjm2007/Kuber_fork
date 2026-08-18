@@ -112,15 +112,21 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   } else {
     const { data: created, error: insErr } = await db
       .from("leads")
-      .insert(buildReplacementLead(
-        {
-          organization_id: bounced.organization_id,
-          assigned_to: bounced.assigned_to,
-          country: bounced.country,
-        },
-        parsed.data,
-        user.id,
-      ))
+      .insert({
+        ...buildReplacementLead(
+          {
+            organization_id: bounced.organization_id,
+            assigned_to: bounced.assigned_to,
+            country: bounced.country,
+          },
+          parsed.data,
+          user.id,
+        ),
+        // Who this contact stands in for. The reverse pointer
+        // (campaign_leads.replaced_by_lead_id) answers "was this bounce
+        // handled?"; this one answers "where did this person come from?".
+        replaces_lead_id: cl.lead_id,
+      })
       .select("id")
       .single();
     if (insErr) return fail(500, "INTERNAL", insErr.message);
@@ -164,8 +170,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // which is otherwise indistinguishable from an untouched bounce.
   await db.from("campaign_leads").update({
     replaced_by_lead_id: leadId,
+    replaced_at: now,
+    replaced_by_user_id: user.id,
     updated_at: now,
   }).eq("id", cl.id);
+
+  // Retire the bounced contact: the address is dead and nobody should work,
+  // assign or re-campaign it. is_deleted alone, deliberately NOT
+  // removeLeadFromOutreach() — that closes the campaign membership, which would
+  // drop this row out of the Bounced filter and out of bounced_count. The
+  // campaign_leads row (and every count built on it) is untouched; only the
+  // person leaves the Leads list.
+  await db.from("leads").update({ is_deleted: true, updated_at: now }).eq("id", cl.lead_id);
 
   const { count } = await db
     .from("campaign_leads")
@@ -180,12 +196,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     actorId: user.id,
     metadata: { campaign_id: cl.campaign_id, replaces_lead_id: cl.lead_id, reused_existing_lead: reused },
   });
-  // The bounced lead stays exactly where it is — still bounced, still counted in
-  // bounced_count. This line is only so its timeline says where the outreach went.
-  await logLeadEvent(db, cl.lead_id as string, "status_changed", `Bounced — replaced by ${email} in "${campaignName}"`, {
-    actorId: user.id,
-    metadata: { campaign_id: cl.campaign_id, replacement_lead_id: leadId },
-  });
+  // The bounced row stays exactly where it is in the campaign — still bounced,
+  // still counted. Only the person is retired from the Leads list.
+  await logLeadEvent(db, cl.lead_id as string, "status_changed",
+    `Bounced — replaced by ${email} in "${campaignName}", and removed from the leads list`, {
+      actorId: user.id,
+      metadata: { campaign_id: cl.campaign_id, replacement_lead_id: leadId, soft_deleted: true },
+    });
 
   // Draft the new lead. fetchDraftTargets only picks campaign_leads with
   // draft_id IS NULL, so firing the campaign-wide generator writes exactly one

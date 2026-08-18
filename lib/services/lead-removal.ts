@@ -47,6 +47,24 @@ export async function removeLeadFromOutreach(db: Db, leadId: string): Promise<Le
     memberships_removed: 0,
   };
 
+  // This lead may have been someone else's bounce replacement. Deleting it
+  // without clearing those pointers leaves the bounced row wearing a green
+  // "Replaced" marker with nothing behind it — which tells the next person the
+  // bounce is handled when it no longer is. Runs BEFORE the no-memberships
+  // early return: a replacement's own membership is hard-removed by the
+  // pre-send branch below, so on a re-run there is nothing left to iterate and
+  // the stale pointer would survive forever.
+  const { data: unlinked } = await db
+    .from("campaign_leads")
+    .update({ replaced_by_lead_id: null, updated_at: new Date().toISOString() })
+    .eq("replaced_by_lead_id", leadId)
+    .select("lead_id, campaign_id");
+  for (const row of unlinked ?? []) {
+    await logLeadEvent(db, row.lead_id as string, "status_changed",
+      "Replacement contact was deleted — this bounce needs attention again",
+      { metadata: { campaign_id: row.campaign_id, deleted_replacement_lead_id: leadId } });
+  }
+
   const { data: memberships } = await db
     .from("campaign_leads")
     .select("id, campaign_id, crm_status, instantly_lead_id, campaigns(name)")
