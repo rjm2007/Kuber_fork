@@ -3914,6 +3914,49 @@ export function CampaignDetail({
               </div>
             )}
           </div>
+
+          {/* Right rail: leads who have actually received this step */}
+          {activeSeqStep && (() => {
+            const receivedLeads = campaignLeads.filter((cl) => (cl.last_step_sent ?? 0) >= activeSeqStep.step_order);
+            return (
+              <div className="w-72 shrink-0 border-l border-border flex flex-col overflow-y-auto p-4 gap-2">
+                <p className="eyebrow shrink-0">
+                  Step {sequenceDisplayStep(activeSeqStep.step_order)} delivered ({receivedLeads.length}/{campaignLeads.length})
+                </p>
+                {receivedLeads.length === 0 ? (
+                  <p className="text-xs text-muted-foreground py-4">No leads have received this step yet.</p>
+                ) : (
+                  receivedLeads.map((cl) => {
+                    const name = [cl.leads?.first_name, cl.leads?.last_name].filter(Boolean).join(" ") || "Unknown";
+                    const delivery = deliveryBucket(cl);
+                    return (
+                      <button
+                        key={cl.id}
+                        type="button"
+                        onClick={() => { setSelectedId(cl.id); setViewTab("outbox"); }}
+                        title="Open this lead's mail thread in Outbox"
+                        className="flex items-center gap-2 rounded-lg border border-border bg-field hover:border-primary/40 px-3 py-2 text-left transition-colors"
+                      >
+                        <Avatar name={name} size="sm" />
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs font-medium truncate">{name}</p>
+                          <p className="text-[11px] text-muted-foreground truncate">{cl.leads?.title || cl.leads?.email}</p>
+                        </div>
+                        {(delivery === "replied" || delivery === "bounced") && (
+                          <span className={cn(
+                            "shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase",
+                            delivery === "replied" ? "bg-blue-500/15 text-blue-600" : "bg-destructive/15 text-destructive",
+                          )}>
+                            {delivery === "replied" ? "Replied" : "Bounced"}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+            );
+          })()}
         </div>
       )}
 
