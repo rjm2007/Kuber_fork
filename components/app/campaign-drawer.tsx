@@ -373,6 +373,14 @@ function hasUpcomingFollowup(
   return sentSoFar < 1 + followUpCount;
 }
 
+/** True once at least one follow-up (step 2+) has actually gone out —
+ *  independent of current status, so a lead who later replied or bounced
+ *  still counts here (they did receive it). Complements hasUpcomingFollowup
+ *  above: "due" looks forward, "sent" looks back. */
+function hasReceivedFollowup(cl: DeliveryLeadLike): boolean {
+  return (cl.last_step_sent ?? 1) >= 2;
+}
+
 function sequenceDisplayStep(stepOrder: number): number {
   return stepOrder - 1;
 }
@@ -686,7 +694,7 @@ export function CampaignDetail({
   const [error, setError] = useState("");
   const [configOpen, setConfigOpen] = useState(false);
   const [leadsSort, setLeadsSort] = useState<CampaignLeadsSort>("az");
-  const [leadsDelivery, setLeadsDelivery] = useState<DeliveryBucket | "all" | "followup">("all");
+  const [leadsDelivery, setLeadsDelivery] = useState<DeliveryBucket | "all" | "followup" | "followup_sent">("all");
   const [leadsViewMode, setLeadsViewMode] = useState<"list" | "kanban">("list");
   const [historyOpen, setHistoryOpen] = useState(false);
   const [versions, setVersions] = useState<Array<{ id: string; subject: string | null; body: string | null; status: string; version: number; created_at: string }>>([]);
@@ -709,7 +717,7 @@ export function CampaignDetail({
   const [replaceError, setReplaceError] = useState("");
   const [threads, setThreads] = useState<CampaignReplyThread[]>([]);
   const [outboxFilter, setOutboxFilter] = useState<
-    "all" | "action" | "certified" | "sending" | "sent" | "replied" | "bounced" | "followup"
+    "all" | "action" | "certified" | "sending" | "sent" | "replied" | "bounced" | "followup" | "followup_sent"
   >("all");
   const [outboxExpandOverrides, setOutboxExpandOverrides] = useState<Set<string>>(new Set());
   const [outboxReplyOpen, setOutboxReplyOpen] = useState(false);
@@ -1763,11 +1771,14 @@ export function CampaignDetail({
     return acc;
   }, {} as Partial<Record<DeliveryBucket, number>>);
   const followupDueCount = campaignLeads.filter((cl) => hasUpcomingFollowup(cl, campaignSteps)).length;
+  const followupSentCount = campaignLeads.filter(hasReceivedFollowup).length;
 
   // Applied before the split into list/kanban so BOTH views honour the filter.
   const sortedCampaignLeads = sortCampaignLeads(campaignLeads, leadsSort)
     .filter((cl) => leadsDelivery === "all"
-      || (leadsDelivery === "followup" ? hasUpcomingFollowup(cl, campaignSteps) : deliveryBucket(cl) === leadsDelivery));
+      || (leadsDelivery === "followup" ? hasUpcomingFollowup(cl, campaignSteps)
+        : leadsDelivery === "followup_sent" ? hasReceivedFollowup(cl)
+        : deliveryBucket(cl) === leadsDelivery));
 
   const filteredLeads = sortedCampaignLeads.filter((cl) => {
     if (!leadsSearch) return true;
@@ -2065,6 +2076,7 @@ export function CampaignDetail({
     { id: "certified", label: "Certified" },
     { id: "sending",   label: "Sending" },
     { id: "sent",      label: "Sent" },
+    { id: "followup_sent", label: "Follow-up sent" },
     { id: "followup",  label: "Follow-up due" },
     { id: "replied",   label: "Replied" },
     { id: "bounced",   label: "Bounced" },
@@ -2082,6 +2094,7 @@ export function CampaignDetail({
     if (filter === "sending") return delivery === "sending";
     if (filter === "sent") return delivery === "sent";
     if (filter === "followup") return hasUpcomingFollowup(cl, campaignSteps);
+    if (filter === "followup_sent") return hasReceivedFollowup(cl);
     if (filter === "bounced") return delivery === "bounced";
     if (filter === "replied") return delivery === "replied" || !!thread;
     if (filter === "action") {
@@ -2538,7 +2551,7 @@ export function CampaignDetail({
                 Leads table pattern. "Not queued" and "Send failed" are left
                 out of the picker entirely (not meaningful filters day-to-day);
                 the remaining buckets only show up once they're non-empty. */}
-            <Select value={leadsDelivery} onValueChange={(v) => setLeadsDelivery(v as DeliveryBucket | "all" | "followup")}>
+            <Select value={leadsDelivery} onValueChange={(v) => setLeadsDelivery(v as DeliveryBucket | "all" | "followup" | "followup_sent")}>
               <SelectTrigger className="h-8 w-36 gap-2 rounded-md px-3 text-xs shadow-sm">
                 <SelectValue />
               </SelectTrigger>
@@ -2551,6 +2564,9 @@ export function CampaignDetail({
                       {DELIVERY_BUCKET_LABELS[b]} ({deliveryCounts[b] ?? 0})
                     </SelectItem>
                   ))}
+                {followupSentCount > 0 && (
+                  <SelectItem value="followup_sent">Follow-up sent ({followupSentCount})</SelectItem>
+                )}
                 {followupDueCount > 0 && (
                   <SelectItem value="followup">Follow-up due ({followupDueCount})</SelectItem>
                 )}
