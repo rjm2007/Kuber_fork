@@ -319,15 +319,19 @@
       <p>A table of returned matches, structured so near-identical names can be distinguished at a glance:</p>
       <div class="tw">
         <table>
-          <thead><tr><th>Company</th><th>Location</th><th style="text-align:right">Employees</th><th>Website</th><th>Status</th></tr></thead>
+          <thead><tr><th>Company</th><th style="text-align:right">Founded</th><th>Website</th><th>Status</th></tr></thead>
           <tbody>
-            <tr><td>ABC Plastics Ltd</td><td>Kenya</td><td class="n">120</td><td>abcplastics.co.ke</td><td>New</td></tr>
-            <tr><td>ABC Industries</td><td>Kenya</td><td class="n">80</td><td>abcindustries.com</td><td>Already in system</td></tr>
-            <tr><td>ABC Plastic Group</td><td>Nigeria</td><td class="n">450</td><td>abcgroup.com</td><td>New</td></tr>
+            <tr><td>ABC Plastics Ltd</td><td class="n">1998</td><td>abcplastics.co.ke</td><td>New</td></tr>
+            <tr><td>ABC Industries</td><td class="n">2004</td><td>abcindustries.com</td><td>Already in system</td></tr>
+            <tr><td>ABC Plastic Group</td><td class="n">1987</td><td>abcgroup.com</td><td>New</td></tr>
           </tbody>
         </table>
       </div>
-      <p>Company name, website and Apollo organization ID are confirmed as available in the response. The exact field names for employee count and location require confirmation against a live response — see §19. <span class="tag t-ver">Requires verification</span></p>
+      <p><strong>Revised 18 August 2026.</strong> This mockup originally showed Location and Employees columns.
+    Neither field is in the Organization Search response under any field name, so both rendered a dash on every
+    row once built, and both have been removed — from the mockup above and from the shipped table. Founded year
+    replaces them: it is returned, and it helps separate same-name companies. Company name, website, Apollo
+    organization ID, logo, founded year and the social URLs are confirmed present. See §19 for the measurement.</p>
 
       <h4 style="margin-top:1rem">Result states</h4>
       <div class="tw">
@@ -438,7 +442,11 @@
     <h3>Organization Search — request and response</h3>
     <p>Confirmed request parameters relevant to this feature: <code>q_organization_name</code>, <code>organization_locations[]</code>, <code>organization_not_locations[]</code>, <code>q_organization_domains_list[]</code>, <code>organization_num_employees_ranges[]</code>, <code>organization_ids[]</code>, <code>q_organization_keyword_tags[]</code>, <code>revenue_range[min|max]</code>, <code>page</code>, <code>per_page</code>. <span class="tag t-ok">Confirmed — Apollo docs</span></p>
     <p>The response returns an <code>organizations</code> array. Each organization carries an <code>id</code> — Apollo's organization identifier — together with <code>primary_domain</code>, <code>website_url</code>, <code>linkedin_url</code>, <code>logo_url</code>, <code>founded_year</code> and <code>phone</code>. <span class="tag t-ok">Confirmed — Apollo docs</span></p>
-    <p><strong>Ambiguity to resolve.</strong> The published field listing does not clearly enumerate employee count, country, city, state or industry on this response, while secondary API references describe employee count and location as present. This documentation is ambiguous and the exact field names must be confirmed against a live response before the results table in §6 Step 2 is finalised. <span class="tag t-ver">Requires verification</span></p>
+    <p><strong>Resolved 18 August 2026.</strong> The published field listing was right and the secondary references
+    were wrong: employee count, country, city, state and industry are not on this response. The ambiguity was called
+    correctly here, but the results table was finalised before anyone settled it — the columns shipped, and every cell
+    in them was a dash. The lesson worth keeping is that a fixture cannot settle a question like this, because the
+    fixture is written by whoever holds the assumption; only the live response or the vendor schema can.</p>
     <p>Authentication: a Master API key is described as acceptable but not required for this endpoint. <span class="tag t-ok">Confirmed — Apollo docs</span></p>
   </div>
 
@@ -508,7 +516,12 @@
   <div class="sub">
     <h3>Credit ledger accuracy</h3>
     <p>The Organization Search credit must be written to the existing credit ledger so that Settings → Keys → Usage remains accurate. That screen totals credits by reading the logged payload across Apollo-sourced log rows without filtering on event name, so exactly <strong>one</strong> ledger row per search keeps the figure correct. A duplicate row double-counts; a missing row silently under-reports. <span class="tag t-code">Confirmed — implementation</span></p>
-    <p><strong>Open technical risk.</strong> Apollo operates several credit categories. Secondary documentation indicates that API search endpoints draw on export credits and that API usage shares the same monthly pool as the platform interface, but this is not stated unambiguously in the primary endpoint documentation. The platform's balance check reads one specific counter; if Organization Search decrements a different one, the pre-flight balance check will not account for this spend and the usage screen will under-report it. This is resolvable definitively by reading the balance, issuing one Organization Search request, and reading the balance again. <span class="tag t-ver">Requires verification</span></p>
+    <p><strong>Resolved 18 August 2026 — no under-reporting.</strong> Organization Search decrements
+    <code>num_credits_remaining</code>, the same counter the pre-flight balance check and the usage screen read.
+    Measured two ways: the 12:09 search logged <code>balance_before: 3960</code> and the counter read 3959 after; and
+    across the five days to that point the ledger's logged spend equalled the balance delta exactly (36 = 36), which
+    would not hold if any of it were drawn from a pool we do not watch. A zero-match page decrements nothing
+    (3959 either side) — <code>scripts/apollo-zero-result-credit-probe.ts</code>.</p>
   </div>
 </section>
 
@@ -783,14 +796,14 @@
   <ol class="ac">
     <li><span>Company Lookup appears as a fourth source in Add Leads, visible to managers only, and blocked in the internal/development workspace.</span></li>
     <li><span>A company-name search issues one Organization Search request with <code>per_page = 100</code> and writes exactly one credit-ledger row, which appears in Settings → Keys → Usage.</span></li>
-    <li><span>The ledger row reflects the same credit counter used by the pre-flight balance check. <span class="tag t-ver">Requires verification</span></span></li>
+    <li><span>The ledger row reflects the same credit counter used by the pre-flight balance check. Confirmed 18 Aug 2026 — both read <code>num_credits_remaining</code>; see §17.</span></li>
     <li><span>A search returning no companies consumes no credits and displays an empty state that names what can be changed — spelling, country, website or Advanced filters.</span></li>
     <li><span>Country and Website are optional; a search using only a company name succeeds.</span></li>
     <li><span>Advanced Search is collapsed by default, opens empty, and exposes every remaining Organization Search parameter grouped as company profile, location, funding and hiring signals. The basic form remains three fields.</span></li>
     <li><span>Active Advanced filters remain visible as removable chips when the panel is collapsed, so results are never narrowed by a filter the user cannot see.</span></li>
     <li><span>The people request sends <code>contact_email_status</code> so Apollo returns only contactable people; <code>has_email</code> is additionally checked on the response.</span></li>
     <li><span>Applying Advanced filters changes the results returned and does not change the per-page credit cost.</span></li>
-    <li><span>Results display enough information to distinguish similarly named companies — name, location, employees, website and system status. Exact fields displayed depend on the confirmed response shape. <span class="tag t-ver">Requires verification</span></span></li>
+    <li><span>Results display enough information to distinguish similarly named companies. Settled 18 Aug 2026 against the confirmed response shape: logo, name, founded year, website/domain, the social URLs and system status. Location and employee count are not obtainable at this stage and are no longer promised here.</span></li>
     <li><span>Selection is always explicit. A result set of exactly one company is not auto-selected and does not auto-advance; the first result is never assumed correct; no relevance-based auto-selection occurs in any result state.</span></li>
     <li><span>Paging within already-retrieved results consumes no credits and is available without confirmation.</span></li>
     <li><span>Requesting a further Apollo page is an explicit, labelled, confirmed action stating its one-credit cost, is never triggered by scrolling or by in-page controls, and is capped at three Apollo pages per search session.</span></li>
@@ -1051,13 +1064,34 @@
 
   <div class="sub">
     <h3>Requires live API verification</h3>
+    <p><strong>RESOLVED 18 August 2026 — but only after the feature had already shipped without it.</strong>
+    This section asked for one Organization Search request with balance readings either side before the
+    results table was finalised. That request was never made. The table was built on the assumed field
+    names instead, and the first client-facing search rendered a dash in the Location and Staff column of
+    all 100 rows. The answers below are now measured, not inferred.</p>
     <ul>
-      <li><strong>Organization Search response shape</strong> — exact field names for employee count and location, which determine the columns in the company results table.</li>
-      <li><strong>Credit counter attribution</strong> — whether the Organization Search credit decrements the counter used by the pre-flight balance check and the usage screen.</li>
-      <li><strong>Name-match behaviour</strong> — whether <code>q_organization_name</code> matches exactly, partially or fuzzily, which determines how many candidates a typical search returns and whether additional narrowing guidance is needed.</li>
-      <li><strong>Roster completeness</strong> — confirmation that an organization-scoped People Search returns the full roster once the existing title and seniority filters are bypassed.</li>
+      <li><strong>Organization Search response shape</strong> — exact field names for employee count and location, which determine the columns in the company results table.
+        <br><strong>Answer: the fields are not in the response at all.</strong> <code>estimated_num_employees</code>,
+        <code>city</code>, <code>state</code>, <code>country</code> and <code>industry</code> are absent from
+        <code>mixed_companies/search</code> under every spelling — this is not a naming mismatch. They are
+        available only from <code>organizations/enrich</code> (1 credit per company) or from the reveal already
+        paid for at import, which is where the organization record gets them today. The free People Search
+        carries <code>has_city</code> / <code>has_employee_count</code> booleans, not values. Results table
+        reduced accordingly to Company / Founded / Website.</li>
+      <li><strong>Credit counter attribution</strong> — whether the Organization Search credit decrements the counter used by the pre-flight balance check and the usage screen.
+        <br><strong>Answer: yes, the same counter.</strong> The 12:09 search on 18 Aug logged
+        <code>balance_before: 3960</code> against <code>num_credits_remaining</code>; the same counter read
+        3959 afterwards, and the ledger's logged spend matched the balance delta exactly over the preceding
+        five days (36 = 36). The usage screen does not under-report. A zero-match page is additionally
+        confirmed free — 3959 either side — see <code>scripts/apollo-zero-result-credit-probe.ts</code>.</li>
+      <li><strong>Name-match behaviour</strong> — whether <code>q_organization_name</code> matches exactly, partially or fuzzily, which determines how many candidates a typical search returns and whether additional narrowing guidance is needed.
+        <br><strong>Answer: loose token match.</strong> "Royal Trading" returned 134 matches including
+        <em>Danniyeh Royal Trading</em> and <em>Royal Rose Cosmetics Trading</em> — any result containing the
+        words, in any order or position. The practical consequence runs the other way: a full legal name with
+        suffixes or punctuation often matches nothing, so narrowing guidance is needed for long names, not
+        short ones.</li>
+      <li><strong>Roster completeness</strong> — confirmation that an organization-scoped People Search returns the full roster once the existing title and seniority filters are bypassed. <span class="tag t-ver">Still unverified</span></li>
     </ul>
-    <p>All four are resolved by one Organization Search request with balance readings taken either side, plus one People Search request. Combined cost: one credit.</p>
   </div>
 
   <div class="sub">
@@ -1073,6 +1107,12 @@
     <h4>Summary position</h4>
     <p>No outstanding business decision blocks V1. Engineering can begin immediately on the wizard, search and pagination behaviour, company blocking, lead creation, credit protection and organization matching.</p>
     <p>Two items should be finalised only after the verification request described above: the columns in the company results table, which depend on the confirmed response field names, and the credit-accounting assertions, which depend on which counter Organization Search decrements. Neither prevents the surrounding work from starting.</p>
+    <p><strong>What actually happened.</strong> The surrounding work started, and the two gated items were finalised
+    anyway — on assumptions, with a mock fixture supplying the unconfirmed fields and a self-check asserting they
+    survived. Both were then verified on 18 August 2026, after a client saw the empty columns. The credit-accounting
+    assumption turned out correct; the field-name assumption did not. A gate that nothing enforces is a note, not a
+    gate — if a future PRD marks something as blocking a specific UI decision, the check belongs in the code that makes
+    that decision, not only here.</p>
   </div>
 </section>
 

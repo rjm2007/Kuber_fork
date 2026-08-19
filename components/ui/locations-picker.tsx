@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { AppCheckbox } from "@/components/ui/app-checkbox";
 import { InfoTip } from "@/components/ui/info-tip";
 import { badgeVariants } from "@/components/ui/badge";
+import { SearchInput } from "@/components/ui/search-input";
 import { LOCATION_MAP, LOCATION_CATEGORIES } from "@/lib/constants";
 
 export const ALL_LOCATION_KEYS = Object.keys(LOCATION_MAP);
@@ -29,6 +30,13 @@ export function LocationsGrid({
   onChangeSelected: (v: string[]) => void;
   maxHeightClassName?: string;
 }) {
+  const [query, setQuery] = useState("");
+  const q = query.trim().toLowerCase();
+  // Filter countries, then drop regions left empty — region checkboxes act on what is visible.
+  const regions = q
+    ? LOCATION_CATEGORIES.map((c) => ({ ...c, countries: c.countries.filter((n) => n.toLowerCase().includes(q)) })).filter((c) => c.countries.length > 0)
+    : LOCATION_CATEGORIES;
+
   function toggleCountry(country: string) {
     onChangeSelected(selected.includes(country) ? selected.filter((c) => c !== country) : [...selected, country]);
   }
@@ -58,11 +66,19 @@ export function LocationsGrid({
         </div>
       </div>
 
+      {/* Search */}
+      <div className="px-4 py-2 border-b border-border">
+        <SearchInput value={query} onChange={setQuery} placeholder="Search countries…" size="sm" />
+      </div>
+
       {/* 5-column grid of regions */}
       <div className={cn("grid grid-cols-5 overflow-y-auto", maxHeightClassName)}>
+        {regions.length === 0 && (
+          <p className="col-span-5 px-4 py-6 text-center text-xs text-muted-foreground">No countries match “{query.trim()}”.</p>
+        )}
         {(() => {
-          const cols: (typeof LOCATION_CATEGORIES)[] = [[], [], [], [], []];
-          LOCATION_CATEGORIES.forEach((cat, i) => cols[i % 5].push(cat));
+          const cols: (typeof regions)[] = [[], [], [], [], []];
+          regions.forEach((cat, i) => cols[i % 5].push(cat));
           return cols.map((col, ci) => (
             <div key={ci} className={cn("flex flex-col", ci < 4 && "border-r border-border")}>
               {col.map((region, ri) => {

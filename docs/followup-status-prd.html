@@ -1,0 +1,1041 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Design proposal for follow-up execution status across Kuber's Sequences, Analytics and Leads views, with two live-data findings that change the spec.">
+<title>Has the follow-up gone out?</title>
+
+<style>
+  /* ─── Tokens: light is the base, both dark paths redefine only these ─── */
+  :root {
+    --paper:      #f4f3f7;
+    --card:       #ffffff;
+    --card-2:     #faf9fc;
+    --ink:        #191722;
+    --ink-2:      #55506a;
+    --ink-3:      #8b85a3;
+    --line:       #e4e1ed;
+    --line-soft:  #efedf4;
+    --accent:     #6d4df0;
+    --accent-2:   #efeafe;
+    --sent:       #148f5b;
+    --sent-2:     #e2f5ec;
+    --wait:       #b26a00;
+    --wait-2:     #fdf0dc;
+    --stop:       #6b7280;
+    --stop-2:     #eeeff2;
+    --alert:      #c8342b;
+    --alert-2:    #fbe9e7;
+    --up:         #b9a9f7;
+
+    --display: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+    --ui: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper:     #131118;
+      --card:      #1b1924;
+      --card-2:    #211e2c;
+      --ink:       #ece9f5;
+      --ink-2:     #a9a2c0;
+      --ink-3:     #7b7496;
+      --line:      #2b2838;
+      --line-soft: #24212f;
+      --accent:    #9d84ff;
+      --accent-2:  #251f3d;
+      --sent:      #4ecf95;
+      --sent-2:    #14301f;
+      --wait:      #e8a33d;
+      --wait-2:    #33260f;
+      --stop:      #8b93a3;
+      --stop-2:    #23262e;
+      --alert:     #f2705f;
+      --alert-2:   #331714;
+      --up:        #4b3d80;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper:     #131118;
+    --card:      #1b1924;
+    --card-2:    #211e2c;
+    --ink:       #ece9f5;
+    --ink-2:     #a9a2c0;
+    --ink-3:     #7b7496;
+    --line:      #2b2838;
+    --line-soft: #24212f;
+    --accent:    #9d84ff;
+    --accent-2:  #251f3d;
+    --sent:      #4ecf95;
+    --sent-2:    #14301f;
+    --wait:      #e8a33d;
+    --wait-2:    #33260f;
+    --stop:      #8b93a3;
+    --stop-2:    #23262e;
+    --alert:     #f2705f;
+    --alert-2:   #331714;
+    --up:        #4b3d80;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--display);
+    font-size: 17px;
+    line-height: 1.62;
+    margin: 0;
+    padding: 0 20px 96px;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap { max-width: 1080px; margin: 0 auto; }
+  .col  { max-width: 68ch; }
+
+  /* ─── Masthead ─── */
+  header.top {
+    padding: 72px 0 40px;
+    border-bottom: 1px solid var(--line);
+    margin-bottom: 48px;
+  }
+  .eyebrow {
+    font-family: var(--ui);
+    font-size: 10.5px;
+    font-weight: 650;
+    letter-spacing: .13em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0 0 18px;
+  }
+  h1 {
+    font-size: clamp(34px, 5.4vw, 56px);
+    line-height: 1.04;
+    letter-spacing: -.022em;
+    font-weight: 600;
+    margin: 0 0 20px;
+    text-wrap: balance;
+  }
+  .standfirst {
+    font-size: 20px;
+    line-height: 1.5;
+    color: var(--ink-2);
+    margin: 0;
+    max-width: 62ch;
+  }
+  .meta {
+    font-family: var(--ui);
+    font-size: 12px;
+    color: var(--ink-3);
+    margin-top: 28px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 22px;
+  }
+  .meta b { color: var(--ink-2); font-weight: 600; }
+
+  /* ─── Sections ─── */
+  section { margin-bottom: 64px; }
+  h2 {
+    font-size: 27px;
+    letter-spacing: -.014em;
+    font-weight: 600;
+    margin: 0 0 8px;
+    text-wrap: balance;
+  }
+  h2 .num {
+    font-family: var(--mono);
+    font-size: 14px;
+    color: var(--accent);
+    margin-right: 12px;
+    vertical-align: 3px;
+    font-weight: 500;
+  }
+  h3 {
+    font-family: var(--ui);
+    font-size: 12px;
+    font-weight: 680;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    margin: 40px 0 14px;
+  }
+  .lede { color: var(--ink-2); margin: 0 0 26px; max-width: 66ch; }
+  p { margin: 0 0 18px; }
+  strong { font-weight: 650; }
+  a { color: var(--accent); }
+  code {
+    font-family: var(--mono);
+    font-size: .86em;
+    background: var(--stop-2);
+    padding: 1.5px 5px;
+    border-radius: 3px;
+  }
+
+  ul.tight { margin: 0 0 20px; padding-left: 22px; }
+  ul.tight li { margin-bottom: 8px; }
+
+  /* ─── Finding callout ─── */
+  .finding {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--accent);
+    border-radius: 3px;
+    padding: 26px 30px;
+    margin: 0 0 26px;
+  }
+  .finding.warn { border-left-color: var(--alert); }
+  .finding .tag {
+    font-family: var(--ui);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--accent);
+    display: block;
+    margin-bottom: 12px;
+  }
+  .finding.warn .tag { color: var(--alert); }
+  .finding h4 {
+    font-size: 21px;
+    font-weight: 600;
+    margin: 0 0 12px;
+    letter-spacing: -.01em;
+    text-wrap: balance;
+  }
+  .finding p:last-child { margin-bottom: 0; }
+
+  /* ─── Data tables (document voice) ─── */
+  .scroll { overflow-x: auto; margin: 0 0 24px; }
+  table.data {
+    border-collapse: collapse;
+    width: 100%;
+    font-family: var(--ui);
+    font-size: 13.5px;
+    background: var(--card);
+    border: 1px solid var(--line);
+  }
+  table.data th {
+    text-align: left;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--line);
+    white-space: nowrap;
+  }
+  table.data td {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--line-soft);
+    color: var(--ink-2);
+    vertical-align: middle;
+  }
+  table.data tr:last-child td { border-bottom: 0; }
+  table.data td.n {
+    font-family: var(--mono);
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+    color: var(--ink);
+  }
+  table.data td.lead { color: var(--ink); font-weight: 600; }
+  .was { color: var(--ink-3); text-decoration: line-through; }
+
+  /* ═══════════════════════════════════════════════════════════
+     MOCKUPS — the product's own voice: sans, tighter, tabular
+     Scoped under .mock so nothing leaks into the document.
+     ═══════════════════════════════════════════════════════════ */
+  figure.mock {
+    margin: 0 0 16px;
+    font-family: var(--ui);
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 20px;
+  }
+  .mock-chrome {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 10px;
+    font-weight: 650;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom: 1px dashed var(--line);
+  }
+  .mock-chrome .dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--accent); flex: none;
+  }
+  figcaption {
+    font-family: var(--ui);
+    font-size: 12.5px;
+    line-height: 1.55;
+    color: var(--ink-3);
+    margin: 0 0 34px;
+    max-width: 74ch;
+  }
+  figcaption b { color: var(--ink-2); font-weight: 600; }
+
+  .panel {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 5px;
+    overflow: hidden;
+  }
+  .panel-head {
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--line);
+    display: flex;
+    align-items: baseline;
+    gap: 14px;
+    flex-wrap: wrap;
+  }
+  .panel-title {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .11em;
+    text-transform: uppercase;
+    color: var(--ink);
+  }
+  .panel-sub { font-size: 12px; color: var(--ink-3); }
+
+  /* Step rail */
+  .step {
+    display: grid;
+    grid-template-columns: minmax(150px, 1.15fr) minmax(190px, 1.5fr) minmax(200px, 1.7fr);
+    gap: 18px;
+    align-items: center;
+    padding: 15px 18px;
+    border-bottom: 1px solid var(--line-soft);
+  }
+  .step:last-child { border-bottom: 0; }
+  .step.opener { background: var(--card-2); }
+  .step-name {
+    font-size: 14px;
+    font-weight: 650;
+    color: var(--ink);
+    display: flex;
+    align-items: center;
+    gap: 9px;
+  }
+  .step-name .idx {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--ink-3);
+    background: var(--stop-2);
+    border-radius: 3px;
+    padding: 2px 5px;
+    flex: none;
+  }
+  .sched {
+    font-size: 12px;
+    color: var(--ink-2);
+    line-height: 1.45;
+  }
+  .sched .abs {
+    font-family: var(--mono);
+    font-variant-numeric: tabular-nums;
+    color: var(--ink);
+    font-weight: 600;
+  }
+  .sched .rel { color: var(--ink-3); }
+
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .07em;
+    text-transform: uppercase;
+    padding: 3px 8px;
+    border-radius: 3px;
+    white-space: nowrap;
+  }
+  .pill.done   { background: var(--sent-2);  color: var(--sent); }
+  .pill.run    { background: var(--wait-2);  color: var(--wait); }
+  .pill.idle   { background: var(--stop-2);  color: var(--stop); }
+  .pill.late   { background: var(--alert-2); color: var(--alert); }
+  .pill.acc    { background: var(--accent-2); color: var(--accent); }
+
+  /* Segmented progress bar */
+  .bar {
+    display: flex;
+    height: 8px;
+    border-radius: 2px;
+    overflow: hidden;
+    background: var(--stop-2);
+    margin-bottom: 7px;
+  }
+  .bar span { display: block; height: 100%; }
+  .seg-sent { background: var(--sent); }
+  .seg-wait { background: var(--wait); }
+  .seg-up   { background: var(--up); }
+  .seg-stop { background: var(--stop); opacity: .38; }
+
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 14px;
+    font-size: 11.5px;
+    color: var(--ink-2);
+    font-variant-numeric: tabular-nums;
+  }
+  .legend i {
+    width: 7px; height: 7px; border-radius: 2px;
+    display: inline-block; margin-right: 5px;
+    vertical-align: 0;
+  }
+  .legend b {
+    font-family: var(--mono);
+    color: var(--ink);
+    font-weight: 600;
+    margin-right: 3px;
+  }
+  .k-sent i { background: var(--sent); }
+  .k-wait i { background: var(--wait); }
+  .k-up   i { background: var(--up); }
+  .k-stop i { background: var(--stop); opacity: .45; }
+
+  /* Summary tiles */
+  .tiles {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+    gap: 10px;
+    margin-bottom: 14px;
+  }
+  .tile {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 5px;
+    padding: 13px 15px;
+  }
+  .tile .v {
+    font-family: var(--mono);
+    font-size: 26px;
+    font-weight: 600;
+    letter-spacing: -.02em;
+    font-variant-numeric: tabular-nums;
+    color: var(--ink);
+    line-height: 1.1;
+  }
+  .tile .l {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    margin-top: 6px;
+  }
+  .tile .h { font-size: 11px; color: var(--ink-3); margin-top: 3px; }
+  .tile.hl { border-color: var(--wait); background: var(--wait-2); }
+  .tile.hl .v, .tile.hl .l { color: var(--wait); }
+
+  /* Matrix table inside mockups */
+  table.mx {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12.5px;
+  }
+  table.mx th {
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: .09em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    padding: 11px 12px;
+    text-align: right;
+    border-bottom: 1px solid var(--line);
+    white-space: nowrap;
+  }
+  table.mx th.l, table.mx td.l { text-align: left; }
+  table.mx td {
+    padding: 11px 12px;
+    text-align: right;
+    border-bottom: 1px solid var(--line-soft);
+    font-family: var(--mono);
+    font-variant-numeric: tabular-nums;
+    color: var(--ink);
+  }
+  table.mx tr:last-child td { border-bottom: 0; }
+  table.mx td.l {
+    font-family: var(--ui);
+    font-weight: 600;
+  }
+  table.mx td.z { color: var(--ink-3); }
+  table.mx td.w { color: var(--wait); font-weight: 600; }
+  table.mx tr.tot td {
+    border-top: 1px solid var(--line);
+    background: var(--card-2);
+    font-weight: 700;
+  }
+
+  /* Filter chip row */
+  .chips { display: flex; flex-wrap: wrap; gap: 7px; padding: 15px 18px; }
+  .chip {
+    font-size: 11.5px;
+    font-weight: 600;
+    padding: 5px 11px;
+    border-radius: 4px;
+    border: 1px solid var(--line);
+    background: var(--card-2);
+    color: var(--ink-2);
+    font-variant-numeric: tabular-nums;
+  }
+  .chip.on { border-color: var(--wait); background: var(--wait-2); color: var(--wait); }
+  .chip.acc { border-color: var(--accent); background: var(--accent-2); color: var(--accent); }
+
+  /* Build order */
+  ol.build { counter-reset: b; list-style: none; padding: 0; margin: 0; }
+  ol.build li {
+    counter-increment: b;
+    display: grid;
+    grid-template-columns: 34px 1fr;
+    gap: 16px;
+    padding: 18px 0;
+    border-bottom: 1px solid var(--line);
+  }
+  ol.build li::before {
+    content: counter(b);
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--accent);
+    background: var(--accent-2);
+    border-radius: 3px;
+    height: 24px;
+    display: grid;
+    place-items: center;
+  }
+  ol.build h4 {
+    font-family: var(--ui);
+    font-size: 14.5px;
+    font-weight: 650;
+    margin: 2px 0 5px;
+    color: var(--ink);
+  }
+  ol.build p {
+    font-family: var(--ui);
+    font-size: 13px;
+    color: var(--ink-2);
+    margin: 0;
+    line-height: 1.55;
+  }
+  ol.build .where {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--ink-3);
+    margin-top: 6px;
+    display: block;
+  }
+
+  .ask {
+    background: var(--accent-2);
+    border-radius: 4px;
+    padding: 24px 28px;
+    margin-top: 34px;
+  }
+  .ask h3 { margin-top: 0; color: var(--accent); }
+  .ask ul { margin: 0; padding-left: 20px; font-size: 15.5px; }
+  .ask li { margin-bottom: 12px; }
+  .ask li:last-child { margin-bottom: 0; }
+
+  @media (max-width: 720px) {
+    .step { grid-template-columns: 1fr; gap: 10px; }
+    body { font-size: 16px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+
+<header class="top">
+  <p class="eyebrow">Kuber · Design proposal</p>
+  <h1>Has the follow-up gone out?</h1>
+  <p class="standfirst">
+    The Sequences tab shows what we <em>configured</em>. Nothing shows what actually
+    <em>ran</em>. Here is the view that answers it — plus two things the live data
+    revealed that change the spec.
+  </p>
+  <div class="meta">
+    <span><b>Written</b> 18 Aug 2026</span>
+    <span><b>Covers</b> meeting points 3, 4, 5</span>
+    <span><b>Numbers</b> live, from the production database</span>
+    <span><b>Status</b> design only — nothing coded yet</span>
+  </div>
+</header>
+
+<section class="col">
+  <h2><span class="num">§1</span>What we can already answer</h2>
+  <p class="lede">
+    Good news first: no new tracking is needed. Every follow-up send is already
+    recorded — Instantly confirms each one and we store the step number against
+    the lead. The gap is purely that nothing reads it back.
+  </p>
+  <p>
+    That means all five requests are a <strong>read problem</strong>, not a
+    plumbing problem. The numbers below are real, queried live while writing this.
+  </p>
+</section>
+
+<section>
+  <h2><span class="num">§2</span>Two findings that change the spec</h2>
+  <p class="lede col">
+    Both surfaced while checking the client's example against real data. The
+    second one is time-sensitive.
+  </p>
+
+  <div class="finding">
+    <span class="tag">Finding A · affects the table design</span>
+    <h4>“Sent / pending” is three buckets, not two</h4>
+    <p>
+      The client sketched <code>67 sent / 3 pending</code>. But a lead who replied
+      or bounced is <strong>permanently out of the sequence</strong> — they will never
+      receive follow-up 2, no matter how long you wait. Put them in “pending” and
+      that number never reaches zero, and the client will reasonably conclude the
+      feature is broken.
+    </p>
+    <p>
+      Campaign 1 makes it concrete. 99 leads were emailed. 44 got follow-up 1,
+      41 are genuinely waiting on the clock — and <strong>14 will never get it</strong>,
+      because they already replied or bounced. Two columns cannot say that.
+      Three can.
+    </p>
+  </div>
+
+  <div class="finding warn">
+    <span class="tag">Finding B · needs a decision before 31 Aug</span>
+    <h4>The schedule almost certainly does not mean what it looks like</h4>
+    <p>
+      Every campaign is configured <code>7 / 14 / 21 / 28 / 35</code> — the
+      unmistakable signature of “weekly: day 7, day 14, day 21…”. But the system
+      reads each number as a <strong>gap from the previous email</strong>, not a day
+      on the calendar. So the real schedule is day 7, day&nbsp;21, day&nbsp;42,
+      day&nbsp;70, day&nbsp;105.
+    </p>
+    <p>
+      The last follow-up lands <strong>three and a half months later</strong> than a
+      weekly reading would put it. Nobody has noticed because follow-up 1 is
+      identical under both readings — day 7 either way — and
+      <strong>follow-up 2 has never fired on any campaign yet</strong>. Campaign 2 is
+      the first, due around 31 August.
+    </p>
+    <div class="scroll" style="margin-top:20px">
+      <table class="data">
+        <thead>
+          <tr>
+            <th>Campaign 2, opening email 10 Aug</th>
+            <th style="text-align:right">Follow-up 1</th>
+            <th style="text-align:right">2</th>
+            <th style="text-align:right">3</th>
+            <th style="text-align:right">4</th>
+            <th style="text-align:right">5</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="lead">What the system will do</td>
+            <td class="n">day 7</td><td class="n">day 21</td><td class="n">day 42</td>
+            <td class="n">day 70</td><td class="n">day 105</td>
+          </tr>
+          <tr>
+            <td class="lead">If “weekly” was meant</td>
+            <td class="n">day 7</td><td class="n">day 14</td><td class="n">day 21</td>
+            <td class="n">day 28</td><td class="n">day 35</td>
+          </tr>
+          <tr>
+            <td class="lead">Real send date (system)</td>
+            <td class="n">17 Aug ✔</td><td class="n">31 Aug</td><td class="n">21 Sep</td>
+            <td class="n">19 Oct</td><td class="n">23 Nov</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p style="margin-top:20px">
+      This is why the schedule view must print the <strong>absolute day and the real
+      date</strong>, not just the configured number. A design that only echoes
+      “14 days” back at the client keeps this invisible forever.
+    </p>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">§3</span>Sequences tab — schedule and status in one rail</h2>
+  <p class="lede col">
+    This answers the client's exact question — <em>“If I go into Sequence →
+    Follow-up 1, how do I know whether it has been sent?”</em> — and covers meeting
+    points 3 and 5 together, because a schedule and its progress are the same
+    object read two ways.
+  </p>
+
+  <figure class="mock">
+    <div class="mock-chrome"><span class="dot"></span>Campaign → Sequences → Status</div>
+
+    <div class="tiles">
+      <div class="tile"><div class="v">100</div><div class="l">Emailed</div><div class="h">opening email delivered</div></div>
+      <div class="tile"><div class="v">42</div><div class="l">Follow-ups out</div><div class="h">across all steps</div></div>
+      <div class="tile hl"><div class="v">52</div><div class="l">Due next</div><div class="h">waiting on the clock</div></div>
+      <div class="tile"><div class="v">6</div><div class="l">Stopped</div><div class="h">replied or bounced</div></div>
+      <div class="tile"><div class="v">31 Aug</div><div class="l">Next send</div><div class="h">follow-up 2 · 42 leads</div></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">
+        <span class="panel-title">Follow-up schedule &amp; progress</span>
+        <span class="panel-sub">APOLLO CAMPAIGN 2 · 5 follow-ups · 100 leads emailed</span>
+      </div>
+
+      <div class="step opener">
+        <div class="step-name"><span class="idx">01</span>Opening email</div>
+        <div class="sched"><span class="abs">10–14 Aug</span> <span class="rel">· first contact</span></div>
+        <div>
+          <div class="bar"><span class="seg-sent" style="width:100%"></span></div>
+          <div class="legend"><span class="k-sent"><i></i><b>100</b>sent</span></div>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-name"><span class="idx">02</span>Follow-up 1</div>
+        <div class="sched">
+          <span class="abs">day 7</span> <span class="rel">· 7 days after opening</span><br>
+          <span class="rel">sent 17–18 Aug</span>
+        </div>
+        <div>
+          <div class="bar">
+            <span class="seg-sent" style="width:42%"></span>
+            <span class="seg-wait" style="width:52%"></span>
+            <span class="seg-stop" style="width:6%"></span>
+          </div>
+          <div class="legend">
+            <span class="k-sent"><i></i><b>42</b>sent</span>
+            <span class="k-wait"><i></i><b>52</b>due 19–21 Aug</span>
+            <span class="k-stop"><i></i><b>6</b>stopped</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-name"><span class="idx">03</span>Follow-up 2</div>
+        <div class="sched">
+          <span class="abs">day 21</span> <span class="rel">· 14 days after follow-up 1</span><br>
+          <span class="pill run">Next up · 31 Aug</span>
+        </div>
+        <div>
+          <div class="bar">
+            <span class="seg-wait" style="width:42%"></span>
+            <span class="seg-up" style="width:52%"></span>
+            <span class="seg-stop" style="width:6%"></span>
+          </div>
+          <div class="legend">
+            <span class="k-wait"><i></i><b>42</b>due next</span>
+            <span class="k-up"><i></i><b>52</b>earlier in sequence</span>
+            <span class="k-stop"><i></i><b>6</b>stopped</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-name"><span class="idx">04</span>Follow-up 3</div>
+        <div class="sched">
+          <span class="abs">day 42</span> <span class="rel">· 21 days after follow-up 2</span><br>
+          <span class="rel">≈ 21 Sep</span>
+        </div>
+        <div>
+          <div class="bar">
+            <span class="seg-up" style="width:94%"></span>
+            <span class="seg-stop" style="width:6%"></span>
+          </div>
+          <div class="legend">
+            <span class="k-up"><i></i><b>94</b>not reached yet</span>
+            <span class="k-stop"><i></i><b>6</b>stopped</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-name"><span class="idx">05</span>Follow-up 4</div>
+        <div class="sched">
+          <span class="abs">day 70</span> <span class="rel">· 28 days after follow-up 3</span><br>
+          <span class="rel">≈ 19 Oct</span>
+        </div>
+        <div>
+          <div class="bar">
+            <span class="seg-up" style="width:94%"></span>
+            <span class="seg-stop" style="width:6%"></span>
+          </div>
+          <div class="legend">
+            <span class="k-up"><i></i><b>94</b>not reached yet</span>
+            <span class="k-stop"><i></i><b>6</b>stopped</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-name"><span class="idx">06</span>Follow-up 5</div>
+        <div class="sched">
+          <span class="abs">day 105</span> <span class="rel">· 35 days after follow-up 4</span><br>
+          <span class="rel">≈ 23 Nov</span>
+        </div>
+        <div>
+          <div class="bar">
+            <span class="seg-up" style="width:94%"></span>
+            <span class="seg-stop" style="width:6%"></span>
+          </div>
+          <div class="legend">
+            <span class="k-up"><i></i><b>94</b>not reached yet</span>
+            <span class="k-stop"><i></i><b>6</b>stopped</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </figure>
+  <figcaption>
+    Every row sums to the same 100 leads, so the funnel reads straight down the
+    column. <b>Due next</b> is amber because it is the only bucket anyone can act on.
+    <b>Earlier in sequence</b> are leads still upstream — they will arrive here later,
+    which is different from “pending”. The <b>day 21 / day 42</b> line is what exposes
+    Finding B on the client's own screen.
+  </figcaption>
+
+  <h3>The single-follow-up case</h3>
+  <p class="col" style="margin-bottom:22px">
+    The client specifically asked what happens when a campaign has only one
+    follow-up. Nothing special is needed — the rail is built from the steps that
+    exist, so it simply stops. Campaign 1, live:
+  </p>
+
+  <figure class="mock">
+    <div class="mock-chrome"><span class="dot"></span>Campaign 1 · one follow-up only</div>
+    <div class="panel">
+      <div class="panel-head">
+        <span class="panel-title">Follow-up schedule &amp; progress</span>
+        <span class="panel-sub">APOLLO CAMPAIGN 1 · 1 follow-up · 99 leads emailed</span>
+      </div>
+      <div class="step opener">
+        <div class="step-name"><span class="idx">01</span>Opening email</div>
+        <div class="sched"><span class="abs">7–10 Aug</span> <span class="rel">· first contact</span></div>
+        <div>
+          <div class="bar"><span class="seg-sent" style="width:100%"></span></div>
+          <div class="legend"><span class="k-sent"><i></i><b>99</b>sent</span></div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-name"><span class="idx">02</span>Follow-up 1</div>
+        <div class="sched">
+          <span class="abs">day 11</span> <span class="rel">· 11 days after opening</span><br>
+          <span class="pill run">Running · 18–21 Aug</span>
+        </div>
+        <div>
+          <div class="bar">
+            <span class="seg-sent" style="width:44.4%"></span>
+            <span class="seg-wait" style="width:41.4%"></span>
+            <span class="seg-stop" style="width:14.2%"></span>
+          </div>
+          <div class="legend">
+            <span class="k-sent"><i></i><b>44</b>sent</span>
+            <span class="k-wait"><i></i><b>41</b>due 20–21 Aug</span>
+            <span class="k-stop"><i></i><b>14</b>stopped</span>
+          </div>
+        </div>
+      </div>
+      <div class="step" style="opacity:.62">
+        <div class="step-name" style="color:var(--ink-3)">Sequence ends</div>
+        <div class="sched"><span class="rel">no further follow-ups configured</span></div>
+        <div><span class="pill idle">44 leads finished</span></div>
+      </div>
+    </div>
+  </figure>
+  <figcaption>
+    A closing row states plainly that the sequence ends here — otherwise “44 of 99
+    sent” looks like something is stuck. <b>Running</b> rather than <b>Complete</b>,
+    because 41 leads are still scheduled.
+  </figcaption>
+</section>
+
+<section>
+  <h2><span class="num">§4</span>Analytics — follow-ups across every campaign</h2>
+  <p class="lede col">
+    Meeting point 4. The existing <em>Sequence step performance</em> panel counts
+    leads <strong>queued</strong> to Instantly, which is why it reads “Email 1 —
+    100/100 · 100%” and never mentions a follow-up. Queued is not sent. Replacing
+    that measure is most of the work here.
+  </p>
+
+  <figure class="mock">
+    <div class="mock-chrome"><span class="dot"></span>Analytics → Follow-ups</div>
+    <div class="tiles">
+      <div class="tile"><div class="v">130</div><div class="l">Follow-ups sent</div><div class="h">all campaigns, all time</div></div>
+      <div class="tile hl"><div class="v">136</div><div class="l">Due next 7 days</div><div class="h">across 3 campaigns</div></div>
+      <div class="tile"><div class="v">3</div><div class="l">Campaigns running</div><div class="h">of 13 with sends</div></div>
+      <div class="tile"><div class="v">10</div><div class="l">Not started</div><div class="h">still inside first wait</div></div>
+    </div>
+    <div class="panel">
+      <div class="panel-head">
+        <span class="panel-title">Follow-ups sent per campaign</span>
+        <span class="panel-sub">amber = due next · grey = not reached yet</span>
+      </div>
+      <div class="scroll">
+        <table class="mx">
+          <thead>
+            <tr>
+              <th class="l">Campaign</th>
+              <th>Emailed</th><th>FU 1</th><th>FU 2</th><th>FU 3</th><th>FU 4</th><th>FU 5</th>
+              <th>Due next</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td class="l">APOLLO CAMPAIGN 1</td><td>99</td><td>44</td>
+              <td class="z">—</td><td class="z">—</td><td class="z">—</td><td class="z">—</td><td class="w">41</td></tr>
+            <tr><td class="l">APOLLO CAMPAIGN 2</td><td>100</td><td>42</td>
+              <td class="z">0</td><td class="z">0</td><td class="z">0</td><td class="z">0</td><td class="w">52</td></tr>
+            <tr><td class="l">APOLLO CAMPAIGN 3</td><td>100</td><td>44</td>
+              <td class="z">0</td><td class="z">0</td><td class="z">0</td><td class="z">0</td><td class="w">44</td></tr>
+            <tr><td class="l">APOLLO CAMPAIGN 4 (200)</td><td>200</td>
+              <td class="z">0</td><td class="z">0</td><td class="z">0</td><td class="z">0</td><td class="z">0</td><td class="w">193</td></tr>
+            <tr><td class="l">APOLLO CAMPAIGN 7</td><td>97</td>
+              <td class="z">0</td><td class="z">0</td><td class="z">0</td><td class="z">0</td><td class="z">0</td><td class="w">96</td></tr>
+            <tr><td class="l">Apollo AI 01 Dt 14.08</td><td>100</td>
+              <td class="z">0</td><td class="z">0</td><td class="z">—</td><td class="z">—</td><td class="z">—</td><td class="w">100</td></tr>
+            <tr class="tot"><td class="l">All campaigns</td><td>1013</td><td>130</td>
+              <td>0</td><td>0</td><td>0</td><td>0</td><td class="w">638</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </figure>
+  <figcaption>
+    <b>—</b> means the campaign has no such step configured; <b>0</b> means it has the
+    step but nothing has fired. Keeping those distinct matters: a column of zeros
+    across ten campaigns is the honest headline here — follow-up 2 has
+    <b>never once run</b>, on any campaign, ever. That fact is currently invisible,
+    and it is exactly what the client is trying to see.
+  </figcaption>
+</section>
+
+<section>
+  <h2><span class="num">§5</span>Leads tab — from a number to a worklist</h2>
+  <p class="lede col">
+    Not asked for, but one chip turns every count above into something the sales
+    team can act on. A number tells you 41 leads are waiting; a filter shows you
+    <em>which</em> 41.
+  </p>
+  <figure class="mock">
+    <div class="mock-chrome"><span class="dot"></span>Campaign → Leads → filter</div>
+    <div class="panel">
+      <div class="chips">
+        <span class="chip acc">All 99</span>
+        <span class="chip">Opening email sent 99</span>
+        <span class="chip">Follow-up 1 sent 44</span>
+        <span class="chip on">Due follow-up 1 · 41</span>
+        <span class="chip">Replied 10</span>
+        <span class="chip">Bounced 6</span>
+        <span class="chip">Stopped 14</span>
+      </div>
+    </div>
+  </figure>
+  <figcaption>
+    Reuses the badge vocabulary already shipped in the leads list this week, so
+    nothing new has to be learned. <b>Due follow-up 1</b> is the one chip that
+    changes on its own as the clock runs.
+  </figcaption>
+</section>
+
+<section>
+  <h2><span class="num">§6</span>What I'd build, in order</h2>
+  <p class="lede col">
+    Each step is independently shippable and useful on its own. All four read the
+    same numbers from one shared calculation, so they cannot disagree with each
+    other.
+  </p>
+  <ol class="build">
+    <li>
+      <div>
+        <h4>One shared follow-up progress calculation</h4>
+        <p>
+          Per campaign step: sent, due next, upstream, stopped — plus the next due
+          date. Everything else on this page is a rendering of this one result, which
+          is what stops the Sequences tab and Analytics from ever showing different
+          totals.
+        </p>
+        <span class="where">new · lib/services/followup-progress.ts</span>
+      </div>
+    </li>
+    <li>
+      <div>
+        <h4>The schedule &amp; progress rail</h4>
+        <p>
+          §3 above, in the Sequences tab beside the existing step editor. Absolute
+          day numbers and real dates included — this is the piece that surfaces
+          Finding B.
+        </p>
+        <span class="where">Sequences tab · campaign-drawer.tsx</span>
+      </div>
+    </li>
+    <li>
+      <div>
+        <h4>Replace “queued” with “sent” in Analytics</h4>
+        <p>
+          Retire the misleading 100/100 queued bar and put the per-step funnel in its
+          place, scoped to the campaign you are looking at.
+        </p>
+        <span class="where">Analytics tab · campaign report route</span>
+      </div>
+    </li>
+    <li>
+      <div>
+        <h4>Cross-campaign matrix and the Due next chip</h4>
+        <p>
+          §4 and §5. Last because both are aggregations of work already done by then,
+          and the matrix needs a decision on where it lives — Dashboard or the
+          Campaigns list.
+        </p>
+        <span class="where">Dashboard or campaigns-client.tsx · leads filter</span>
+      </div>
+    </li>
+  </ol>
+
+  <div class="ask">
+    <h3>Four decisions I need from you</h3>
+    <ul>
+      <li>
+        <strong>Finding B — is the schedule wrong?</strong> If <code>7 / 14 / 21 / 28 / 35</code>
+        was meant as weekly, the gaps need to become <code>7 / 7 / 7 / 7 / 7</code> on
+        every campaign. Worth settling before campaign 2's follow-up 2 goes out
+        around 31 August.
+      </li>
+      <li>
+        <strong>Do you want the third bucket?</strong> I recommend
+        sent / due next / stopped. If the client insists on two columns, say so and
+        I'll fold stopped into a footnote — but the pending figure will then never
+        reach zero.
+      </li>
+      <li>
+        <strong>Where does the cross-campaign matrix live?</strong> Dashboard gives it
+        top billing; a column on the Campaigns list keeps it next to the campaigns
+        themselves. My preference is the Campaigns list.
+      </li>
+      <li>
+        <strong>Is “due next” enough, or do you want overdue?</strong> A separate
+        red <em>overdue</em> state is possible — a lead past its due date that
+        Instantly has not sent, usually daily-limit throttling. Useful, but it needs
+        a tolerance window agreed so normal throttling does not read as a fault.
+      </li>
+    </ul>
+  </div>
+</section>
+
+</div>
+
+</body>
+</html>

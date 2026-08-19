@@ -49,7 +49,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const {
-    session, loadingSession, role, leads, setLeads, leadsTotal, leadsByIds, loadCampaigns, setCampaigns, loadLeads,
+    session, loadingSession, role, leads, setLeads, leadsTotal, leadsByIds, campaigns, loadCampaigns, setCampaigns, loadLeads,
     checkedIds, setCheckedIds, selectedLead, setSelectedLead, selectedOrgId, setSelectedOrgId,
     showAddLeads, setShowAddLeads, manualPrefill, setManualPrefill,
     showCreateCampaign, setShowCreateCampaign, deletingLead, setDeletingLead,
@@ -199,7 +199,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
           <nav className="flex-1 p-2 space-y-0.5">
             {visibleNavItems.map(({ href, label, icon: Icon, exact }) => {
               const active = isActive(href, exact);
-              const badge = label === "Leads" ? leadsTotal : label === "Unibox" ? uniboxUnread : null;
+              const badge = label === "Leads" ? leadsTotal : label === "Campaigns" ? campaigns.length : label === "Unibox" ? uniboxUnread : null;
               return (
                 <Link
                   key={href}
