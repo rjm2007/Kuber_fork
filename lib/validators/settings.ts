@@ -66,7 +66,8 @@ const THEME_IDS = ["monochrome", "blue", "green", "purple", "orange", "rose"] as
 const THEME_MODES = ["dark", "light"] as const;
 
 export const PatchUserSettingsSchema = z.object({
-  draft_prompt: z.string().max(20_000).nullable().optional(),
+  draft_prompt:   z.string().max(20_000).nullable().optional(),
+  draft_template: z.string().max(20_000).nullable().optional(),
   reply_prompt: z.string().max(20_000).nullable().optional(),
   signature:    z.string().max(2_000).nullable().optional(),
   sender_name:  z.string().max(200).nullable().optional(),

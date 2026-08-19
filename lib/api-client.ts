@@ -1054,6 +1054,7 @@ export async function patchSettings(token: string, body: Record<string, string>)
 
 export type MySettings = {
   draft_prompt: string | null;
+  draft_template: string | null;
   reply_prompt: string | null;
   signature: string | null;
   sender_name: string | null;
@@ -1075,7 +1076,7 @@ export async function fetchMySettings(token: string): Promise<MySettings> {
 /** null (or "") clears a field back to "inherit the company default". */
 export async function patchMySettings(
   token: string,
-  body: Partial<Record<"draft_prompt" | "reply_prompt" | "signature" | "sender_name" | "theme" | "theme_mode", string | null>>,
+  body: Partial<Record<"draft_prompt" | "draft_template" | "reply_prompt" | "signature" | "sender_name" | "theme" | "theme_mode", string | null>>,
 ): Promise<MySettings> {
   return apiFetch("/api/v1/me/settings", { method: "PATCH", body: JSON.stringify(body) }, token);
 }
