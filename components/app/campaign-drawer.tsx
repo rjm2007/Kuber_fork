@@ -2054,26 +2054,43 @@ export function CampaignDetail({
 
   // Real delivery per step (last_step_sent, confirmed by Instantly's
   // email_sent webhook) — NOT email_drafts.status="sent", which only means
-  // Instantly accepted the draft into the queue. "stopped" is a lead that
-  // will never reach this step because it replied/bounced/closed earlier.
+  // Instantly accepted the draft into the queue. Four mutually exclusive
+  // buckets per step, mirroring the design doc's schedule-rail model:
+  //   sent     — already delivered
+  //   due      — this is the very next step for them (last_step_sent === step-1), still active
+  //   upstream — active, but not next in line for this step yet (earlier steps still pending)
+  //   stopped  — replied/bounced before reaching this step, so it never fires
   const analyticsTotalSteps = 1 + sequenceFollowUpSteps(campaignSteps).filter((s) => s.subject.trim() || s.body.trim()).length;
   const stepDeliveryPct = campaignSteps.length === 0 ? [] : Array.from({ length: analyticsTotalSteps }, (_, i) => i + 1).map((step) => {
     const total = campaignLeads.length;
-    const sent = campaignLeads.filter((cl) => (cl.last_step_sent ?? 0) >= step).length;
-    const stopped = campaignLeads.filter((cl) => {
-      if ((cl.last_step_sent ?? 0) >= step) return false;
+    let sent = 0, due = 0, upstream = 0, stopped = 0;
+    for (const cl of campaignLeads) {
+      const lastSent = cl.last_step_sent ?? 0;
+      if (lastSent >= step) { sent++; continue; }
       const b = deliveryBucket(cl);
-      return b === "replied" || b === "bounced";
-    }).length;
+      if (b === "replied" || b === "bounced") { stopped++; continue; }
+      if (lastSent === step - 1) due++; else upstream++;
+    }
     return {
       step,
       name: step === 1 ? "Opening email" : `Follow-up ${step - 1}`,
       sent,
+      due,
+      upstream,
       stopped,
       total,
       pct: total > 0 ? Math.round((sent / total) * 100) : 0,
     };
   });
+
+  // Small tile row above the step-performance panel — cheap aggregates over
+  // stepDeliveryPct/campaignLeads, no new fetches.
+  const followupsSentTotal = campaignLeads.filter((cl) => (cl.last_step_sent ?? 0) >= 2).length;
+  const followupsDueTotal = campaignLeads.filter((cl) => hasUpcomingFollowup(cl, campaignSteps)).length;
+  const followupsStoppedTotal = campaignLeads.filter((cl) => {
+    const b = deliveryBucket(cl);
+    return b === "replied" || b === "bounced";
+  }).length;
 
   const OUTBOX_FILTERS: Array<{ id: typeof outboxFilter; label: string }> = [
     { id: "all",       label: "All" },
@@ -2466,6 +2483,16 @@ export function CampaignDetail({
                 </div>
               </div>
 
+              {/* Follow-up summary tiles — cheap aggregates over the same data
+                  the step-performance panel below already computes. */}
+              {stepDeliveryPct.length > 1 && (
+                <div className="grid grid-cols-3 gap-3">
+                  <StatTile label="Follow-ups sent" value={followupsSentTotal} icon={Send} sub="at least one, all-time" />
+                  <StatTile label="Due next" value={followupsDueTotal} icon={Clock} tone={followupsDueTotal > 0 ? "amber" : "neutral"} sub="waiting on the clock" />
+                  <StatTile label="Stopped" value={followupsStoppedTotal} icon={AlertTriangle} sub="replied or bounced" />
+                </div>
+              )}
+
               {/* Sequence step performance + Replied vs Sent */}
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
                 {stepDeliveryPct.length > 0 && (
@@ -2474,7 +2501,7 @@ export function CampaignDetail({
                       <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">Sequence step performance</p>
                       <InfoTip
                         side="right"
-                        text="Each row is one email in this campaign's sequence — Opening email is the initial outreach, Follow-up 1 is the first follow-up, and so on. The bar shows what percentage of leads have actually been delivered that email, confirmed by Instantly's own send webhook — not just handed off to Instantly's queue. Stopped = replied or bounced before reaching this step, so it will never fire for them."
+                        text="Each row is one email in this campaign's sequence — Opening email is the initial outreach, Follow-up 1 is the first follow-up, and so on. Sent = actually delivered, confirmed by Instantly's own send webhook (not just handed to Instantly's queue). Due next = this is the very next email waiting to go out for that lead. Upstream = still active but an earlier step has to go out first. Stopped = replied or bounced before reaching this step, so it will never fire."
                       />
                     </div>
                     <p className="text-[10px] text-muted-foreground mb-3">% of leads actually delivered each email in the sequence</p>
@@ -2485,20 +2512,27 @@ export function CampaignDetail({
                             <span className="font-medium">{s.name}</span>
                             <span className="text-muted-foreground tabular-nums">
                               {s.sent}/{s.total} sent · {s.pct}%
+                              {s.due > 0 && <span className="ml-1.5 text-amber-500">· {s.due} due next</span>}
                               {s.stopped > 0 && <span className="ml-1.5">· {s.stopped} stopped</span>}
                             </span>
                           </div>
                           <div className="h-2.5 rounded-full bg-muted overflow-hidden flex">
-                            <div
-                              className="h-full transition-all"
-                              style={{ width: `${s.pct}%`, background: "var(--primary)" }}
-                            />
-                            {s.total > 0 && s.stopped > 0 && (
-                              <div
-                                className="h-full transition-all opacity-40"
-                                style={{ width: `${Math.round((s.stopped / s.total) * 100)}%`, background: "var(--muted-foreground)" }}
-                              />
-                            )}
+                            {(["sent", "due", "upstream", "stopped"] as const).map((bucket) => {
+                              const n = s[bucket];
+                              if (n <= 0 || s.total <= 0) return null;
+                              const color = bucket === "sent" ? "var(--primary)"
+                                : bucket === "due" ? "#f59e0b"
+                                : bucket === "upstream" ? "var(--primary)"
+                                : "var(--muted-foreground)";
+                              const opacity = bucket === "upstream" ? 0.3 : bucket === "stopped" ? 0.4 : 1;
+                              return (
+                                <div
+                                  key={bucket}
+                                  className="h-full transition-all"
+                                  style={{ width: `${Math.round((n / s.total) * 100)}%`, background: color, opacity }}
+                                />
+                              );
+                            })}
                           </div>
                         </div>
                       ))}
