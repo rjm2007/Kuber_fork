@@ -2498,12 +2498,15 @@ export function CampaignDetail({
               </div>
 
               {/* Follow-up summary tiles — cheap aggregates over the same data
-                  the step-performance panel below already computes. */}
+                  the step-performance panel below already computes. No due
+                  DATES are tracked anywhere in this app (only which step was
+                  last confirmed), so these are honestly "how many still have
+                  more sequence ahead of them", not "how many are due today". */}
               {stepDeliveryPct.length > 1 && (
                 <div className="grid grid-cols-3 gap-3">
                   <StatTile label="Follow-ups sent" value={followupsSentTotal} icon={Send} sub="at least one, all-time" />
-                  <StatTile label="Due next" value={followupsDueTotal} icon={Clock} tone={followupsDueTotal > 0 ? "amber" : "neutral"} sub="waiting on the clock" />
-                  <StatTile label="Stopped" value={followupsStoppedTotal} icon={AlertTriangle} sub="replied or bounced" />
+                  <StatTile label="Follow-ups pending" value={followupsDueTotal} icon={Clock} tone={followupsDueTotal > 0 ? "amber" : "neutral"} sub="still have more steps queued" />
+                  <StatTile label="Stopped" value={followupsStoppedTotal} icon={AlertTriangle} sub="replied or bounced — sequence ends" />
                 </div>
               )}
 
@@ -2515,10 +2518,16 @@ export function CampaignDetail({
                       <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">Sequence step performance</p>
                       <InfoTip
                         side="right"
-                        text="Each row is one email in this campaign's sequence — Opening email is the initial outreach, Follow-up 1 is the first follow-up, and so on. Sent = actually delivered, confirmed by Instantly's own send webhook (not just handed to Instantly's queue). Due next = this is the very next email waiting to go out for that lead. Upstream = still active but an earlier step has to go out first. Stopped = replied or bounced before reaching this step, so it will never fire."
+                        text="Each row is one email in this campaign's sequence — Opening email is the initial outreach, Follow-up 1 is the first follow-up, and so on. Sent = actually delivered, confirmed by Instantly's own send webhook (not just handed to Instantly's queue). Next up = this is the very next email in line for that lead — no due DATE is tracked anywhere, only which step was last confirmed, so this is not a countdown. In queue = still active, but an earlier step has to go out first. Stopped = replied or bounced before reaching this step, so it can never fire — that count only grows as steps go on, since a lead that stopped at step 2 is still stopped at every step after."
                       />
                     </div>
                     <p className="text-[10px] text-muted-foreground mb-3">% of leads actually delivered each email in the sequence</p>
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mb-3 text-[10px] text-muted-foreground">
+                      <span className="flex items-center gap-1"><span className="size-2 rounded-full" style={{ background: "var(--primary)" }} />Sent</span>
+                      <span className="flex items-center gap-1"><span className="size-2 rounded-full" style={{ background: "#f59e0b" }} />Next up</span>
+                      <span className="flex items-center gap-1"><span className="size-2 rounded-full opacity-40" style={{ background: "var(--primary)" }} />In queue</span>
+                      <span className="flex items-center gap-1"><span className="size-2 rounded-full opacity-50" style={{ background: "var(--muted-foreground)" }} />Stopped</span>
+                    </div>
                     <div className="space-y-3">
                       {stepDeliveryPct.map((s) => (
                         <div key={s.name}>
@@ -2526,8 +2535,8 @@ export function CampaignDetail({
                             <span className="font-medium">{s.name}</span>
                             <span className="text-muted-foreground tabular-nums">
                               {s.sent}/{s.total} sent · {s.pct}%
-                              {s.due > 0 && <span className="ml-1.5 text-amber-500">· {s.due} due next</span>}
-                              {s.stopped > 0 && <span className="ml-1.5">· {s.stopped} stopped</span>}
+                              {s.due > 0 && <span className="ml-1.5 text-amber-500">· {s.due} next up</span>}
+                              {s.stopped > 0 && <span className="ml-1.5">· {s.stopped} stopped by now</span>}
                             </span>
                           </div>
                           <div className="h-2.5 rounded-full bg-muted overflow-hidden flex">
@@ -2538,7 +2547,7 @@ export function CampaignDetail({
                                 : bucket === "due" ? "#f59e0b"
                                 : bucket === "upstream" ? "var(--primary)"
                                 : "var(--muted-foreground)";
-                              const opacity = bucket === "upstream" ? 0.3 : bucket === "stopped" ? 0.4 : 1;
+                              const opacity = bucket === "upstream" ? 0.4 : bucket === "stopped" ? 0.5 : 1;
                               return (
                                 <div
                                   key={bucket}
