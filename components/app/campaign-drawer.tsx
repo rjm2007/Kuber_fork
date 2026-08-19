@@ -105,6 +105,7 @@ import {
   computeCampaignStats, deliveryBucket, deliveryLabel, DELIVERY_BUCKET_LABELS,
   sequenceStepLabel,
   type DeliveryBucket,
+  type DeliveryLeadLike,
 } from "@/lib/campaign-status";
 
 /**
@@ -353,6 +354,23 @@ function sequenceFollowUpSteps(
   steps: Array<{ step_order: number; subject: string; body: string; delay: number; delay_unit: string }>,
 ) {
   return steps.filter((s) => s.step_order > 1);
+}
+
+/** True while a lead is still active in the sequence (sent/sending, not
+ *  replied/bounced/stopped) AND has not yet received every configured
+ *  follow-up step. Drives the "Follow-up" filter option on the Leads and
+ *  Outbox dropdowns — a lightweight yes/no read, not the full schedule/date
+ *  math a dedicated progress view would need. */
+function hasUpcomingFollowup(
+  cl: DeliveryLeadLike,
+  steps: Array<{ step_order: number; subject: string; body: string; delay: number; delay_unit: string }>,
+): boolean {
+  const delivery = deliveryBucket(cl);
+  if (delivery !== "sent" && delivery !== "sending") return false;
+  const followUpCount = sequenceFollowUpSteps(steps).filter((s) => s.subject.trim() || s.body.trim()).length;
+  if (followUpCount === 0) return false;
+  const sentSoFar = cl.last_step_sent ?? 1;
+  return sentSoFar < 1 + followUpCount;
 }
 
 function sequenceDisplayStep(stepOrder: number): number {
@@ -668,7 +686,7 @@ export function CampaignDetail({
   const [error, setError] = useState("");
   const [configOpen, setConfigOpen] = useState(false);
   const [leadsSort, setLeadsSort] = useState<CampaignLeadsSort>("az");
-  const [leadsDelivery, setLeadsDelivery] = useState<DeliveryBucket | "all">("all");
+  const [leadsDelivery, setLeadsDelivery] = useState<DeliveryBucket | "all" | "followup">("all");
   const [leadsViewMode, setLeadsViewMode] = useState<"list" | "kanban">("list");
   const [historyOpen, setHistoryOpen] = useState(false);
   const [versions, setVersions] = useState<Array<{ id: string; subject: string | null; body: string | null; status: string; version: number; created_at: string }>>([]);
@@ -691,7 +709,7 @@ export function CampaignDetail({
   const [replaceError, setReplaceError] = useState("");
   const [threads, setThreads] = useState<CampaignReplyThread[]>([]);
   const [outboxFilter, setOutboxFilter] = useState<
-    "all" | "action" | "certified" | "sending" | "sent" | "replied" | "bounced"
+    "all" | "action" | "certified" | "sending" | "sent" | "replied" | "bounced" | "followup"
   >("all");
   const [outboxExpandOverrides, setOutboxExpandOverrides] = useState<Set<string>>(new Set());
   const [outboxReplyOpen, setOutboxReplyOpen] = useState(false);
@@ -1744,10 +1762,12 @@ export function CampaignDetail({
     acc[b] = (acc[b] ?? 0) + 1;
     return acc;
   }, {} as Partial<Record<DeliveryBucket, number>>);
+  const followupDueCount = campaignLeads.filter((cl) => hasUpcomingFollowup(cl, campaignSteps)).length;
 
   // Applied before the split into list/kanban so BOTH views honour the filter.
   const sortedCampaignLeads = sortCampaignLeads(campaignLeads, leadsSort)
-    .filter((cl) => leadsDelivery === "all" || deliveryBucket(cl) === leadsDelivery);
+    .filter((cl) => leadsDelivery === "all"
+      || (leadsDelivery === "followup" ? hasUpcomingFollowup(cl, campaignSteps) : deliveryBucket(cl) === leadsDelivery));
 
   const filteredLeads = sortedCampaignLeads.filter((cl) => {
     if (!leadsSearch) return true;
@@ -2045,6 +2065,7 @@ export function CampaignDetail({
     { id: "certified", label: "Certified" },
     { id: "sending",   label: "Sending" },
     { id: "sent",      label: "Sent" },
+    { id: "followup",  label: "Follow-up due" },
     { id: "replied",   label: "Replied" },
     { id: "bounced",   label: "Bounced" },
   ];
@@ -2060,6 +2081,7 @@ export function CampaignDetail({
     // swallows Bounced / Replied (draft status stays "sent" after those outcomes).
     if (filter === "sending") return delivery === "sending";
     if (filter === "sent") return delivery === "sent";
+    if (filter === "followup") return hasUpcomingFollowup(cl, campaignSteps);
     if (filter === "bounced") return delivery === "bounced";
     if (filter === "replied") return delivery === "replied" || !!thread;
     if (filter === "action") {
@@ -2516,7 +2538,7 @@ export function CampaignDetail({
                 Leads table pattern. "Not queued" and "Send failed" are left
                 out of the picker entirely (not meaningful filters day-to-day);
                 the remaining buckets only show up once they're non-empty. */}
-            <Select value={leadsDelivery} onValueChange={(v) => setLeadsDelivery(v as DeliveryBucket | "all")}>
+            <Select value={leadsDelivery} onValueChange={(v) => setLeadsDelivery(v as DeliveryBucket | "all" | "followup")}>
               <SelectTrigger className="h-8 w-36 gap-2 rounded-md px-3 text-xs shadow-sm">
                 <SelectValue />
               </SelectTrigger>
@@ -2529,6 +2551,9 @@ export function CampaignDetail({
                       {DELIVERY_BUCKET_LABELS[b]} ({deliveryCounts[b] ?? 0})
                     </SelectItem>
                   ))}
+                {followupDueCount > 0 && (
+                  <SelectItem value="followup">Follow-up due ({followupDueCount})</SelectItem>
+                )}
               </SelectContent>
             </Select>
 
