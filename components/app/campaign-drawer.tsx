@@ -699,7 +699,6 @@ export function CampaignDetail({
   const [historyOpen, setHistoryOpen] = useState(false);
   const [versions, setVersions] = useState<Array<{ id: string; subject: string | null; body: string | null; status: string; version: number; created_at: string }>>([]);
   const [campaignSteps, setCampaignSteps] = useState<CampaignStepInput[]>([]);
-  const [stepPerformance, setStepPerformance] = useState<Array<{ step: number; sent: number; failed: number; total: number }>>([]);
   const [previewVersionId, setPreviewVersionId] = useState<string | null>(null);
   const [restoring, setRestoring] = useState(false);
   const [viewTab, setViewTab] = useState<CampaignViewTab>("analytics");
@@ -893,19 +892,6 @@ export function CampaignDetail({
     ]);
     const rawLeads = leadsRes.campaign_leads as CampaignLead[];
 
-    const stepMap = new Map<number, { sent: number; failed: number; total: number }>();
-    for (const cl of rawLeads) {
-      for (const d of getLeadDrafts(cl)) {
-        const step = d.step_number ?? 1;
-        const entry = stepMap.get(step) ?? { sent: 0, failed: 0, total: 0 };
-        entry.total++;
-        if (d.status === "sent") entry.sent++;
-        if (d.status === "failed") entry.failed++;
-        stepMap.set(step, entry);
-      }
-    }
-    setStepPerformance([...stepMap.entries()].sort((a, b) => a[0] - b[0]).map(([step, v]) => ({ step, ...v })));
-
     const leads = rawLeads.map((cl) => {
       const step1Draft = getLeadDraftForStep(cl, 1);
       return step1Draft ? { ...cl, email_drafts: step1Draft } : { ...cl, email_drafts: null };
@@ -1058,8 +1044,11 @@ export function CampaignDetail({
     return () => { cancelled = true; };
   }, [viewTab, campaign.id, campaignLeads.length, progress?.sent, progress?.failed]);
 
+  // Loaded eagerly (not gated to the Sequences tab) because the Leads/Outbox
+  // "Follow-up due/sent" filters and the Analytics step-performance panel both
+  // need campaignSteps too — gating this to viewTab==="sequences" left those
+  // filters silently empty until the user happened to open Sequences first.
   useEffect(() => {
-    if (viewTab !== "sequences") return;
     let cancelled = false;
     setSequencesLoading(true);
     (async () => {
@@ -1084,7 +1073,7 @@ export function CampaignDetail({
       }
     })();
     return () => { cancelled = true; };
-  }, [viewTab, campaign.id]);
+  }, [campaign.id]);
 
   // Initialize sequence step edit state (follow-up steps only — initial email lives under Drafts).
   useEffect(() => {
@@ -2063,12 +2052,28 @@ export function CampaignDetail({
   ].filter((d) => d.value > 0);
   if (tempData.length === 0) tempData.push({ name: "No data", value: 1, fill: "var(--muted)", opacity: 1 });
 
-  const stepPerformancePct = stepPerformance.map((s) => ({
-    name: `Email ${s.step}`,
-    sent: s.sent,
-    total: s.total,
-    pct: s.total > 0 ? Math.round((s.sent / s.total) * 100) : 0,
-  }));
+  // Real delivery per step (last_step_sent, confirmed by Instantly's
+  // email_sent webhook) — NOT email_drafts.status="sent", which only means
+  // Instantly accepted the draft into the queue. "stopped" is a lead that
+  // will never reach this step because it replied/bounced/closed earlier.
+  const analyticsTotalSteps = 1 + sequenceFollowUpSteps(campaignSteps).filter((s) => s.subject.trim() || s.body.trim()).length;
+  const stepDeliveryPct = campaignSteps.length === 0 ? [] : Array.from({ length: analyticsTotalSteps }, (_, i) => i + 1).map((step) => {
+    const total = campaignLeads.length;
+    const sent = campaignLeads.filter((cl) => (cl.last_step_sent ?? 0) >= step).length;
+    const stopped = campaignLeads.filter((cl) => {
+      if ((cl.last_step_sent ?? 0) >= step) return false;
+      const b = deliveryBucket(cl);
+      return b === "replied" || b === "bounced";
+    }).length;
+    return {
+      step,
+      name: step === 1 ? "Opening email" : `Follow-up ${step - 1}`,
+      sent,
+      stopped,
+      total,
+      pct: total > 0 ? Math.round((sent / total) * 100) : 0,
+    };
+  });
 
   const OUTBOX_FILTERS: Array<{ id: typeof outboxFilter; label: string }> = [
     { id: "all",       label: "All" },
@@ -2463,28 +2468,37 @@ export function CampaignDetail({
 
               {/* Sequence step performance + Replied vs Sent */}
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
-                {stepPerformancePct.length > 0 && (
+                {stepDeliveryPct.length > 0 && (
                   <div className="rounded-xl border border-border bg-card p-4 lg:col-span-2">
                     <div className="flex items-center gap-1.5 mb-1">
                       <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">Sequence step performance</p>
                       <InfoTip
                         side="right"
-                        text="Each row is one email in this campaign's sequence — Email 1 is the initial outreach, Email 2 is the first follow-up, and so on. The bar shows what percentage of leads at that step have been handed to Instantly. Instantly then drips the actual sends out at the campaign's daily limit, so this runs ahead of the Sent tile above."
+                        text="Each row is one email in this campaign's sequence — Opening email is the initial outreach, Follow-up 1 is the first follow-up, and so on. The bar shows what percentage of leads have actually been delivered that email, confirmed by Instantly's own send webhook — not just handed off to Instantly's queue. Stopped = replied or bounced before reaching this step, so it will never fire for them."
                       />
                     </div>
-                    <p className="text-[10px] text-muted-foreground mb-3">% of leads queued to Instantly, per email in the sequence</p>
+                    <p className="text-[10px] text-muted-foreground mb-3">% of leads actually delivered each email in the sequence</p>
                     <div className="space-y-3">
-                      {stepPerformancePct.map((s) => (
+                      {stepDeliveryPct.map((s) => (
                         <div key={s.name}>
                           <div className="flex items-center justify-between text-xs mb-1">
                             <span className="font-medium">{s.name}</span>
-                            <span className="text-muted-foreground tabular-nums">{s.sent}/{s.total} queued · {s.pct}%</span>
+                            <span className="text-muted-foreground tabular-nums">
+                              {s.sent}/{s.total} sent · {s.pct}%
+                              {s.stopped > 0 && <span className="ml-1.5">· {s.stopped} stopped</span>}
+                            </span>
                           </div>
-                          <div className="h-2.5 rounded-full bg-muted overflow-hidden">
+                          <div className="h-2.5 rounded-full bg-muted overflow-hidden flex">
                             <div
-                              className="h-full rounded-full transition-all"
+                              className="h-full transition-all"
                               style={{ width: `${s.pct}%`, background: "var(--primary)" }}
                             />
+                            {s.total > 0 && s.stopped > 0 && (
+                              <div
+                                className="h-full transition-all opacity-40"
+                                style={{ width: `${Math.round((s.stopped / s.total) * 100)}%`, background: "var(--muted-foreground)" }}
+                              />
+                            )}
                           </div>
                         </div>
                       ))}
