@@ -356,6 +356,21 @@ function sequenceFollowUpSteps(
   return steps.filter((s) => s.step_order > 1);
 }
 
+// The leads API only ever writes last_step_sent from FOLLOW-UP webhook events
+// — step 1 (the opening email) is deliberately never written there because
+// campaign_leads.first_sent_at already covers it (see
+// app/api/v1/campaigns/[id]/leads/route.ts). So a lead who has only received
+// the opening email has last_step_sent=null, which must NOT be read as "step
+// 1 wasn't sent" — it means "highest CONFIRMED step is 1", same as any other
+// lead whose opening delivered but no follow-up has gone out yet. This is the
+// one place that null is resolved correctly; every follow-up read in this
+// file should go through here rather than reading last_step_sent directly.
+function effectiveLastStep(cl: DeliveryLeadLike): number {
+  if (cl.last_step_sent) return cl.last_step_sent;
+  const b = deliveryBucket(cl);
+  return b === "sent" || b === "replied" || b === "bounced" ? 1 : 0;
+}
+
 /** True while a lead is still active in the sequence (sent/sending, not
  *  replied/bounced/stopped) AND has not yet received every configured
  *  follow-up step. Drives the "Follow-up" filter option on the Leads and
@@ -369,8 +384,7 @@ function hasUpcomingFollowup(
   if (delivery !== "sent" && delivery !== "sending") return false;
   const followUpCount = sequenceFollowUpSteps(steps).filter((s) => s.subject.trim() || s.body.trim()).length;
   if (followUpCount === 0) return false;
-  const sentSoFar = cl.last_step_sent ?? 1;
-  return sentSoFar < 1 + followUpCount;
+  return effectiveLastStep(cl) < 1 + followUpCount;
 }
 
 /** True once at least one follow-up (step 2+) has actually gone out —
@@ -378,7 +392,7 @@ function hasUpcomingFollowup(
  *  still counts here (they did receive it). Complements hasUpcomingFollowup
  *  above: "due" looks forward, "sent" looks back. */
 function hasReceivedFollowup(cl: DeliveryLeadLike): boolean {
-  return (cl.last_step_sent ?? 1) >= 2;
+  return effectiveLastStep(cl) >= 2;
 }
 
 function sequenceDisplayStep(stepOrder: number): number {
@@ -2052,12 +2066,12 @@ export function CampaignDetail({
   ].filter((d) => d.value > 0);
   if (tempData.length === 0) tempData.push({ name: "No data", value: 1, fill: "var(--muted)", opacity: 1 });
 
-  // Real delivery per step (last_step_sent, confirmed by Instantly's
-  // email_sent webhook) — NOT email_drafts.status="sent", which only means
-  // Instantly accepted the draft into the queue. Four mutually exclusive
-  // buckets per step, mirroring the design doc's schedule-rail model:
+  // Real delivery per step (confirmed by Instantly's own send webhook) — NOT
+  // email_drafts.status="sent", which only means Instantly accepted the draft
+  // into its queue. Four mutually exclusive buckets, mirroring the design
+  // doc's schedule-rail model:
   //   sent     — already delivered
-  //   due      — this is the very next step for them (last_step_sent === step-1), still active
+  //   due      — this is the very next step for them (effectiveLastStep === step-1), still active
   //   upstream — active, but not next in line for this step yet (earlier steps still pending)
   //   stopped  — replied/bounced before reaching this step, so it never fires
   const analyticsTotalSteps = 1 + sequenceFollowUpSteps(campaignSteps).filter((s) => s.subject.trim() || s.body.trim()).length;
@@ -2065,11 +2079,11 @@ export function CampaignDetail({
     const total = campaignLeads.length;
     let sent = 0, due = 0, upstream = 0, stopped = 0;
     for (const cl of campaignLeads) {
-      const lastSent = cl.last_step_sent ?? 0;
-      if (lastSent >= step) { sent++; continue; }
+      const lastStep = effectiveLastStep(cl);
+      if (lastStep >= step) { sent++; continue; }
       const b = deliveryBucket(cl);
       if (b === "replied" || b === "bounced") { stopped++; continue; }
-      if (lastSent === step - 1) due++; else upstream++;
+      if (lastStep === step - 1) due++; else upstream++;
     }
     return {
       step,
@@ -2085,7 +2099,7 @@ export function CampaignDetail({
 
   // Small tile row above the step-performance panel — cheap aggregates over
   // stepDeliveryPct/campaignLeads, no new fetches.
-  const followupsSentTotal = campaignLeads.filter((cl) => (cl.last_step_sent ?? 0) >= 2).length;
+  const followupsSentTotal = campaignLeads.filter((cl) => effectiveLastStep(cl) >= 2).length;
   const followupsDueTotal = campaignLeads.filter((cl) => hasUpcomingFollowup(cl, campaignSteps)).length;
   const followupsStoppedTotal = campaignLeads.filter((cl) => {
     const b = deliveryBucket(cl);
@@ -3951,7 +3965,7 @@ export function CampaignDetail({
 
           {/* Right rail: leads who have actually received this step */}
           {activeSeqStep && (() => {
-            const receivedLeads = campaignLeads.filter((cl) => (cl.last_step_sent ?? 0) >= activeSeqStep.step_order);
+            const receivedLeads = campaignLeads.filter((cl) => effectiveLastStep(cl) >= activeSeqStep.step_order);
             return (
               <div className="w-72 shrink-0 border-l border-border flex flex-col overflow-y-auto p-4 gap-2">
                 <p className="eyebrow shrink-0">
