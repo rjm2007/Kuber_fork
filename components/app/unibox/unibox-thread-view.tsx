@@ -157,11 +157,13 @@ function MessageRow({
 
   if (!expanded) {
     return (
-      <button
-        type="button"
+      <div
+        role="button"
+        tabIndex={0}
         onClick={onToggle}
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onToggle(); } }}
         className={cn(
-          "w-full flex items-center gap-3 px-4 py-2.5 text-left border-b border-border/60 hover:bg-secondary/40 transition-colors",
+          "w-full flex items-center gap-3 px-4 py-2.5 text-left border-b border-border/60 hover:bg-secondary/40 transition-colors cursor-pointer",
           isUnread && "bg-primary/5",
         )}
       >
@@ -184,11 +186,23 @@ function MessageRow({
         <span className="flex-1 min-w-0 truncate text-xs text-muted-foreground">
           {snippet || "(empty message)"}
         </span>
+        {/* Reply without expanding first — same eligibility/target logic as
+            the full button below, just reachable from the collapsed row. */}
+        {canReply && canReplyToThis && (
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onReplyTo(); }}
+            title={`Reply to ${replyTargetName ?? senderName}`}
+            className="shrink-0 rounded p-1 text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
+          >
+            <Reply className="size-3.5" />
+          </button>
+        )}
         {isUnread && <span className="size-1.5 rounded-full bg-primary shrink-0" />}
         <span className="shrink-0 font-mono text-[11px] text-muted-foreground tabular-nums">
           {format(new Date(m.timestamp_email), "MMM d")}
         </span>
-      </button>
+      </div>
     );
   }
 

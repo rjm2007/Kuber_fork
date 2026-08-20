@@ -524,11 +524,12 @@ function OutboxMessageRow({
 
   if (!expanded) {
     return (
-      <Button
-        type="button"
-        variant="ghost"
+      <div
+        role="button"
+        tabIndex={0}
         onClick={onToggle}
-        className="h-auto w-full justify-start gap-3 px-4 py-2.5 text-left font-normal rounded-none border-b border-border/60 last:border-b-0 hover:bg-secondary/40"
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onToggle(); } }}
+        className="w-full flex items-center gap-3 px-4 py-2.5 text-left font-normal border-b border-border/60 last:border-b-0 hover:bg-secondary/40 cursor-pointer transition-colors"
       >
         <Avatar name={senderName} size="sm" />
         <span className="shrink-0 max-w-[160px] truncate text-sm font-medium text-foreground/90">
@@ -555,12 +556,24 @@ function OutboxMessageRow({
         <span className="flex-1 min-w-0 truncate text-xs text-muted-foreground">
           {snippet || "(empty message)"}
         </span>
+        {/* Reply without expanding first — same eligibility/target logic as
+            the full button below, just reachable from the collapsed row. */}
+        {onReplyTo && (
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onReplyTo(); }}
+            title={`Reply to ${replyTargetName ?? senderName}`}
+            className="shrink-0 rounded p-1 text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
+          >
+            <Reply className="size-3.5" />
+          </button>
+        )}
         {timestamp && (
           <span className="shrink-0 font-mono text-[11px] text-muted-foreground tabular-nums">
             {format(new Date(timestamp), "MMM d")}
           </span>
         )}
-      </Button>
+      </div>
     );
   }
 
