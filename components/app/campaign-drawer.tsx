@@ -214,6 +214,11 @@ type CampaignLead = {
    *  is follow-up N-1). first_sent_at alone cannot show this — it is stamped
    *  once and never moves as the follow-ups go out. */
   last_step_sent?: number | null;
+  /** When the highest confirmed step (any step, including 1) actually went out
+   *  — real webhook timestamp from reply_events, falling back to first_sent_at.
+   *  Feeds the estimated-due-date math (effectiveLastStep/estimateNextDue) —
+   *  never a guess, this is Instantly confirming delivery. */
+  last_step_sent_at?: string | null;
   /** Which sequence step the address rejected (1 = the opening email), so a
    *  mailbox that died between sends reads differently from one dead all along. */
   bounced_step?: number | null;
@@ -2068,30 +2073,20 @@ export function CampaignDetail({
 
   // Real delivery per step (confirmed by Instantly's own send webhook) — NOT
   // email_drafts.status="sent", which only means Instantly accepted the draft
-  // into its queue. Four mutually exclusive buckets, mirroring the design
-  // doc's schedule-rail model:
-  //   sent     — already delivered
-  //   due      — this is the very next step for them (effectiveLastStep === step-1), still active
-  //   upstream — active, but not next in line for this step yet (earlier steps still pending)
-  //   stopped  — replied/bounced before reaching this step, so it never fires
+  // into its queue. Deliberately simple: exact sent count/percent per step,
+  // plus how many of those bounced (bounced_step === this step) — a bounce
+  // still counts as "sent" (the mail left, the mailbox rejected it), so it's
+  // shown as a marker inside the sent portion, not a separate bucket.
   const analyticsTotalSteps = 1 + sequenceFollowUpSteps(campaignSteps).filter((s) => s.subject.trim() || s.body.trim()).length;
   const stepDeliveryPct = campaignSteps.length === 0 ? [] : Array.from({ length: analyticsTotalSteps }, (_, i) => i + 1).map((step) => {
     const total = campaignLeads.length;
-    let sent = 0, due = 0, upstream = 0, stopped = 0;
-    for (const cl of campaignLeads) {
-      const lastStep = effectiveLastStep(cl);
-      if (lastStep >= step) { sent++; continue; }
-      const b = deliveryBucket(cl);
-      if (b === "replied" || b === "bounced") { stopped++; continue; }
-      if (lastStep === step - 1) due++; else upstream++;
-    }
+    const sent = campaignLeads.filter((cl) => effectiveLastStep(cl) >= step).length;
+    const bounced = campaignLeads.filter((cl) => (cl.bounced_step ?? 0) === step).length;
     return {
       step,
       name: step === 1 ? "Opening email" : `Follow-up ${step - 1}`,
       sent,
-      due,
-      upstream,
-      stopped,
+      bounced,
       total,
       pct: total > 0 ? Math.round((sent / total) * 100) : 0,
     };
@@ -2518,16 +2513,10 @@ export function CampaignDetail({
                       <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">Sequence step performance</p>
                       <InfoTip
                         side="right"
-                        text="Each row is one email in this campaign's sequence — Opening email is the initial outreach, Follow-up 1 is the first follow-up, and so on. Sent = actually delivered, confirmed by Instantly's own send webhook (not just handed to Instantly's queue). Next up = this is the very next email in line for that lead — no due DATE is tracked anywhere, only which step was last confirmed, so this is not a countdown. In queue = still active, but an earlier step has to go out first. Stopped = replied or bounced before reaching this step, so it can never fire — that count only grows as steps go on, since a lead that stopped at step 2 is still stopped at every step after."
+                        text="Each row is one email in this campaign's sequence — Opening email is the initial outreach, Follow-up 1 is the first follow-up, and so on. Sent = actually delivered, confirmed by Instantly's own send webhook (not just handed to Instantly's queue). A bounce still counts as sent — the mail left, the mailbox rejected it — so the red marker sits inside the sent portion, showing how many of that step's sends bounced."
                       />
                     </div>
                     <p className="text-[10px] text-muted-foreground mb-3">% of leads actually delivered each email in the sequence</p>
-                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mb-3 text-[10px] text-muted-foreground">
-                      <span className="flex items-center gap-1"><span className="size-2 rounded-full" style={{ background: "var(--primary)" }} />Sent</span>
-                      <span className="flex items-center gap-1"><span className="size-2 rounded-full" style={{ background: "#f59e0b" }} />Next up</span>
-                      <span className="flex items-center gap-1"><span className="size-2 rounded-full opacity-40" style={{ background: "var(--primary)" }} />In queue</span>
-                      <span className="flex items-center gap-1"><span className="size-2 rounded-full opacity-50" style={{ background: "var(--muted-foreground)" }} />Stopped</span>
-                    </div>
                     <div className="space-y-3">
                       {stepDeliveryPct.map((s) => (
                         <div key={s.name}>
@@ -2535,27 +2524,21 @@ export function CampaignDetail({
                             <span className="font-medium">{s.name}</span>
                             <span className="text-muted-foreground tabular-nums">
                               {s.sent}/{s.total} sent · {s.pct}%
-                              {s.due > 0 && <span className="ml-1.5 text-amber-500">· {s.due} next up</span>}
-                              {s.stopped > 0 && <span className="ml-1.5">· {s.stopped} stopped by now</span>}
+                              {s.bounced > 0 && <span className="ml-1.5 text-destructive">· {s.bounced} bounced</span>}
                             </span>
                           </div>
-                          <div className="h-2.5 rounded-full bg-muted overflow-hidden flex">
-                            {(["sent", "due", "upstream", "stopped"] as const).map((bucket) => {
-                              const n = s[bucket];
-                              if (n <= 0 || s.total <= 0) return null;
-                              const color = bucket === "sent" ? "var(--primary)"
-                                : bucket === "due" ? "#f59e0b"
-                                : bucket === "upstream" ? "var(--primary)"
-                                : "var(--muted-foreground)";
-                              const opacity = bucket === "upstream" ? 0.4 : bucket === "stopped" ? 0.5 : 1;
-                              return (
-                                <div
-                                  key={bucket}
-                                  className="h-full transition-all"
-                                  style={{ width: `${Math.round((n / s.total) * 100)}%`, background: color, opacity }}
-                                />
-                              );
-                            })}
+                          <div className="h-2.5 rounded-full bg-muted overflow-hidden relative">
+                            <div
+                              className="h-full rounded-full transition-all"
+                              style={{ width: `${s.pct}%`, background: "var(--primary)" }}
+                            />
+                            {s.bounced > 0 && s.total > 0 && (
+                              <div
+                                className="absolute top-0 h-full w-[2px] bg-destructive"
+                                style={{ left: `${Math.max(0, (s.sent - s.bounced) / s.total * 100)}%` }}
+                                title={`${s.bounced} bounced at this step`}
+                              />
+                            )}
                           </div>
                         </div>
                       ))}

@@ -66,6 +66,9 @@ export type DeliveryLeadLike = {
    *  email_sent webhooks (`reply_events.step`). Step 1 is the opening email, so
    *  step N is follow-up N-1. NULL/1 = no follow-up has gone out yet. */
   last_step_sent?: number | null;
+  /** When the highest confirmed step (any step, including 1) actually went
+   *  out — real reply_events/webhook timestamp, falling back to first_sent_at. */
+  last_step_sent_at?: string | null;
   /** Which sequence step the address rejected (1 = the opening email). */
   bounced_step?: number | null;
 };
