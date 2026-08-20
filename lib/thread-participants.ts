@@ -154,26 +154,32 @@ export function latestInboundMessage<T extends ParticipantMessage>(
  * The reply target for ANY message in the thread, not just inbound ones —
  * lets "Reply" appear on our own sent messages too (Gmail lets you reply
  * from any point in a thread). For an inbound message, that's itself. For
- * one of our own outbound messages, it's the most recent inbound message at
- * or before it — what it was effectively answering — since reply_to_uuid
- * must always be an inbound message's id (see the module doc above). Null
- * when no inbound message exists yet that early in the thread, e.g.
- * clicking Reply on the very first outbound send before anyone has written
- * back — there is genuinely nothing to thread a reply off yet.
+ * one of our own outbound messages, prefers the most recent inbound message
+ * AT OR BEFORE it — what it was effectively answering — but falls back to
+ * the nearest inbound message AFTER it when nothing inbound exists yet that
+ * early (e.g. clicking Reply on the very first outbound send, the opening
+ * email, in a thread where the only reply so far came later). Either way,
+ * reply_to_uuid must be an inbound message's id (see the module doc above).
+ * Only returns null when NO inbound message exists anywhere in the thread —
+ * nobody has ever written back, so there is genuinely nothing to thread a
+ * reply off yet (matches the default "Reply" button's own fallback).
  */
 export function replyTargetFor<T extends ParticipantMessage>(
   m: T,
   messages: T[],
 ): T | null {
   if (isInbound(m)) return m;
-  let candidate: T | null = null;
+  let before: T | null = null;
+  let after: T | null = null;
   for (const x of messages) {
-    if (x.timestamp_email.localeCompare(m.timestamp_email) > 0) continue;
-    if (isInbound(x) && (!candidate || x.timestamp_email.localeCompare(candidate.timestamp_email) > 0)) {
-      candidate = x;
+    if (!isInbound(x)) continue;
+    if (x.timestamp_email.localeCompare(m.timestamp_email) <= 0) {
+      if (!before || x.timestamp_email.localeCompare(before.timestamp_email) > 0) before = x;
+    } else if (!after || x.timestamp_email.localeCompare(after.timestamp_email) < 0) {
+      after = x;
     }
   }
-  return candidate;
+  return before ?? after;
 }
 
 /**
