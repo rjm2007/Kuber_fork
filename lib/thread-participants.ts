@@ -151,6 +151,32 @@ export function latestInboundMessage<T extends ParticipantMessage>(
 }
 
 /**
+ * The reply target for ANY message in the thread, not just inbound ones —
+ * lets "Reply" appear on our own sent messages too (Gmail lets you reply
+ * from any point in a thread). For an inbound message, that's itself. For
+ * one of our own outbound messages, it's the most recent inbound message at
+ * or before it — what it was effectively answering — since reply_to_uuid
+ * must always be an inbound message's id (see the module doc above). Null
+ * when no inbound message exists yet that early in the thread, e.g.
+ * clicking Reply on the very first outbound send before anyone has written
+ * back — there is genuinely nothing to thread a reply off yet.
+ */
+export function replyTargetFor<T extends ParticipantMessage>(
+  m: T,
+  messages: T[],
+): T | null {
+  if (isInbound(m)) return m;
+  let candidate: T | null = null;
+  for (const x of messages) {
+    if (x.timestamp_email.localeCompare(m.timestamp_email) > 0) continue;
+    if (isInbound(x) && (!candidate || x.timestamp_email.localeCompare(candidate.timestamp_email) > 0)) {
+      candidate = x;
+    }
+  }
+  return candidate;
+}
+
+/**
  * Inbound messages still waiting on an answer.
  *
  * "Answered" is per PERSON, not per thread. Replying to whoever spoke last does

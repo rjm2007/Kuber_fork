@@ -78,6 +78,7 @@ import {
   ourAddresses,
   parseAddressList,
   replyRecipients,
+  replyTargetFor,
   threadParticipants,
   unansweredInbound,
 } from "@/lib/thread-participants";
@@ -477,6 +478,7 @@ function OutboxMessageRow({
   isUnanswered,
   isReplyTarget,
   inReplyToLabel,
+  replyTargetName,
   stepLabel,
   onReplyTo,
   onReplyAll,
@@ -498,9 +500,13 @@ function OutboxMessageRow({
   isReplyTarget: boolean;
   /** For our own replies: who wrote the message this one answered. */
   inReplyToLabel: string | null;
+  /** Who a reply from here will actually address — differs from senderName
+   *  whenever this row is one of our own outbound messages. */
+  replyTargetName: string | null;
   /** "Opening email" / "Follow-up 1" — which sequence send this is. */
   stepLabel: string | null;
-  /** Set for inbound messages that can be answered directly. */
+  /** Set whenever a valid inbound message exists to thread a reply off —
+   *  any row can be one now, not just inbound messages (see replyTargetFor). */
   onReplyTo: (() => void) | null;
   onReplyAll: (() => void) | null;
   /** Set only for a third participant who is not already a lead. */
@@ -630,7 +636,7 @@ function OutboxMessageRow({
               className="h-7 gap-1.5 px-2 text-[11px] text-primary hover:text-primary"
             >
               <Reply className="size-3" />
-              Reply to {senderName}
+              Reply to {replyTargetName ?? senderName}
             </Button>
             {onReplyAll && (
               <Button
@@ -1816,8 +1822,14 @@ export function CampaignDetail({
     cc: string;
     /** Inbound message from someone other than the lead (joined via CC). */
     fromThirdParty: boolean;
-    /** Instantly id — set only for inbound messages, which alone can be answered. */
+    /** Instantly id of the inbound message a reply from here would thread off
+     *  — itself when this item IS inbound, otherwise the nearest earlier
+     *  inbound message (see replyTargetFor). Null only when nothing inbound
+     *  exists yet at this point in the thread. */
     replyTargetId: string | null;
+    /** Who that reply will actually address — for the button label, since an
+     *  outbound item's own sender ("You") is never the right name to show. */
+    replyTargetName: string | null;
     isUnanswered: boolean;
     /** Sender of the message this reply answered, for our own sent mail. */
     inReplyToLabel: string | null;
@@ -1869,8 +1881,11 @@ export function CampaignDetail({
     unansweredInbound(outboxParticipantMessages, outboxOurEmails).map((m) => m.instantly_email_id),
   );
   // The message the composer answers — an explicit pick, else the newest
-  // inbound one. Restricted to inbound: replying to our own sent mail would
-  // address it straight back at us.
+  // inbound one. outboxReplyTargetId is always resolved to an inbound
+  // message's id before it lands here, even when the row the user clicked
+  // Reply on was one of our own outbound sends (see resolveOutboxReplyTarget
+  // below) — replying to our own sent mail directly would address it
+  // straight back at us, so this lookup only ever matches direction=received.
   const outboxActiveTarget =
     outboxParticipantMessages.find(
       (m) => m.direction === "received" && m.instantly_email_id === outboxReplyTargetId,
@@ -1906,19 +1921,36 @@ export function CampaignDetail({
       .filter((pair): pair is readonly [string, string] => !!pair[1]),
   );
 
+  // Lets an outbound row (a sequence send or one of our own manual replies)
+  // start a reply too, Gmail-style — resolves to the nearest earlier inbound
+  // message, since Instantly's reply_to_uuid must always be an inbound id.
+  function resolveOutboxReplyTarget(timestamp: string | null): { id: string; name: string } | null {
+    if (!timestamp) return null;
+    const target = replyTargetFor(
+      { instantly_email_id: "__synthetic__", direction: "sent", from_email: null, to_emails: null, cc_emails: null, timestamp_email: timestamp },
+      outboxParticipantMessages,
+    );
+    if (!target) return null;
+    const from = parseAddressList(target.from_email)[0] ?? null;
+    const name = from ? (from === outboxLeadAddress ? outboxReplyName : from) : "Unknown sender";
+    return { id: target.instantly_email_id, name };
+  }
+
   const outboxMessageItems: OutboxMessageItem[] = [];
   // What the sequence actually sent — the opening email AND every follow-up —
   // straight from the mirrored mail. This is the real record of what left; the
   // draft below is only what we composed.
   const outboxSequenceSends = selected?.sequence_messages ?? [];
   for (const m of outboxSequenceSends) {
+    const seqReplyTarget = resolveOutboxReplyTarget(m.timestamp_email);
     outboxMessageItems.push({
       id: `seq-${m.id}`,
       sender: "You",
       to: parseAddressList(m.to_emails).join(", ") || (selectedThread?.lead_email ?? outboxReplyName),
       cc: parseAddressList(m.cc_emails).join(", "),
       fromThirdParty: false,
-      replyTargetId: null,
+      replyTargetId: seqReplyTarget?.id ?? null,
+      replyTargetName: seqReplyTarget?.name ?? null,
       isUnanswered: false,
       inReplyToLabel: null,
       promotableEmail: null,
@@ -1932,13 +1964,15 @@ export function CampaignDetail({
   // a just-sent lead has no mirrored copy yet. Never both — that would show the
   // same email twice.
   if (outboxSequenceSends.length === 0 && selected?.email_drafts?.status === "sent") {
+    const initialReplyTarget = resolveOutboxReplyTarget(selected.email_drafts.created_at ?? null);
     outboxMessageItems.push({
       id: `initial-${selected.email_drafts.id}`,
       sender: "You",
       to: selectedThread?.lead_email ?? outboxReplyName,
       cc: "",
       fromThirdParty: false,
-      replyTargetId: null,
+      replyTargetId: initialReplyTarget?.id ?? null,
+      replyTargetName: initialReplyTarget?.name ?? null,
       isUnanswered: false,
       inReplyToLabel: null,
       promotableEmail: null,
@@ -1959,6 +1993,7 @@ export function CampaignDetail({
         cc: parseAddressList(msg.cc_emails).join(", "),
         fromThirdParty: thirdParty,
         replyTargetId: msg.instantly_email_id,
+        replyTargetName: name,
         isUnanswered: outboxUnansweredIds.has(msg.instantly_email_id),
         inReplyToLabel: null,
         promotableEmail:
@@ -1974,13 +2009,23 @@ export function CampaignDetail({
     // and Instantly addresses a reply to the sender of the message it answers,
     // which is frequently NOT the lead.
     for (const sent of selectedThread.sent_messages) {
+      // Prefer the exact message this reply answered (recorded at send time)
+      // over the nearest-by-timestamp guess — more precise when available.
+      const repliedToInbound = sent.in_reply_to_email_id
+        && outboxParticipantMessages.some((m) => m.direction === "received" && m.instantly_email_id === sent.in_reply_to_email_id)
+        ? sent.in_reply_to_email_id
+        : null;
+      const sentReplyTarget = repliedToInbound
+        ? { id: repliedToInbound, name: outboxSenderByEmailId.get(repliedToInbound) ?? "Unknown sender" }
+        : resolveOutboxReplyTarget(sent.sent_at);
       outboxMessageItems.push({
         id: `sent-${sent.id}`,
         sender: sent.sent_by_name ?? "You",
         to: parseAddressList(sent.to_emails).join(", "),
         cc: parseAddressList(sent.cc_emails).join(", "),
         fromThirdParty: false,
-        replyTargetId: null,
+        replyTargetId: sentReplyTarget?.id ?? null,
+        replyTargetName: sentReplyTarget?.name ?? null,
         isUnanswered: false,
         inReplyToLabel: sent.in_reply_to_email_id
           ? outboxSenderByEmailId.get(sent.in_reply_to_email_id) ?? null
@@ -3661,6 +3706,7 @@ export function CampaignDetail({
                         isUnanswered={item.isUnanswered}
                         isReplyTarget={outboxReplyOpen && !!item.replyTargetId && item.replyTargetId === outboxActiveTargetId}
                         inReplyToLabel={item.inReplyToLabel}
+                        replyTargetName={item.replyTargetName}
                         stepLabel={item.stepLabel}
                         addingLead={outboxSavingLead && outboxAddLeadFor === item.promotableEmail}
                         onAddAsLead={item.promotableEmail
