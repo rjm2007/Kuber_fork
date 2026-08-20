@@ -129,6 +129,14 @@ export async function resolveLlmTierOrder(db: SupabaseClient): Promise<LlmProvid
 
 const DEFAULT_MAX_TOKENS = 2048;
 
+// Drafting is a rule-following task, not a creative one: the same lead and the
+// same instruction must produce the same email. Left unset, every provider
+// defaults to ~1.0 (maximum randomness), which is what produced a 9/9-to-2/9
+// spread in template adherence across one 20-lead batch on 19 Aug 2026.
+// Low but not zero: 0 makes openings repeat verbatim across leads, which reads
+// as a mass mailing to anyone who receives two of them.
+const DEFAULT_TEMPERATURE = 0.2;
+
 async function parseJsonResponse(text: string): Promise<object> {
   if (!text.trim()) throw new Error("Empty LLM response");
   let cleaned = text.trim();
@@ -164,8 +172,13 @@ function throwHttpError(provider: string, status: number, body: string): never {
   throw Object.assign(new Error(`${provider} ${status}: ${body}`), { status });
 }
 
+// OpenRouter passes response_format through to any provider that supports it.
+// The old check only matched OpenAI ids, so the configured primary model
+// (anthropic/claude-sonnet-4-6) ran with no structured-output enforcement at
+// all and relied purely on the prompt asking nicely for JSON.
 function supportsJsonResponseFormat(model: string): boolean {
-  return model.startsWith("openai/") || /gpt|o1|o3|o4/i.test(model);
+  return /^(openai|anthropic|google|mistralai|meta-llama)\//.test(model)
+    || /gpt|o1|o3|o4|claude|gemini/i.test(model);
 }
 
 // ── OpenRouter ───────────────────────────────────────────────────────────
@@ -173,6 +186,7 @@ async function callOpenRouter(secret: string, model: string, opts: CompletionOpt
   const payload: Record<string, unknown> = {
     model,
     max_tokens: opts.maxTokens ?? DEFAULT_MAX_TOKENS,
+    temperature: opts.temperature ?? DEFAULT_TEMPERATURE,
     messages: [
       { role: "system", content: opts.system },
       { role: "user", content: opts.user },
@@ -206,6 +220,7 @@ async function callOpenAICompatible(baseUrl: string, providerLabel: string, secr
       // gpt-5.4-mini. `max_completion_tokens` works across old and new
       // chat-completions models on all three OpenAI-compatible providers.
       max_completion_tokens: opts.maxTokens ?? DEFAULT_MAX_TOKENS,
+      temperature: opts.temperature ?? DEFAULT_TEMPERATURE,
       response_format: { type: "json_object" },
       messages: [
         { role: "system", content: opts.system },
@@ -236,6 +251,7 @@ async function callAnthropic(secret: string, model: string, opts: CompletionOpts
     body: JSON.stringify({
       model,
       max_tokens: opts.maxTokens ?? DEFAULT_MAX_TOKENS,
+      temperature: opts.temperature ?? DEFAULT_TEMPERATURE,
       system: opts.system,
       messages: [{ role: "user", content: opts.user }],
     }),
@@ -259,6 +275,7 @@ async function callGemini(secret: string, model: string, opts: CompletionOpts): 
         systemInstruction: { parts: [{ text: opts.system }] },
         generationConfig: {
           maxOutputTokens: opts.maxTokens ?? DEFAULT_MAX_TOKENS,
+          temperature: opts.temperature ?? DEFAULT_TEMPERATURE,
           responseMimeType: "application/json",
         },
       }),

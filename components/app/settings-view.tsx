@@ -363,6 +363,7 @@ export function SettingsView() {
 
   // Personal settings (per user — campaigns you create use these; empty = inherit)
   const [myDraftPrompt, setMyDraftPrompt] = useState("");
+  const [myDraftTemplate, setMyDraftTemplate] = useState("");
   const [myReplyPrompt, setMyReplyPrompt] = useState("");
   const [mySignature,   setMySignature  ] = useState("");
   const [mySenderName,  setMySenderName ] = useState("");
@@ -413,6 +414,7 @@ export function SettingsView() {
         // don't wait on company settings / logo (or a full Team users list).
         setIsSuperAdmin(my.is_super_admin);
         setMyDraftPrompt(my.draft_prompt ?? "");
+        setMyDraftTemplate(my.draft_template ?? "");
         setMyReplyPrompt(my.reply_prompt ?? "");
         setMySignature(my.signature ?? "");
         setMySenderName(my.sender_name ?? "");
@@ -499,6 +501,7 @@ export function SettingsView() {
         // Personal settings — empty fields clear back to "inherit company default".
         const my = await patchMySettings(token, {
           draft_prompt: myDraftPrompt.trim() || null,
+          draft_template: myDraftTemplate.trim() || null,
           reply_prompt: myReplyPrompt.trim() || null,
           signature:    mySignature.trim() || null,
           sender_name:  mySenderName.trim() || null,
@@ -765,6 +768,15 @@ export function SettingsView() {
                         <p className="text-xs text-muted-foreground -mt-2">
                           Campaigns <strong>you create</strong> generate their emails with this prompt. Leave it empty to write with the company default — other people&apos;s campaigns are never affected by what you put here.
                         </p>
+                        <RichTextEditor
+                          label="My email template"
+                          value={myDraftTemplate}
+                          onChange={setMyDraftTemplate}
+                          minHeight={260}
+                          placeholder={"Paste the exact email you want sent, for example:\n\nI'm reaching out from Kuber Polyplast, an ISO 9001:2015 certified manufacturer with 30 years of experience...\n\nI came across (write about their company and what they make)\n\n- 18,000 MT annual production capacity\n- 6,670+ clients across 40+ countries\n\nPlease let us know if you have any current requirements."}
+                          helper="Paste a finished email exactly as you want it sent. Every paragraph, bullet, number and closing line is reproduced as written; only the customer-specific parts change per lead. Put an instruction in round brackets — (write about their company and products) — wherever you want a sentence written about that specific customer; the bracket is replaced, never printed. Leave empty to use the drafting prompt below instead."
+                        />
+
                         <RichTextEditor
                           label="My drafting prompt"
                           value={myDraftPrompt}

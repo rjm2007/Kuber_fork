@@ -31,6 +31,7 @@ async function buildResponse(db: Db, userId: string, isSuperAdmin: boolean) {
 
   return {
     draft_prompt: personal?.draft_prompt ?? null,
+    draft_template: personal?.draft_template ?? null,
     reply_prompt: personal?.reply_prompt ?? null,
     signature:    personal?.signature ?? null,
     sender_name:  personal?.sender_name ?? null,

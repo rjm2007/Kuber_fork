@@ -29,6 +29,14 @@ import { DEV_COMPANY_ID } from "@/lib/constants";
  * obfuscated surname and a has_email flag but no address. Raw rows are pushed
  * through the real normalizeOrg() so the mock exercises our own parser rather
  * than pretending it is already correct.
+ *
+ * Each organization row carries EVERY field from the example response at
+ * docs.apollo.io/reference/organization-search, in that order, and no others.
+ * That equivalence is the point: on 18 Aug 2026 this fixture supplied five
+ * fields Apollo does not return, so the Company Lookup results table looked
+ * complete in dev and showed a dash in Location and Staff for every one of a
+ * client's 100 results. Adding a convenient field here does not make the app
+ * work — it makes the fixture stop being evidence. Check the doc, then add it.
  */
 export function isApolloMockCompany(companyId: string | null | undefined): boolean {
   // Escape hatch for deliberately verifying the real integration from a dev
@@ -72,6 +80,16 @@ export function mockApolloDelay(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, MOCK_APOLLO_DELAY_MS));
 }
 
+/**
+ * `suffix`, `tld` and `country` drive the generated rows: the name, the domain,
+ * and which seeds a country filter selects.
+ *
+ * `city`, `state`, `employees` and `industry` are NOT emitted on a search
+ * result — Apollo does not return them there. They stay on the seed because
+ * they are the exact set `organizations/enrich` does return (1 credit per
+ * company), so a mock for that endpoint has its data ready. Do not shortcut
+ * them into the search fixture; that is the bug of 18 Aug 2026.
+ */
 type Seed = {
   suffix: string;
   country: string;
@@ -148,6 +166,17 @@ function slug(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, "");
 }
 
+/** Apollo's example is "+81 576-95-0781" — an international number with the
+ *  dial code split off. Shape matters here, not geography: the dial code is
+ *  derived from the hash and is not expected to match the seed's country. */
+function mockPhone(seed: number): string {
+  const dial = 1 + (seed % 98);
+  const a = 100 + (seed % 900);
+  const b = 10 + (seed % 90);
+  const c = 1000 + (seed % 9000);
+  return `+${dial} ${a}-${b}-${c}`;
+}
+
 /** Apollo returns logo_url as a hosted image. Fixtures use a data-URI so the
  *  table can render logos without hitting Apollo (or any other network). */
 function mockLogoDataUri(name: string, seed: number): string {
@@ -197,9 +226,6 @@ export function mockSearchOrganizations(opts: {
   // pad from the rest (relocated) so the page stays full for UI testing.
   const matchedSeeds = filters.length ? SEEDS.filter((s) => matchesCountry(s.country)) : SEEDS;
   const padSeeds = filters.length ? SEEDS.filter((s) => !matchesCountry(s.country)) : [];
-  const geoTemplates = matchedSeeds.length > 0
-    ? matchedSeeds
-    : filters.map((f) => ({ country: f, city: f, state: null as string | null }));
 
   const rows: Record<string, unknown>[] = [];
   for (let i = 0; i < countThisPage; i++) {
@@ -220,34 +246,57 @@ export function mockSearchOrganizations(opts: {
       : 0;
     const name = tier > 0 ? `${query} ${seed.suffix} ${tier}` : `${query} ${seed.suffix}`;
     const domain = `${slug(query)}${slug(seed.suffix)}${tier > 0 ? tier : ""}.${relocated ? "com" : seed.tld}`;
-    const geo = relocated ? geoTemplates[globalIndex % geoTemplates.length] : seed;
-    const country = geo.country;
-    const city = geo.city;
-    const state = geo.state;
 
     const h = hash(name);
     const handle = slug(name).slice(0, 18) || "company";
+    const publiclyTraded = h % 13 === 0;
+    // ── One organization, exactly as Apollo's Organization Search returns one ──
+    // Every key below, in this order, is a key from the example response at
+    // docs.apollo.io/reference/organization-search. Nothing has been added and
+    // nothing has been left out. Values are synthetic and derived from the name
+    // hash so a repeated search is identical; only the shape is real.
+    //
+    // The absences are the load-bearing part. There is no
+    // estimated_num_employees, city, state, country or industry here because
+    // there is none in Apollo's response — see the note on ApolloOrganization.
+    // Before 18 Aug 2026 this fixture supplied all five, the self-check asserted
+    // they survived the parser, dev looked perfect, and a client's first real
+    // search showed a dash in the Location and Staff column of all 100 rows. A
+    // fixture richer than the API it stands in for is not a fixture. If you are
+    // tempted to add a field, confirm it against the doc first.
     rows.push({
       id: `mock_org_${hash(name + filterKey)}`,
       name,
-      primary_domain: domain,
-      // Field names match Apollo's Organization Search response
-      // (docs.apollo.io/reference/organization-search).
       website_url: `https://www.${domain}`,
       blog_url: h % 5 === 0 ? `https://blog.${domain}` : null,
       angellist_url: h % 7 === 0 ? `https://angel.co/company/${handle}` : null,
       linkedin_url: `https://www.linkedin.com/company/${handle}`,
       twitter_url: `https://twitter.com/${handle}`,
       facebook_url: `https://facebook.com/${handle}`,
-      crunchbase_url: `https://www.crunchbase.com/organization/${handle}`,
-      logo_url: mockLogoDataUri(name, h),
+      // A nested object in the real response, not a string — which is why
+      // normalizeOrg's `phone` lookup skips it and lands on sanitized_phone.
+      primary_phone: {
+        number: mockPhone(h),
+        source: h % 3 === 0 ? "Scraped" : "Account",
+        sanitized_number: mockPhone(h).replace(/[^\d+]/g, ""),
+      },
+      languages: h % 4 === 0 ? ["English", "French"] : ["English"],
+      alexa_ranking: h % 6 === 0 ? null : 10_000 + (h % 900_000),
+      phone: mockPhone(h),
+      linkedin_uid: String(1_000_000 + (h % 9_000_000)),
       founded_year: 1985 + (h % 35),
-      phone: null,
-      estimated_num_employees: seed.employees + (h % 40),
-      country,
-      city,
-      state,
-      industry: seed.industry,
+      publicly_traded_symbol: publiclyTraded ? slug(name).slice(0, 4).toUpperCase() : null,
+      publicly_traded_exchange: publiclyTraded ? "nasdaq" : null,
+      logo_url: mockLogoDataUri(name, h),
+      crunchbase_url: `https://www.crunchbase.com/organization/${handle}`,
+      primary_domain: domain,
+      sanitized_phone: mockPhone(h).replace(/[^\d+]/g, ""),
+      // A subsidiary points at its parent. Rare in the real data, so rare here —
+      // but present, because the field exists and something should exercise it.
+      owned_by_organization_id: h % 17 === 0 ? `mock_org_${hash(`parent_${name}`)}` : null,
+      show_intent: h % 2 === 0,
+      has_intent_signal_account: false,
+      intent_signal_account: null,
     });
   }
 
