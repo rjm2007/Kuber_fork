@@ -2055,8 +2055,20 @@ export function CampaignDetail({
     bounced:     { fill: "var(--destructive)", opacity: 1 },
     send_failed: { fill: "var(--destructive)", opacity: 0.5 },
   };
+  // "Sent" reads as the delivered TOTAL on the tile row above (matches
+  // DELIVERY_BUCKET_LABELS everywhere else, e.g. the Leads/Outbox filter
+  // dropdowns) — but here it's specifically the leftover slice with no reply
+  // or bounce yet, so it needs its own name or it'd look like a second,
+  // smaller "Sent" number right next to the real one.
+  const PIPELINE_STAGE_NAME_OVERRIDE: Record<string, string> = {
+    sent: "No reply yet",
+  };
   const pipelineData = report && report.stageDistribution.length > 0
-    ? report.stageDistribution.map((s) => ({ name: s.label, value: s.count, ...(PIPELINE_STAGE_STYLE[s.stage] ?? { fill: "var(--primary)", opacity: 1 }) }))
+    ? report.stageDistribution.map((s) => ({
+        name: PIPELINE_STAGE_NAME_OVERRIDE[s.stage] ?? s.label,
+        value: s.count,
+        ...(PIPELINE_STAGE_STYLE[s.stage] ?? { fill: "var(--primary)", opacity: 1 }),
+      }))
     : [{ name: "No data", value: 1, fill: "var(--muted)", opacity: 1 }];
 
   const funnelData = report ? [
@@ -2367,15 +2379,18 @@ export function CampaignDetail({
             /* ── Analytics view ── */
             <div className="px-6 pb-4 flex flex-col gap-3 flex-1 min-h-0">
               {/* Stat cards */}
-              <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-7 gap-3">
+              <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-8 gap-3">
                 {[
                   { label: "Leads",      value: analyticsTotalLeads, icon: Users,          accent: "" },
-                  // Sent / Replied / Bounced are exclusive outcomes of the same
-                  // delivered mail — they add up to the delivered total shown as
-                  // Sent's sub-line, and no lead is counted in two of them.
-                  { label: "Sent",       value: analyticsSent,       icon: Send,           accent: "", sub: `${analyticsDelivered} delivered` },
-                  { label: "Replied",    value: analyticsReplied,    icon: MessageSquare,  accent: "", sub: `${analyticsReplyRate}% reply rate` },
-                  { label: "Bounced",    value: analyticsBounced,    icon: AlertTriangle,  accent: "red" },
+                  // Sent (delivered total) splits into exactly one of No reply
+                  // yet / Replied / Bounced — those three always sum back to
+                  // Sent, so nothing is double-counted or hidden inside another
+                  // tile the way the old "Sent = delivered minus everything
+                  // else" framing did.
+                  { label: "Sent",         value: analyticsDelivered, icon: Send,          accent: "", sub: "reached an inbox" },
+                  { label: "No reply yet", value: analyticsSent,      icon: Clock,          accent: "", sub: "delivered, nothing back yet" },
+                  { label: "Replied",      value: analyticsReplied,   icon: MessageSquare, accent: "", sub: `${analyticsReplyRate}% reply rate` },
+                  { label: "Bounced",      value: analyticsBounced,   icon: AlertTriangle, accent: "red" },
                   { label: "Certified",  value: report?.totals.certified ?? 0, icon: CheckCircle2, accent: "", sub: report ? `${report.rates.certifyRate}% of drafts` : undefined },
                   { label: "Hot",        value: analyticsHot,        icon: Flame,          accent: "red" },
                   { label: "Cold",       value: analyticsCold,       icon: Snowflake,      accent: "sky" },
