@@ -13,6 +13,7 @@ import {
   ourAddresses,
   parseAddressList,
   replyRecipients,
+  replyTargetFor,
   threadParticipants,
   unansweredInbound,
 } from "./thread-participants";
@@ -56,14 +57,14 @@ assert.equal(participants[1].replyTargetId, "m3");
 const newest = latestInboundMessage(messages);
 assert.equal(newest?.instantly_email_id, "m3");
 
-const toNewest = replyRecipients(newest, participants);
+const toNewest = replyRecipients(newest, participants, LEAD);
 assert.deepEqual(toNewest.to, [CCD]);
 // The lead stays on the mail instead of silently falling out of the thread.
 assert.deepEqual(toNewest.cc, [LEAD]);
 
 // ─── Targeting the lead specifically (the "answer the price question" case) ──
 const leadMsg = messages.find((m) => m.instantly_email_id === "m2")!;
-const toLead = replyRecipients(leadMsg, participants);
+const toLead = replyRecipients(leadMsg, participants, LEAD);
 assert.deepEqual(toLead.to, [LEAD]);
 assert.deepEqual(toLead.cc, [CCD]);
 
@@ -77,11 +78,25 @@ const p2 = threadParticipants(withSilent, { ourEmails: ours, leadEmail: LEAD });
 const boss = p2.find((p) => p.email === silent)!;
 // Never wrote → cannot be a To (Instantly has no To field), but must be CC'd.
 assert.equal(boss.replyTargetId, null);
-assert.equal(replyRecipients(latestInboundMessage(withSilent), p2).cc.includes(silent), true);
+assert.equal(replyRecipients(latestInboundMessage(withSilent), p2, LEAD).cc.includes(silent), true);
 
-// A thread nobody has answered has no reply target at all.
+// latestInboundMessage still reports "nothing has answered this thread yet" —
+// unrelated to replyTargetFor below, which now resolves a target regardless.
 assert.equal(latestInboundMessage([messages[0]]), null);
-assert.deepEqual(replyRecipients(null, participants), { to: [], cc: [LEAD, CCD] });
+assert.deepEqual(replyRecipients(null, participants, LEAD), { to: [], cc: [LEAD, CCD] });
+
+// ─── Replying to our own message when the lead has never written back ────────
+// (the case that used to have no Reply button at all: a pure cold-outreach
+// thread, one outbound message, nobody has answered). replyTargetFor now
+// resolves to the outbound message itself rather than null, and
+// replyRecipients addresses the LEAD (not the message's own sender, which
+// would be us) since that is what actually reaches them via
+// additional_recipients — see the function doc comments for why.
+const openingOnly = [messages[0]];
+const onlyTarget = replyTargetFor(messages[0], openingOnly);
+assert.equal(onlyTarget.instantly_email_id, "m1");
+const onlyRecipients = replyRecipients(onlyTarget, participants, LEAD);
+assert.deepEqual(onlyRecipients.to, [LEAD]);
 
 // ─── Reply-all composition ───────────────────────────────────────────────────
 // Instantly has no To field, but `additional_recipients` puts extra addresses

@@ -7,6 +7,7 @@ import { pickDraftsForInboundMessage } from "@/lib/reply-draft-pick";
 import {
   ourAddresses,
   parseAddressList,
+  replyTargetFor,
   unansweredInbound,
   type ParticipantMessage,
 } from "@/lib/thread-participants";
@@ -561,9 +562,9 @@ export async function getThreads(db: Db, filters: {
   scope?: UniboxScope;
   /**
    * Include threads the lead has never answered (a pure outbound campaign
-   * send). The Unibox wants these — it is a mailbox, not a reply queue. The
-   * campaign Outbox does NOT: it renders inbound messages only, so an
-   * unanswered thread would show up there as an empty row.
+   * send). Both the Unibox and the campaign Outbox want these — a lead who
+   * has never replied can still be answered on our own sent message (see
+   * replyTargetFor), so the thread is not empty even with zero inbound mail.
    */
   include_unreplied?: boolean;
 }): Promise<{
@@ -599,7 +600,15 @@ export async function getThreads(db: Db, filters: {
       .from("leads")
       .select("email")
       .or(`first_name.ilike.%${search}%,last_name.ilike.%${search}%,email.ilike.%${search}%`);
-    nameMatchEmails = new Set((nameHits ?? []).map((l) => (l.email as string).toLowerCase()));
+    // A lead can match on first_name/last_name with no email on file at all
+    // (confirmed live: searching "andrew" 500'd on exactly this) — that lead
+    // has no thread to surface here anyway, so it's dropped, not crashed on.
+    nameMatchEmails = new Set(
+      (nameHits ?? [])
+        .map((l) => l.email as string | null)
+        .filter((email): email is string => !!email)
+        .map((email) => email.toLowerCase()),
+    );
   }
 
   const { data: rows, error } = await query.order("timestamp_email", { ascending: false }).limit(2000);
@@ -801,6 +810,14 @@ export async function getThreadMessages(db: Db, threadId: string): Promise<{
 
   const msgs = rows ?? [];
   const latestReceived = [...msgs].reverse().find((m) => m.direction === "received");
+  // A pure cold-outreach thread the lead has never answered has no
+  // latestReceived — but Reply should still work there (see replyTargetFor):
+  // it resolves to the thread's own newest message, addressed to the lead via
+  // additional_recipients rather than back to us. Without this fallback
+  // reply_to_uuid stayed null forever and the client hid the Reply button.
+  const newestMsg = msgs.length > 0 ? msgs[msgs.length - 1] : null;
+  const defaultReplyTarget = latestReceived
+    ?? (newestMsg ? replyTargetFor(newestMsg as unknown as ParticipantMessage, msgs as unknown as ParticipantMessage[]) : null);
 
   let reply_drafts: Record<string, unknown>[] = [];
   const campaignLeadId = msgs.find((m) => m.campaign_lead_id)?.campaign_lead_id ?? null;
@@ -905,7 +922,7 @@ export async function getThreadMessages(db: Db, threadId: string): Promise<{
     reply_drafts,
     lead,
     campaign,
-    reply_to_uuid: latestReceived?.instantly_email_id ?? null,
+    reply_to_uuid: defaultReplyTarget?.instantly_email_id ?? null,
     eaccount: latestReceived?.eaccount ?? msgs.find((m) => m.eaccount)?.eaccount ?? null,
     campaign_lead_id: campaignLeadId,
     interest_status,
@@ -933,13 +950,21 @@ export async function resolveReplyTarget(
   threadId: string,
   instantlyEmailId: string,
 ): Promise<{ instantlyEmailId: string; eaccount: string | null } | null> {
+  // NEVER trust this id from the client beyond confirming it actually belongs
+  // to this thread — that part is still enforced below. Direction is no
+  // longer restricted to "received": Instantly's own reply_to_uuid schema
+  // (verified against its OpenAPI spec) accepts ANY existing email id, inbound
+  // or outbound — replying to one of OUR OWN sent messages is valid, it just
+  // means Instantly's default recipient becomes the sender of that message
+  // (us), which the caller must counteract by forcing the lead's address into
+  // additional_recipients (see app/api/v1/unibox/reply/route.ts's forcedTo).
   const { data } = await db
     .from("unibox_emails")
     .select("instantly_email_id, eaccount, direction")
     .eq("thread_id", threadId)
     .eq("instantly_email_id", instantlyEmailId)
     .maybeSingle();
-  if (!data || data.direction !== "received") return null;
+  if (!data) return null;
   return {
     instantlyEmailId: data.instantly_email_id as string,
     eaccount: (data.eaccount as string | null) ?? null,
@@ -1110,7 +1135,10 @@ export async function runUniboxSync(db: Db, maxPages = 8): Promise<{ ingested: n
 export async function getCampaignReplyThreads(db: Db, campaignId: string) {
   // No Unibox primary/others tab filter — campaign Outbox should show every
   // inbound reply for the campaign, including messages Instantly puts in Others.
-  const { threads } = await getThreads(db, { campaign_id: campaignId, limit: 500 });
+  // include_unreplied: true so a lead who has never written back still gets a
+  // thread entry here — otherwise their sequence sends have nowhere to attach
+  // a Reply button to (Gmail-style reply-to-our-own-message, see replyTargetFor).
+  const { threads } = await getThreads(db, { campaign_id: campaignId, limit: 500, include_unreplied: true });
   const out = [];
 
   for (const t of threads) {

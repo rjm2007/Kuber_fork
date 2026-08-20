@@ -15,7 +15,6 @@ import { ReplyDraftBox, replyDraftHasContent } from "@/components/app/reply-draf
 import { ManualReplyBox, type ReplyRecipientContext } from "@/components/app/manual-reply-box";
 import { AddParticipantLeadDialog } from "@/components/app/add-participant-lead-dialog";
 import {
-  latestInboundMessage,
   ourAddresses,
   parseAddressList,
   replyRecipients,
@@ -387,10 +386,17 @@ export function UniboxThreadView({
     () => threadParticipants(sorted, { ourEmails, leadEmail }),
     [sorted, ourEmails, leadEmail],
   );
-  const targetMessage = useMemo(
-    () => sorted.find((m) => m.instantly_email_id === replyTargetId) ?? latestInboundMessage(sorted),
-    [sorted, replyTargetId],
-  );
+  // Falls back to the thread's newest message run through replyTargetFor
+  // (not latestInboundMessage) so the default "Reply" button works even on a
+  // pure cold-outreach thread the lead has never answered — resolving the
+  // newest OUTBOUND message still yields a valid, if self-addressing-by-
+  // default, target rather than null.
+  const targetMessage = useMemo(() => {
+    const picked = sorted.find((m) => m.instantly_email_id === replyTargetId);
+    if (picked) return picked;
+    const latest = sorted.length > 0 ? sorted[sorted.length - 1] : null;
+    return latest ? replyTargetFor(latest, sorted) : null;
+  }, [sorted, replyTargetId]);
   const unansweredIds = useMemo(
     () => new Set(unansweredInbound(sorted, ourEmails).map((m) => m.instantly_email_id)),
     [sorted, ourEmails],
@@ -418,7 +424,7 @@ export function UniboxThreadView({
     // `to` is the address Instantly forces in; `cc` here is everyone else on
     // the thread. Reply all puts them all in To (Instantly's
     // additional_recipients), plain Reply addresses only the one person.
-    const { to, cc } = replyRecipients(targetMessage, participants);
+    const { to, cc } = replyRecipients(targetMessage, participants, leadEmail);
     return {
       to: replyAll ? [...to, ...cc] : to,
       lockedTo: to[0] ?? null,
@@ -483,11 +489,11 @@ export function UniboxThreadView({
   }
 
   function handleReplyTo(m: UniboxMessage, all: boolean) {
-    // Clicking Reply on one of our own sent messages threads off whatever
-    // inbound message it was effectively answering — Instantly's
-    // reply_to_uuid must always be an inbound message's id.
+    // Clicking Reply on one of our own sent messages resolves to whatever
+    // inbound message it was effectively answering, or itself when the lead
+    // has never written back at all — replyRecipients then knows to address
+    // that case to the lead rather than to us. Always resolves to something.
     const target = replyTargetFor(m, sorted);
-    if (!target) return;
     setReplyTargetId(target.instantly_email_id);
     setReplyAll(all);
     setExpandedIds((prev) => new Set(prev).add(m.id));

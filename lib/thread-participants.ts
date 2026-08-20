@@ -153,21 +153,25 @@ export function latestInboundMessage<T extends ParticipantMessage>(
 /**
  * The reply target for ANY message in the thread, not just inbound ones —
  * lets "Reply" appear on our own sent messages too (Gmail lets you reply
- * from any point in a thread). For an inbound message, that's itself. For
- * one of our own outbound messages, prefers the most recent inbound message
- * AT OR BEFORE it — what it was effectively answering — but falls back to
- * the nearest inbound message AFTER it when nothing inbound exists yet that
- * early (e.g. clicking Reply on the very first outbound send, the opening
- * email, in a thread where the only reply so far came later). Either way,
- * reply_to_uuid must be an inbound message's id (see the module doc above).
- * Only returns null when NO inbound message exists anywhere in the thread —
- * nobody has ever written back, so there is genuinely nothing to thread a
- * reply off yet (matches the default "Reply" button's own fallback).
+ * from any point in a thread), even when the lead has never written back at
+ * all. For an inbound message, that's itself. For one of our own outbound
+ * messages, prefers the most recent inbound message AT OR BEFORE it — what
+ * it was effectively answering — then the nearest inbound message AFTER it,
+ * then, if NO inbound message exists anywhere in the thread, the outbound
+ * message itself.
+ *
+ * Instantly's reply_to_uuid accepts any existing email id, inbound or
+ * outbound (confirmed against its OpenAPI spec) — but its documented default
+ * recipient is always "the sender of the email being replied to". For an
+ * outbound target that sender is US, not the lead, so a caller resolving to
+ * an outbound target MUST force the lead's address into additional_recipients
+ * (see replyRecipients below and app/api/v1/unibox/reply/route.ts's
+ * forcedTo) — Instantly will not infer it.
  */
 export function replyTargetFor<T extends ParticipantMessage>(
   m: T,
   messages: T[],
-): T | null {
+): T {
   if (isInbound(m)) return m;
   let before: T | null = null;
   let after: T | null = null;
@@ -179,7 +183,7 @@ export function replyTargetFor<T extends ParticipantMessage>(
       after = x;
     }
   }
-  return before ?? after;
+  return before ?? after ?? m;
 }
 
 /**
@@ -220,17 +224,27 @@ export function unansweredInbound<T extends ParticipantMessage>(
 /**
  * Who receives a reply aimed at `target`.
  *
- * `to` is not a choice — Instantly forces it to the target's sender, so this
- * reports what WILL happen rather than what we asked for. Everyone else on the
- * thread lands in `cc`, which makes reply-all the default: over-including is
- * noise, under-including drops a prospect out of their own conversation without
- * telling anyone.
+ * `to` is not a choice for an INBOUND target — Instantly forces it to the
+ * target's sender, so this reports what WILL happen rather than what we
+ * asked for. For an OUTBOUND target (one of our own messages, only reachable
+ * when the lead has never written back at all — see replyTargetFor),
+ * Instantly's forced default recipient would be US, so `to` is set to the
+ * lead's own address instead; the caller sends it through
+ * additional_recipients, which Instantly always delivers to regardless of
+ * the default. Everyone else on the thread lands in `cc`, which makes
+ * reply-all the default: over-including is noise, under-including drops a
+ * prospect out of their own conversation without telling anyone.
  */
 export function replyRecipients(
-  target: Pick<ParticipantMessage, "from_email"> | null,
+  target: Pick<ParticipantMessage, "from_email" | "direction"> | null,
   participants: ThreadParticipant[],
+  leadEmail: string | null,
 ): { to: string[]; cc: string[] } {
-  const to = target?.from_email ? [extractAddress(target.from_email)] : [];
+  const to = !target
+    ? []
+    : isInbound(target)
+      ? (target.from_email ? [extractAddress(target.from_email)] : [])
+      : (leadEmail ? [extractAddress(leadEmail)] : []);
   const addressed = new Set(to);
   return { to, cc: participants.filter((p) => !addressed.has(p.email)).map((p) => p.email) };
 }

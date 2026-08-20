@@ -74,7 +74,6 @@ import { ReplyDraftBox, replyDraftHasContent } from "@/components/app/reply-draf
 import { ManualReplyBox, type ReplyRecipientContext } from "@/components/app/manual-reply-box";
 import { AddParticipantLeadDialog } from "@/components/app/add-participant-lead-dialog";
 import {
-  latestInboundMessage,
   ourAddresses,
   parseAddressList,
   replyRecipients,
@@ -235,6 +234,12 @@ type CampaignLead = {
     timestamp_email: string | null;
     to_emails: string | null;
     cc_emails: string | null;
+    from_email: string | null;
+    /** Instantly's own email id and sending mailbox — needed to let a reply
+     *  start from this send itself when the lead has never written back
+     *  (see resolveOutboxReplyTarget). Absent on pre-migration rows. */
+    instantly_email_id?: string | null;
+    eaccount?: string | null;
   }>;
   /** Set once someone answered this bounce by adding another contact at the same
    *  company. The row stays bounced (and still counts as one) — this only marks
@@ -1867,42 +1872,62 @@ export function CampaignDetail({
     return { name: from, thirdParty: true };
   };
 
+  // What the sequence actually sent — the opening email AND every follow-up —
+  // straight from the mirrored mail. Needed up here (not just for rendering
+  // below) so it can join the unified participant list next.
+  const outboxSequenceSends = selected?.sequence_messages ?? [];
+
   // Participant view of the thread, shared with the Unibox so both surfaces
-  // agree on who is owed a reply.
-  const outboxParticipantMessages = selectedThread
-    ? [
-        ...selectedThread.messages.map((m) => ({
-          instantly_email_id: m.instantly_email_id,
-          direction: "received",
-          from_email: m.from_email,
-          to_emails: m.to_emails,
-          cc_emails: m.cc_emails,
-          timestamp_email: m.received_at,
-        })),
-        ...selectedThread.sent_messages.map((m) => ({
-          instantly_email_id: m.instantly_email_id,
-          direction: "sent_manual",
-          from_email: m.from_email,
-          to_emails: m.to_emails,
-          cc_emails: m.cc_emails,
-          timestamp_email: m.sent_at,
-        })),
-      ]
-    : [];
+  // agree on who is owed a reply. Includes sequence sends too (not just
+  // inbound + manual replies) so a cold-outreach thread the lead has never
+  // answered still has a valid reply target: itself (see replyTargetFor).
+  // Sequence sends are included unconditionally, not gated on selectedThread
+  // existing — a lead who has never replied has no reply-thread row at all in
+  // some states, but their sequence sends are still real, replyable messages.
+  const outboxParticipantMessages = [
+    ...(selectedThread?.messages ?? []).map((m) => ({
+      instantly_email_id: m.instantly_email_id,
+      direction: "received",
+      from_email: m.from_email,
+      to_emails: m.to_emails,
+      cc_emails: m.cc_emails,
+      timestamp_email: m.received_at,
+    })),
+    ...(selectedThread?.sent_messages ?? []).map((m) => ({
+      instantly_email_id: m.instantly_email_id,
+      direction: "sent_manual",
+      from_email: m.from_email,
+      to_emails: m.to_emails,
+      cc_emails: m.cc_emails,
+      timestamp_email: m.sent_at,
+    })),
+    ...outboxSequenceSends
+      .filter((m): m is typeof m & { instantly_email_id: string; timestamp_email: string } => !!m.instantly_email_id && !!m.timestamp_email)
+      .map((m) => ({
+        instantly_email_id: m.instantly_email_id,
+        direction: "sent_campaign",
+        from_email: m.from_email,
+        to_emails: m.to_emails,
+        cc_emails: m.cc_emails,
+        timestamp_email: m.timestamp_email,
+      })),
+  ];
   const outboxOurEmails = ourAddresses(outboxParticipantMessages, [selectedThread?.eaccount ?? null]);
   const outboxUnansweredIds = new Set(
     unansweredInbound(outboxParticipantMessages, outboxOurEmails).map((m) => m.instantly_email_id),
   );
-  // The message the composer answers — an explicit pick, else the newest
-  // inbound one. outboxReplyTargetId is always resolved to an inbound
-  // message's id before it lands here, even when the row the user clicked
-  // Reply on was one of our own outbound sends (see resolveOutboxReplyTarget
-  // below) — replying to our own sent mail directly would address it
-  // straight back at us, so this lookup only ever matches direction=received.
-  const outboxActiveTarget =
-    outboxParticipantMessages.find(
-      (m) => m.direction === "received" && m.instantly_email_id === outboxReplyTargetId,
-    ) ?? latestInboundMessage(outboxParticipantMessages);
+  // The message the composer answers — an explicit pick (which may itself be
+  // one of our own outbound sends now, see resolveOutboxReplyTarget below),
+  // else the thread's newest message run through replyTargetFor so the
+  // default "Reply" button works even on a pure cold-outreach thread.
+  const outboxExplicitTarget = outboxReplyTargetId
+    ? outboxParticipantMessages.find((m) => m.instantly_email_id === outboxReplyTargetId) ?? null
+    : null;
+  const outboxNewestMessage = outboxParticipantMessages.length > 0
+    ? [...outboxParticipantMessages].sort((a, b) => a.timestamp_email.localeCompare(b.timestamp_email))[outboxParticipantMessages.length - 1]
+    : null;
+  const outboxActiveTarget = outboxExplicitTarget
+    ?? (outboxNewestMessage ? replyTargetFor(outboxNewestMessage, outboxParticipantMessages) : null);
   const outboxActiveTargetId = outboxActiveTarget?.instantly_email_id ?? null;
   // Sender of each message, so a sent reply can name what it answered.
   async function handleOutboxConfirmAddLead(firstName: string, lastName: string) {
@@ -1935,15 +1960,21 @@ export function CampaignDetail({
   );
 
   // Lets an outbound row (a sequence send or one of our own manual replies)
-  // start a reply too, Gmail-style — resolves to the nearest earlier inbound
-  // message, since Instantly's reply_to_uuid must always be an inbound id.
-  function resolveOutboxReplyTarget(timestamp: string | null): { id: string; name: string } | null {
-    if (!timestamp) return null;
-    const target = replyTargetFor(
-      { instantly_email_id: "__synthetic__", direction: "sent", from_email: null, to_emails: null, cc_emails: null, timestamp_email: timestamp },
-      outboxParticipantMessages,
-    );
-    if (!target) return null;
+  // start a reply too, Gmail-style — resolves via replyTargetFor against the
+  // full unified message list, so a cold-outreach row with nobody to answer
+  // yet falls back to itself (a real, usable Instantly id) rather than null.
+  function resolveOutboxReplyTarget(
+    candidate: {
+      instantly_email_id: string;
+      direction: string;
+      from_email: string | null;
+      to_emails: string | null;
+      cc_emails: string | null;
+      timestamp_email: string;
+    } | null,
+  ): { id: string; name: string } | null {
+    if (!candidate) return null;
+    const target = replyTargetFor(candidate, outboxParticipantMessages);
     const from = parseAddressList(target.from_email)[0] ?? null;
     const name = from ? (from === outboxLeadAddress ? outboxReplyName : from) : "Unknown sender";
     return { id: target.instantly_email_id, name };
@@ -1953,9 +1984,19 @@ export function CampaignDetail({
   // What the sequence actually sent — the opening email AND every follow-up —
   // straight from the mirrored mail. This is the real record of what left; the
   // draft below is only what we composed.
-  const outboxSequenceSends = selected?.sequence_messages ?? [];
   for (const m of outboxSequenceSends) {
-    const seqReplyTarget = resolveOutboxReplyTarget(m.timestamp_email);
+    const seqReplyTarget = resolveOutboxReplyTarget(
+      m.instantly_email_id && m.timestamp_email
+        ? {
+            instantly_email_id: m.instantly_email_id,
+            direction: "sent_campaign",
+            from_email: m.from_email,
+            to_emails: m.to_emails,
+            cc_emails: m.cc_emails,
+            timestamp_email: m.timestamp_email,
+          }
+        : null,
+    );
     outboxMessageItems.push({
       id: `seq-${m.id}`,
       sender: "You",
@@ -1977,7 +2018,26 @@ export function CampaignDetail({
   // a just-sent lead has no mirrored copy yet. Never both — that would show the
   // same email twice.
   if (outboxSequenceSends.length === 0 && selected?.email_drafts?.status === "sent") {
-    const initialReplyTarget = resolveOutboxReplyTarget(selected.email_drafts.created_at ?? null);
+    // This row is a draft record, not a real Instantly email — it has no
+    // instantly_email_id of its own, so unlike the cases below it can never
+    // fall back to itself. Only resolve if a real inbound message exists.
+    const initialReplyTarget = ((): { id: string; name: string } | null => {
+      const createdAt = selected.email_drafts.created_at;
+      if (!createdAt) return null;
+      const synthetic = {
+        instantly_email_id: "__draft__",
+        direction: "sent_manual",
+        from_email: null,
+        to_emails: null,
+        cc_emails: null,
+        timestamp_email: createdAt,
+      };
+      const target = replyTargetFor(synthetic, outboxParticipantMessages);
+      if (target.instantly_email_id === "__draft__") return null;
+      const from = parseAddressList(target.from_email)[0] ?? null;
+      const name = from ? (from === outboxLeadAddress ? outboxReplyName : from) : "Unknown sender";
+      return { id: target.instantly_email_id, name };
+    })();
     outboxMessageItems.push({
       id: `initial-${selected.email_drafts.id}`,
       sender: "You",
@@ -2030,7 +2090,14 @@ export function CampaignDetail({
         : null;
       const sentReplyTarget = repliedToInbound
         ? { id: repliedToInbound, name: outboxSenderByEmailId.get(repliedToInbound) ?? "Unknown sender" }
-        : resolveOutboxReplyTarget(sent.sent_at);
+        : resolveOutboxReplyTarget({
+            instantly_email_id: sent.instantly_email_id,
+            direction: "sent_manual",
+            from_email: sent.from_email,
+            to_emails: sent.to_emails,
+            cc_emails: sent.cc_emails,
+            timestamp_email: sent.sent_at,
+          });
       outboxMessageItems.push({
         id: `sent-${sent.id}`,
         sender: sent.sent_by_name ?? "You",
@@ -3759,9 +3826,12 @@ export function CampaignDetail({
                 {/* Reply to the latest inbound message. Opens a plain composer;
                     the AI only writes a draft when "AI draft" is pressed. */}
                 {selectedThread && (() => {
+                  // No inbound message at all (a pure cold-outreach thread) is
+                  // fine — there is simply no AI reply draft to prefill, and the
+                  // composer falls straight to a manual reply against our own
+                  // sent message (see outboxActiveTarget/replyTargetFor).
                   const lastMsg = selectedThread.messages[selectedThread.messages.length - 1] ?? null;
-                  if (!lastMsg) return null;
-                  const latestDraft = lastMsg.reply_drafts[lastMsg.reply_drafts.length - 1] ?? null;
+                  const latestDraft = lastMsg?.reply_drafts[lastMsg.reply_drafts.length - 1] ?? null;
                   const hasDraftReady = !!latestDraft && latestDraft.status !== "generating" && latestDraft.status !== "sent" && latestDraft.status !== "rejected";
                   const isGenerating = latestDraft?.status === "generating" || outboxNewReplyLoading;
                   const campaignLeadId = selectedThread.campaign_lead_id;
@@ -3777,7 +3847,7 @@ export function CampaignDetail({
                   // Reply all puts every participant in To (Instantly's
                   // additional_recipients); plain Reply addresses only the
                   // sender of the message being answered.
-                  const outboxTo = replyRecipients(outboxActiveTarget, outboxParticipants);
+                  const outboxTo = replyRecipients(outboxActiveTarget, outboxParticipants, selectedThread.lead_email);
                   const outboxRecipientsCtx: ReplyRecipientContext = {
                     to: outboxReplyAll ? [...outboxTo.to, ...outboxTo.cc] : outboxTo.to,
                     lockedTo: outboxTo.to[0] ?? null,

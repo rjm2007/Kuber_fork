@@ -47,7 +47,26 @@ async function apiFetch<T>(path: string, init: RequestInit = {}, token?: string)
       ...init.headers,
     },
   });
-  const json = await res.json();
+  let json: { success: boolean; data: unknown; error: { code?: string; message?: string; details?: unknown } | null };
+  try {
+    json = await res.json();
+  } catch (parseErr) {
+    // An aborted request (e.g. a superseded search-as-you-type call) can cut
+    // the body stream off mid-read, which throws a plain SyntaxError here
+    // instead of the AbortError callers already know to ignore — surfaced as
+    // "Failed to execute 'json' on 'Response': Unexpected end of JSON input"
+    // with no indication it was actually a cancelled request. Callers already
+    // check `signal.aborted` / err.name === "AbortError" after a caught
+    // error, so report it the same way instead of leaking the raw parse
+    // failure — and if the signal was never aborted, this really was the
+    // server returning a broken body, which is worth saying plainly.
+    if (init.signal?.aborted) {
+      const abortErr = new Error("The operation was aborted.");
+      abortErr.name = "AbortError";
+      throw abortErr;
+    }
+    throw new Error(`Server returned an unreadable response (${res.status}). Please try again.`);
+  }
   if (!json.success) {
     // A previously-valid session can go stale mid-use (e.g. the account was
     // just deactivated) — force the user out instead of leaving them staring
