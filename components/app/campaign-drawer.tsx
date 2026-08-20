@@ -2043,13 +2043,17 @@ export function CampaignDetail({
   // is invalid CSS and silently falls back to black — use the var directly.
   // Colors are solid (no opacity shading) and keyed by stage id, not array
   // position, since stageDistribution only includes non-empty stages and their
-  // order/count shifts per campaign.
+  // order/count shifts per campaign. Stage ids are DeliveryBucket values (see
+  // app/api/v1/campaigns/[id]/report/route.ts) — the same "sent excludes
+  // replied/bounced" definition used everywhere else on this tab, so this
+  // donut can no longer disagree with the Sent/Replied/Bounced tiles above it.
   const PIPELINE_STAGE_STYLE: Record<string, { fill: string; opacity: number }> = {
-    pending:  { fill: "var(--muted-foreground)", opacity: 0.35 },
-    draft:    { fill: "var(--primary)", opacity: 1 },
-    approved: { fill: "var(--primary)", opacity: 1 },
-    sent:     { fill: "var(--primary)", opacity: 1 },
-    replied:  { fill: "#22c55e", opacity: 1 },
+    not_queued:  { fill: "var(--muted-foreground)", opacity: 0.35 },
+    sending:     { fill: "var(--muted-foreground)", opacity: 0.6 },
+    sent:        { fill: "var(--primary)", opacity: 1 },
+    replied:     { fill: "#22c55e", opacity: 1 },
+    bounced:     { fill: "var(--destructive)", opacity: 1 },
+    send_failed: { fill: "var(--destructive)", opacity: 0.5 },
   };
   const pipelineData = report && report.stageDistribution.length > 0
     ? report.stageDistribution.map((s) => ({ name: s.label, value: s.count, ...(PIPELINE_STAGE_STYLE[s.stage] ?? { fill: "var(--primary)", opacity: 1 }) }))
