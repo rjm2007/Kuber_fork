@@ -17,7 +17,7 @@ import { AvailabilityToggle } from "@/components/ui/availability-toggle";
 import { fetchLogo, fetchSettings, patchSettings, fetchMySettings, patchMySettings, removeLogo, uploadLogo, fetchMyAvailability, setMyAvailability, type AvailabilityStatus } from "@/lib/api-client";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
-import { COLORS } from "@/lib/branding";
+import { BRAND_LOGO_CHANGED, COLORS } from "@/lib/branding";
 import { MANDATORY_FORMATTING_RULES } from "@/lib/constants";
 import { useTheme } from "@/lib/theme-context";
 import { useApp } from "@/lib/app-context";
@@ -338,6 +338,9 @@ export function SettingsView() {
     ? [...MANAGER_NAV_ITEMS, { id: "email" as const, label: "Email & Sending" }, { id: "keys" as const, label: "Keys" }]
     : NAV_ITEMS;
   const aiNavItems = isManager ? [...PERSONAL_AI_NAV_ITEMS, ...COMPANY_AI_NAV_ITEMS] : PERSONAL_AI_NAV_ITEMS;
+  // Company Details is company identity (sender name, context, logo) — manager /
+  // super-admin only. Employees keep the Product Offerings library.
+  const knowledgeNavItems = isManager ? KNOWLEDGE_NAV_ITEMS : KNOWLEDGE_NAV_ITEMS.filter((i) => i.id !== "company");
   const logoInputRef = useRef<HTMLInputElement>(null);
   const [section, setSection] = useState<Section>("profile");
   const [aiSection, setAiSection] = useState<AiSection>("my-writing");
@@ -382,7 +385,8 @@ export function SettingsView() {
   const [error,   setError   ] = useState("");
 
   const activeAiNavItem        = aiNavItems.find((i) => i.id === aiSection);
-  const activeKnowledgeNavItem = KNOWLEDGE_NAV_ITEMS.find((i) => i.id === knowledgeSection);
+  const activeKnowledgeSection: KnowledgeSection = isManager ? knowledgeSection : "products";
+  const activeKnowledgeNavItem = KNOWLEDGE_NAV_ITEMS.find((i) => i.id === activeKnowledgeSection);
   const activeKeysNavItem      = KEYS_NAV_ITEMS.find((i) => i.id === keysSection);
 
   // The breadcrumb shows the ancestor trail; the deepest active item becomes the page title.
@@ -455,8 +459,12 @@ export function SettingsView() {
       const res = await uploadLogo(token, file);
       setLogoPath(res.logo_path);
       setLogoUrl(res.logo_url);
-      await patchSettings(token, { brand_logo_path: res.logo_path });
-    } catch (e) { setError((e as Error).message); }
+      // The upload route already wrote brand_logo_path; re-patching it here was
+      // a redundant round trip. Tell the app shell instead — it renders the
+      // sidebar logo and otherwise wouldn't notice until a full page reload.
+      window.dispatchEvent(new CustomEvent(BRAND_LOGO_CHANGED, { detail: res.logo_url }));
+      toast.success("Logo updated");
+    } catch (e) { setError((e as Error).message); toast.error((e as Error).message); }
     finally { setLogoUploading(false); }
   }
 
@@ -469,8 +477,9 @@ export function SettingsView() {
       await removeLogo(token);
       setLogoPath(null);
       setLogoUrl(null);
-      await patchSettings(token, { brand_logo_path: "" });
-    } catch (e) { setError((e as Error).message); }
+      window.dispatchEvent(new CustomEvent(BRAND_LOGO_CHANGED, { detail: null }));
+      toast.success("Logo removed");
+    } catch (e) { setError((e as Error).message); toast.error((e as Error).message); }
     finally { setLogoUploading(false); }
   }
 
@@ -481,7 +490,7 @@ export function SettingsView() {
     // tab. Without this scoping, a stale incomplete product sitting in Knowledge
     // Sources blocks saving on completely unrelated tabs (Email Template, Reply AI,
     // Email Footer) even when nothing about products was touched — confirmed live bug.
-    if (section === "knowledge" && knowledgeSection === "products") {
+    if (section === "knowledge" && activeKnowledgeSection === "products") {
       const incompleteProduct = productOfferings.find(
         (p) => !p.name.trim() || !p.description.trim()
       );
@@ -509,14 +518,17 @@ export function SettingsView() {
         setMyDefaults(my.defaults);
         toast.success("Your settings were saved");
       } else if (section === "knowledge") {
-        // Knowledge Sources is editable by everyone, so send only the keys those
-        // tabs own — the prompt-shaped keys are manager-only server-side and
-        // including them would 403 an employee's save.
+        // Send only the keys these tabs own — the prompt-shaped keys are
+        // manager-only server-side and including them would 403 the save.
+        // Company Details is manager-only too, so an employee sends products
+        // alone; sending those keys back unchanged would 403 their whole save.
         await patchSettings(token, {
-          default_sender_name: senderName,
-          client_industry:     clientIndustry,
-          company_context:     companyContext,
-          product_offerings:   JSON.stringify(productOfferings),
+          product_offerings: JSON.stringify(productOfferings),
+          ...(isManager && {
+            default_sender_name: senderName,
+            client_industry:     clientIndustry,
+            company_context:     companyContext,
+          }),
         });
         toast.success("Knowledge sources saved");
       } else {
@@ -674,10 +686,10 @@ export function SettingsView() {
         {section === "knowledge" && (
           <aside className="w-56 shrink-0 border-r border-border p-4 flex flex-col gap-1 overflow-y-auto">
             <p className="eyebrow px-2 mb-1">Knowledge Sources</p>
-            {KNOWLEDGE_NAV_ITEMS.map(({ id, label, icon: Icon }) => (
+            {knowledgeNavItems.map(({ id, label, icon: Icon }) => (
               <Button key={id} type="button" variant="ghost" onClick={() => setKnowledgeSection(id)}
                 className={cn("h-auto w-full justify-start gap-2.5 px-3 py-2.5 rounded-md text-sm font-medium",
-                  knowledgeSection === id ? "bg-primary text-primary-foreground font-semibold hover:bg-primary hover:text-primary-foreground" : "text-muted-foreground hover:text-foreground hover:bg-secondary/50")}>
+                  activeKnowledgeSection === id ? "bg-primary text-primary-foreground font-semibold hover:bg-primary hover:text-primary-foreground" : "text-muted-foreground hover:text-foreground hover:bg-secondary/50")}>
                 <Icon className="size-4 shrink-0" /><span className="truncate">{label}</span>
               </Button>
             ))}
@@ -996,7 +1008,7 @@ export function SettingsView() {
                 <div className="space-y-8 enter">
 
                   {/* Company Details */}
-                  {knowledgeSection === "company" && (
+                  {activeKnowledgeSection === "company" && (
                     <section className="space-y-5">
                       <div className="flex items-center justify-between border-b border-border pb-4">
                         <div className="flex items-center gap-2">
@@ -1055,7 +1067,7 @@ export function SettingsView() {
                   )}
 
                   {/* Product Offerings */}
-                  {knowledgeSection === "products" && (
+                  {activeKnowledgeSection === "products" && (
                     <div className="space-y-4">
                       <div className="flex items-center justify-between border-b border-border pb-4">
                         <div className="flex items-center gap-2">

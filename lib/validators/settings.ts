@@ -27,15 +27,13 @@ export const PatchSettingsSchema = z.object({
   generic_email_body:      z.string().optional(),
 });
 
-// The subset of company settings surfaced under Settings → Knowledge Sources
-// (Company Details + Product Offerings). Employees work with this material far
-// more than managers do, so everyone may edit these keys; the rest of the
-// company settings (prompts, templates, reply AI, footer) stay manager-only.
+// The subset of company settings an employee may edit: the Product Offerings
+// library only. Company Details (sender name, industry, company context, brand
+// logo) is company identity — one employee editing it rewrites every user's
+// outreach — so it is manager/super-admin only, same as the prompts. An
+// employee did exactly that on 21 Aug 2026: pasted their own prospecting email
+// into company_context and set default_sender_name to their own name.
 export const KNOWLEDGE_SETTINGS_KEYS = [
-  "default_sender_name",
-  "client_industry",
-  "company_context",
-  "brand_logo_path",
   "product_offerings",
 ] as const;
 

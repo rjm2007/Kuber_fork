@@ -6,6 +6,11 @@
 
 export const APP_NAME = "Kuber";
 export const APP_LOGO_INITIAL = "K";
+
+/** Fired on `window` when the brand logo is uploaded or removed, with the new
+ *  signed URL (or null) as `detail` — lets the app shell's sidebar update
+ *  without a page reload. */
+export const BRAND_LOGO_CHANGED = "brand-logo-changed";
 export const APP_TITLE = "Kuber Admin";
 export const APP_DESCRIPTION = "Kuber demo admin workspace";
 export const APP_TAGLINE = "Access the lead command center.";
