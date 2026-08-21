@@ -125,6 +125,13 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   // never chase them again) or on a follow-up, meaning the mailbox died between
   // the two sends — the same red badge for two different stories.
   const bouncedStepByLead = new Map<string, number>();
+  // Timestamp of the most recently confirmed email_sent, ANY step including 1
+  // (unlike stepByLead above, which skips step 1 since first_sent_at already
+  // covers whether it sent — this tracks WHEN, which first_sent_at also has,
+  // but keeping one map that's always populated once anything has sent is what
+  // the due-date estimate below needs). Real data, not a guess: the
+  // email_sent webhook is Instantly confirming delivery, not us inferring it.
+  const lastStepAtByLead = new Map<string, { step: number; at: string }>();
   if (pageLeadIds.length > 0) {
     const { data: events } = await db
       .from("reply_events")
@@ -148,6 +155,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         continue;
       }
       const step = ev.step as number | null;
+      const at = ev.received_at as string | null;
+      if (step && at) {
+        const current = lastStepAtByLead.get(clId);
+        if (!current || step > current.step) lastStepAtByLead.set(clId, { step, at });
+      }
       if (!step || step <= 1) continue; // step 1 is what first_sent_at already covers
       if (step > (stepByLead.get(clId) ?? 0)) stepByLead.set(clId, step);
     }
@@ -167,7 +179,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   if (pageLeadIds.length > 0) {
     const { data: sends } = await db
       .from("unibox_emails")
-      .select("id, campaign_lead_id, step, subject, body_html, body_text, timestamp_email, to_emails, cc_emails")
+      .select("id, campaign_lead_id, step, subject, body_html, body_text, timestamp_email, to_emails, cc_emails, from_email, instantly_email_id, eaccount, thread_id")
       .eq("campaign_id", id)
       .eq("direction", "sent_campaign")
       .in("campaign_lead_id", pageLeadIds)
@@ -187,6 +199,13 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     leads: mapLeadRow(cl.leads as Record<string, unknown> | null),
     draft_activity: activityByLead.get(cl.lead_id as string) ?? null,
     last_step_sent: stepByLead.get(cl.id as string) ?? null,
+    // When the highest confirmed step (any step, including 1) actually went
+    // out — real webhook timestamp, used to estimate the next step's due date
+    // from the campaign's own configured day gaps (see effectiveLastStep /
+    // estimateNextDue in campaign-drawer.tsx). Falls back to first_sent_at:
+    // reply_events can lag or miss a step-1 row for older leads, but
+    // first_sent_at is written unconditionally on the opening send.
+    last_step_sent_at: lastStepAtByLead.get(cl.id as string)?.at ?? (cl.first_sent_at as string | null) ?? null,
     sequence_messages: sequenceByLead.get(cl.id as string) ?? [],
     bounced_at: bouncedAtByLead.get(cl.id as string) ?? null,
     bounced_step: bouncedStepByLead.get(cl.id as string) ?? null,

@@ -47,7 +47,26 @@ async function apiFetch<T>(path: string, init: RequestInit = {}, token?: string)
       ...init.headers,
     },
   });
-  const json = await res.json();
+  let json: { success: boolean; data: unknown; error: { code?: string; message?: string; details?: unknown } | null };
+  try {
+    json = await res.json();
+  } catch (parseErr) {
+    // An aborted request (e.g. a superseded search-as-you-type call) can cut
+    // the body stream off mid-read, which throws a plain SyntaxError here
+    // instead of the AbortError callers already know to ignore — surfaced as
+    // "Failed to execute 'json' on 'Response': Unexpected end of JSON input"
+    // with no indication it was actually a cancelled request. Callers already
+    // check `signal.aborted` / err.name === "AbortError" after a caught
+    // error, so report it the same way instead of leaking the raw parse
+    // failure — and if the signal was never aborted, this really was the
+    // server returning a broken body, which is worth saying plainly.
+    if (init.signal?.aborted) {
+      const abortErr = new Error("The operation was aborted.");
+      abortErr.name = "AbortError";
+      throw abortErr;
+    }
+    throw new Error(`Server returned an unreadable response (${res.status}). Please try again.`);
+  }
   if (!json.success) {
     // A previously-valid session can go stale mid-use (e.g. the account was
     // just deactivated) — force the user out instead of leaving them staring
@@ -1054,6 +1073,7 @@ export async function patchSettings(token: string, body: Record<string, string>)
 
 export type MySettings = {
   draft_prompt: string | null;
+  draft_template: string | null;
   reply_prompt: string | null;
   signature: string | null;
   sender_name: string | null;
@@ -1075,7 +1095,7 @@ export async function fetchMySettings(token: string): Promise<MySettings> {
 /** null (or "") clears a field back to "inherit the company default". */
 export async function patchMySettings(
   token: string,
-  body: Partial<Record<"draft_prompt" | "reply_prompt" | "signature" | "sender_name" | "theme" | "theme_mode", string | null>>,
+  body: Partial<Record<"draft_prompt" | "draft_template" | "reply_prompt" | "signature" | "sender_name" | "theme" | "theme_mode", string | null>>,
 ): Promise<MySettings> {
   return apiFetch("/api/v1/me/settings", { method: "PATCH", body: JSON.stringify(body) }, token);
 }

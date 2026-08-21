@@ -335,7 +335,9 @@ export function AppProvider({
         .then((total) => setLeadsTotal(total))
         .catch(() => {});
     }
-  }, [session, initialLeadsTotal]);
+    // Sidebar shows a campaign count on every page, not just /campaigns.
+    void loadCampaigns(session.access_token);
+  }, [session, initialLeadsTotal, loadCampaigns]);
 
   // ── Enrichment ────────────────────────────────────────────────────────────
 

@@ -15,10 +15,11 @@ import { ReplyDraftBox, replyDraftHasContent } from "@/components/app/reply-draf
 import { ManualReplyBox, type ReplyRecipientContext } from "@/components/app/manual-reply-box";
 import { AddParticipantLeadDialog } from "@/components/app/add-participant-lead-dialog";
 import {
-  latestInboundMessage,
+  isInbound,
   ourAddresses,
   parseAddressList,
   replyRecipients,
+  replyTargetFor,
   threadParticipants,
   unansweredInbound,
 } from "@/lib/thread-participants";
@@ -85,6 +86,8 @@ function MessageRow({
   expanded,
   onToggle,
   canReply,
+  canReplyToThis,
+  replyTargetName,
   isReplyTarget,
   isUnanswered,
   inReplyToLabel,
@@ -100,6 +103,12 @@ function MessageRow({
   expanded: boolean;
   onToggle: () => void;
   canReply: boolean;
+  /** False only when this message has no inbound message at or before it to
+   *  thread a reply off — e.g. the very first outbound send, unanswered. */
+  canReplyToThis: boolean;
+  /** Who the reply will actually address — the message itself if inbound,
+   *  otherwise whoever wrote the nearest earlier inbound message. */
+  replyTargetName: string | null;
   isReplyTarget: boolean;
   /** Nobody has replied to THIS person since they wrote. */
   isUnanswered: boolean;
@@ -148,11 +157,13 @@ function MessageRow({
 
   if (!expanded) {
     return (
-      <button
-        type="button"
+      <div
+        role="button"
+        tabIndex={0}
         onClick={onToggle}
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onToggle(); } }}
         className={cn(
-          "w-full flex items-center gap-3 px-4 py-2.5 text-left border-b border-border/60 hover:bg-secondary/40 transition-colors",
+          "w-full flex items-center gap-3 px-4 py-2.5 text-left border-b border-border/60 hover:bg-secondary/40 transition-colors cursor-pointer",
           isUnread && "bg-primary/5",
         )}
       >
@@ -175,11 +186,23 @@ function MessageRow({
         <span className="flex-1 min-w-0 truncate text-xs text-muted-foreground">
           {snippet || "(empty message)"}
         </span>
+        {/* Reply without expanding first — same eligibility/target logic as
+            the full button below, just reachable from the collapsed row. */}
+        {canReply && canReplyToThis && (
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onReplyTo(); }}
+            title={`Reply to ${replyTargetName ?? senderName}`}
+            className="shrink-0 rounded p-1 text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
+          >
+            <Reply className="size-3.5" />
+          </button>
+        )}
         {isUnread && <span className="size-1.5 rounded-full bg-primary shrink-0" />}
         <span className="shrink-0 font-mono text-[11px] text-muted-foreground tabular-nums">
           {format(new Date(m.timestamp_email), "MMM d")}
         </span>
-      </button>
+      </div>
     );
   }
 
@@ -271,11 +294,12 @@ function MessageRow({
             {sequenceStepLabel(m.step)}
           </span>
         )}
-        {/* Answering a specific message is the only way to choose the
-            recipient: Instantly derives the To from the message being replied
-            to. Outbound messages are not targets — that would address the mail
-            back at ourselves. */}
-        {!isOutbound && canReply && (
+        {/* Any message can start a reply now, Gmail-style — but Instantly
+            derives the To from the sender of whichever message actually gets
+            threaded (replyTargetFor resolves an outbound click to the
+            nearest earlier inbound message), so the button is hidden only
+            when there is truly no inbound message yet to answer. */}
+        {canReply && canReplyToThis && (
           <div className="mt-2 flex items-center gap-1">
             <Button
               type="button"
@@ -285,7 +309,7 @@ function MessageRow({
               className="h-7 gap-1.5 px-2 text-[11px] text-primary hover:text-primary"
             >
               <Reply className="size-3" />
-              Reply to {senderName}
+              Reply to {replyTargetName ?? senderName}
             </Button>
             <Button
               type="button"
@@ -363,10 +387,17 @@ export function UniboxThreadView({
     () => threadParticipants(sorted, { ourEmails, leadEmail }),
     [sorted, ourEmails, leadEmail],
   );
-  const targetMessage = useMemo(
-    () => sorted.find((m) => m.instantly_email_id === replyTargetId) ?? latestInboundMessage(sorted),
-    [sorted, replyTargetId],
-  );
+  // Falls back to the thread's newest message run through replyTargetFor
+  // (not latestInboundMessage) so the default "Reply" button works even on a
+  // pure cold-outreach thread the lead has never answered — resolving the
+  // newest OUTBOUND message still yields a valid, if self-addressing-by-
+  // default, target rather than null.
+  const targetMessage = useMemo(() => {
+    const picked = sorted.find((m) => m.instantly_email_id === replyTargetId);
+    if (picked) return picked;
+    const latest = sorted.length > 0 ? sorted[sorted.length - 1] : null;
+    return latest ? replyTargetFor(latest, sorted) : null;
+  }, [sorted, replyTargetId]);
   const unansweredIds = useMemo(
     () => new Set(unansweredInbound(sorted, ourEmails).map((m) => m.instantly_email_id)),
     [sorted, ourEmails],
@@ -394,7 +425,7 @@ export function UniboxThreadView({
     // `to` is the address Instantly forces in; `cc` here is everyone else on
     // the thread. Reply all puts them all in To (Instantly's
     // additional_recipients), plain Reply addresses only the one person.
-    const { to, cc } = replyRecipients(targetMessage, participants);
+    const { to, cc } = replyRecipients(targetMessage, participants, leadEmail);
     return {
       to: replyAll ? [...to, ...cc] : to,
       lockedTo: to[0] ?? null,
@@ -459,7 +490,12 @@ export function UniboxThreadView({
   }
 
   function handleReplyTo(m: UniboxMessage, all: boolean) {
-    setReplyTargetId(m.instantly_email_id);
+    // Clicking Reply on one of our own sent messages resolves to whatever
+    // inbound message it was effectively answering, or itself when the lead
+    // has never written back at all — replyRecipients then knows to address
+    // that case to the lead rather than to us. Always resolves to something.
+    const target = replyTargetFor(m, sorted);
+    setReplyTargetId(target.instantly_email_id);
     setReplyAll(all);
     setExpandedIds((prev) => new Set(prev).add(m.id));
     setReplyOpen(true);
@@ -517,7 +553,19 @@ export function UniboxThreadView({
       />
       <div className="enter rounded-xl border border-border bg-field dark:bg-card overflow-hidden mx-6 mt-6">
         {topLevelMessages.map((m) => {
-          const row = (msg: UniboxMessage) => (
+          const row = (msg: UniboxMessage) => {
+            const replyTarget = replyTargetFor(msg, sorted);
+            // An outbound target (only reachable when nobody has replied at
+            // all) still addresses the lead in practice — see
+            // replyRecipients — so label it as such, not with our own
+            // sending address.
+            const replyTargetName = !isInbound(replyTarget)
+              ? leadName
+              : (() => {
+                  const from = parseAddressList(replyTarget.from_email)[0] ?? null;
+                  return from ? (from === leadAddress ? leadName : from) : null;
+                })();
+            return (
             <MessageRow
               m={msg}
               campaign={campaign}
@@ -526,6 +574,13 @@ export function UniboxThreadView({
               expanded={expandedIds.has(msg.id)}
               onToggle={() => toggle(msg.id)}
               canReply={canReply}
+              // Any message can be a reply target now (Gmail-style), not just
+              // inbound ones — but only when some inbound message exists at
+              // or before it to actually thread the reply off (see
+              // replyTargetFor). The very first outbound send in a thread
+              // nobody has answered yet has no valid target.
+              canReplyToThis={!!replyTarget}
+              replyTargetName={replyTargetName}
               // Only while the composer is open — otherwise the badge reads as a
               // permanent property of the message ("this is the one being
               // answered") rather than the state of a reply you are writing.
@@ -547,7 +602,8 @@ export function UniboxThreadView({
               })()}
               addingLead={savingLead && addLeadFor === parseAddressList(msg.from_email)[0]}
             />
-          );
+            );
+          };
           const children = repliesByParent.get(m.instantly_email_id) ?? [];
           return (
             <Fragment key={m.id}>
@@ -555,8 +611,10 @@ export function UniboxThreadView({
               {/* Our replies sit under the message they answer, so an
                   unanswered question is visible as a branch with nothing
                   beneath it rather than a line lost in a flat chain. Exactly
-                  one level deep: only inbound messages can be replied to, so a
-                  child can never have children of its own. */}
+                  one level deep: in_reply_to_email_id nesting only ever points
+                  at a top-level message, so a child can never have children of
+                  its own — unrelated to who can click Reply (see
+                  replyTargetFor, which now lets any message be a target). */}
               {children.map((child) => (
                 <div key={child.id} className="border-l-2 border-primary/25 bg-secondary/20 pl-4">
                   {row(child)}

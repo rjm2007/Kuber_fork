@@ -74,10 +74,11 @@ import { ReplyDraftBox, replyDraftHasContent } from "@/components/app/reply-draf
 import { ManualReplyBox, type ReplyRecipientContext } from "@/components/app/manual-reply-box";
 import { AddParticipantLeadDialog } from "@/components/app/add-participant-lead-dialog";
 import {
-  latestInboundMessage,
+  isInbound,
   ourAddresses,
   parseAddressList,
   replyRecipients,
+  replyTargetFor,
   threadParticipants,
   unansweredInbound,
 } from "@/lib/thread-participants";
@@ -105,6 +106,7 @@ import {
   computeCampaignStats, deliveryBucket, deliveryLabel, DELIVERY_BUCKET_LABELS,
   sequenceStepLabel,
   type DeliveryBucket,
+  type DeliveryLeadLike,
 } from "@/lib/campaign-status";
 
 /**
@@ -213,6 +215,11 @@ type CampaignLead = {
    *  is follow-up N-1). first_sent_at alone cannot show this — it is stamped
    *  once and never moves as the follow-ups go out. */
   last_step_sent?: number | null;
+  /** When the highest confirmed step (any step, including 1) actually went out
+   *  — real webhook timestamp from reply_events, falling back to first_sent_at.
+   *  Feeds the estimated-due-date math (effectiveLastStep/estimateNextDue) —
+   *  never a guess, this is Instantly confirming delivery. */
+  last_step_sent_at?: string | null;
   /** Which sequence step the address rejected (1 = the opening email), so a
    *  mailbox that died between sends reads differently from one dead all along. */
   bounced_step?: number | null;
@@ -228,6 +235,17 @@ type CampaignLead = {
     timestamp_email: string | null;
     to_emails: string | null;
     cc_emails: string | null;
+    from_email: string | null;
+    /** Instantly's own email id and sending mailbox — needed to let a reply
+     *  start from this send itself when the lead has never written back
+     *  (see resolveOutboxReplyTarget). Absent on pre-migration rows. */
+    instantly_email_id?: string | null;
+    eaccount?: string | null;
+    /** The Unibox thread this send belongs to — the fallback source for
+     *  replying when getCampaignReplyThreads has no entry for this lead at
+     *  all (a never-replied lead is the common case, so that endpoint
+     *  deliberately skips them; see its own comment for why). */
+    thread_id?: string | null;
   }>;
   /** Set once someone answered this bounce by adding another contact at the same
    *  company. The row stays bounced (and still counts as one) — this only marks
@@ -355,6 +373,45 @@ function sequenceFollowUpSteps(
   return steps.filter((s) => s.step_order > 1);
 }
 
+// The leads API only ever writes last_step_sent from FOLLOW-UP webhook events
+// — step 1 (the opening email) is deliberately never written there because
+// campaign_leads.first_sent_at already covers it (see
+// app/api/v1/campaigns/[id]/leads/route.ts). So a lead who has only received
+// the opening email has last_step_sent=null, which must NOT be read as "step
+// 1 wasn't sent" — it means "highest CONFIRMED step is 1", same as any other
+// lead whose opening delivered but no follow-up has gone out yet. This is the
+// one place that null is resolved correctly; every follow-up read in this
+// file should go through here rather than reading last_step_sent directly.
+function effectiveLastStep(cl: DeliveryLeadLike): number {
+  if (cl.last_step_sent) return cl.last_step_sent;
+  const b = deliveryBucket(cl);
+  return b === "sent" || b === "replied" || b === "bounced" ? 1 : 0;
+}
+
+/** True while a lead is still active in the sequence (sent/sending, not
+ *  replied/bounced/stopped) AND has not yet received every configured
+ *  follow-up step. Drives the "Follow-up" filter option on the Leads and
+ *  Outbox dropdowns — a lightweight yes/no read, not the full schedule/date
+ *  math a dedicated progress view would need. */
+function hasUpcomingFollowup(
+  cl: DeliveryLeadLike,
+  steps: Array<{ step_order: number; subject: string; body: string; delay: number; delay_unit: string }>,
+): boolean {
+  const delivery = deliveryBucket(cl);
+  if (delivery !== "sent" && delivery !== "sending") return false;
+  const followUpCount = sequenceFollowUpSteps(steps).filter((s) => s.subject.trim() || s.body.trim()).length;
+  if (followUpCount === 0) return false;
+  return effectiveLastStep(cl) < 1 + followUpCount;
+}
+
+/** True once at least one follow-up (step 2+) has actually gone out —
+ *  independent of current status, so a lead who later replied or bounced
+ *  still counts here (they did receive it). Complements hasUpcomingFollowup
+ *  above: "due" looks forward, "sent" looks back. */
+function hasReceivedFollowup(cl: DeliveryLeadLike): boolean {
+  return effectiveLastStep(cl) >= 2;
+}
+
 function sequenceDisplayStep(stepOrder: number): number {
   return stepOrder - 1;
 }
@@ -432,6 +489,7 @@ function OutboxMessageRow({
   isUnanswered,
   isReplyTarget,
   inReplyToLabel,
+  replyTargetName,
   stepLabel,
   onReplyTo,
   onReplyAll,
@@ -453,9 +511,13 @@ function OutboxMessageRow({
   isReplyTarget: boolean;
   /** For our own replies: who wrote the message this one answered. */
   inReplyToLabel: string | null;
+  /** Who a reply from here will actually address — differs from senderName
+   *  whenever this row is one of our own outbound messages. */
+  replyTargetName: string | null;
   /** "Opening email" / "Follow-up 1" — which sequence send this is. */
   stepLabel: string | null;
-  /** Set for inbound messages that can be answered directly. */
+  /** Set whenever a valid inbound message exists to thread a reply off —
+   *  any row can be one now, not just inbound messages (see replyTargetFor). */
   onReplyTo: (() => void) | null;
   onReplyAll: (() => void) | null;
   /** Set only for a third participant who is not already a lead. */
@@ -473,11 +535,12 @@ function OutboxMessageRow({
 
   if (!expanded) {
     return (
-      <Button
-        type="button"
-        variant="ghost"
+      <div
+        role="button"
+        tabIndex={0}
         onClick={onToggle}
-        className="h-auto w-full justify-start gap-3 px-4 py-2.5 text-left font-normal rounded-none border-b border-border/60 last:border-b-0 hover:bg-secondary/40"
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onToggle(); } }}
+        className="w-full flex items-center gap-3 px-4 py-2.5 text-left font-normal border-b border-border/60 last:border-b-0 hover:bg-secondary/40 cursor-pointer transition-colors"
       >
         <Avatar name={senderName} size="sm" />
         <span className="shrink-0 max-w-[160px] truncate text-sm font-medium text-foreground/90">
@@ -504,12 +567,24 @@ function OutboxMessageRow({
         <span className="flex-1 min-w-0 truncate text-xs text-muted-foreground">
           {snippet || "(empty message)"}
         </span>
+        {/* Reply without expanding first — same eligibility/target logic as
+            the full button below, just reachable from the collapsed row. */}
+        {onReplyTo && (
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onReplyTo(); }}
+            title={`Reply to ${replyTargetName ?? senderName}`}
+            className="shrink-0 rounded p-1 text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
+          >
+            <Reply className="size-3.5" />
+          </button>
+        )}
         {timestamp && (
           <span className="shrink-0 font-mono text-[11px] text-muted-foreground tabular-nums">
             {format(new Date(timestamp), "MMM d")}
           </span>
         )}
-      </Button>
+      </div>
     );
   }
 
@@ -585,7 +660,7 @@ function OutboxMessageRow({
               className="h-7 gap-1.5 px-2 text-[11px] text-primary hover:text-primary"
             >
               <Reply className="size-3" />
-              Reply to {senderName}
+              Reply to {replyTargetName ?? senderName}
             </Button>
             {onReplyAll && (
               <Button
@@ -668,12 +743,11 @@ export function CampaignDetail({
   const [error, setError] = useState("");
   const [configOpen, setConfigOpen] = useState(false);
   const [leadsSort, setLeadsSort] = useState<CampaignLeadsSort>("az");
-  const [leadsDelivery, setLeadsDelivery] = useState<DeliveryBucket | "all">("all");
+  const [leadsDelivery, setLeadsDelivery] = useState<DeliveryBucket | "all" | "followup" | "followup_sent">("all");
   const [leadsViewMode, setLeadsViewMode] = useState<"list" | "kanban">("list");
   const [historyOpen, setHistoryOpen] = useState(false);
   const [versions, setVersions] = useState<Array<{ id: string; subject: string | null; body: string | null; status: string; version: number; created_at: string }>>([]);
   const [campaignSteps, setCampaignSteps] = useState<CampaignStepInput[]>([]);
-  const [stepPerformance, setStepPerformance] = useState<Array<{ step: number; sent: number; failed: number; total: number }>>([]);
   const [previewVersionId, setPreviewVersionId] = useState<string | null>(null);
   const [restoring, setRestoring] = useState(false);
   const [viewTab, setViewTab] = useState<CampaignViewTab>("analytics");
@@ -691,7 +765,7 @@ export function CampaignDetail({
   const [replaceError, setReplaceError] = useState("");
   const [threads, setThreads] = useState<CampaignReplyThread[]>([]);
   const [outboxFilter, setOutboxFilter] = useState<
-    "all" | "action" | "certified" | "sending" | "sent" | "replied" | "bounced"
+    "all" | "action" | "certified" | "sending" | "sent" | "replied" | "bounced" | "followup" | "followup_sent"
   >("all");
   const [outboxExpandOverrides, setOutboxExpandOverrides] = useState<Set<string>>(new Set());
   const [outboxReplyOpen, setOutboxReplyOpen] = useState(false);
@@ -867,19 +941,6 @@ export function CampaignDetail({
     ]);
     const rawLeads = leadsRes.campaign_leads as CampaignLead[];
 
-    const stepMap = new Map<number, { sent: number; failed: number; total: number }>();
-    for (const cl of rawLeads) {
-      for (const d of getLeadDrafts(cl)) {
-        const step = d.step_number ?? 1;
-        const entry = stepMap.get(step) ?? { sent: 0, failed: 0, total: 0 };
-        entry.total++;
-        if (d.status === "sent") entry.sent++;
-        if (d.status === "failed") entry.failed++;
-        stepMap.set(step, entry);
-      }
-    }
-    setStepPerformance([...stepMap.entries()].sort((a, b) => a[0] - b[0]).map(([step, v]) => ({ step, ...v })));
-
     const leads = rawLeads.map((cl) => {
       const step1Draft = getLeadDraftForStep(cl, 1);
       return step1Draft ? { ...cl, email_drafts: step1Draft } : { ...cl, email_drafts: null };
@@ -1032,8 +1093,11 @@ export function CampaignDetail({
     return () => { cancelled = true; };
   }, [viewTab, campaign.id, campaignLeads.length, progress?.sent, progress?.failed]);
 
+  // Loaded eagerly (not gated to the Sequences tab) because the Leads/Outbox
+  // "Follow-up due/sent" filters and the Analytics step-performance panel both
+  // need campaignSteps too — gating this to viewTab==="sequences" left those
+  // filters silently empty until the user happened to open Sequences first.
   useEffect(() => {
-    if (viewTab !== "sequences") return;
     let cancelled = false;
     setSequencesLoading(true);
     (async () => {
@@ -1058,7 +1122,7 @@ export function CampaignDetail({
       }
     })();
     return () => { cancelled = true; };
-  }, [viewTab, campaign.id]);
+  }, [campaign.id]);
 
   // Initialize sequence step edit state (follow-up steps only — initial email lives under Drafts).
   useEffect(() => {
@@ -1744,10 +1808,15 @@ export function CampaignDetail({
     acc[b] = (acc[b] ?? 0) + 1;
     return acc;
   }, {} as Partial<Record<DeliveryBucket, number>>);
+  const followupDueCount = campaignLeads.filter((cl) => hasUpcomingFollowup(cl, campaignSteps)).length;
+  const followupSentCount = campaignLeads.filter(hasReceivedFollowup).length;
 
   // Applied before the split into list/kanban so BOTH views honour the filter.
   const sortedCampaignLeads = sortCampaignLeads(campaignLeads, leadsSort)
-    .filter((cl) => leadsDelivery === "all" || deliveryBucket(cl) === leadsDelivery);
+    .filter((cl) => leadsDelivery === "all"
+      || (leadsDelivery === "followup" ? hasUpcomingFollowup(cl, campaignSteps)
+        : leadsDelivery === "followup_sent" ? hasReceivedFollowup(cl)
+        : deliveryBucket(cl) === leadsDelivery));
 
   const filteredLeads = sortedCampaignLeads.filter((cl) => {
     if (!leadsSearch) return true;
@@ -1777,8 +1846,14 @@ export function CampaignDetail({
     cc: string;
     /** Inbound message from someone other than the lead (joined via CC). */
     fromThirdParty: boolean;
-    /** Instantly id — set only for inbound messages, which alone can be answered. */
+    /** Instantly id of the inbound message a reply from here would thread off
+     *  — itself when this item IS inbound, otherwise the nearest earlier
+     *  inbound message (see replyTargetFor). Null only when nothing inbound
+     *  exists yet at this point in the thread. */
     replyTargetId: string | null;
+    /** Who that reply will actually address — for the button label, since an
+     *  outbound item's own sender ("You") is never the right name to show. */
+    replyTargetName: string | null;
     isUnanswered: boolean;
     /** Sender of the message this reply answered, for our own sent mail. */
     inReplyToLabel: string | null;
@@ -1791,7 +1866,10 @@ export function CampaignDetail({
     bodyText: string | null;
   };
 
-  const outboxLeadAddress = parseAddressList(selectedThread?.lead_email ?? null)[0] ?? null;
+  // Falls back to the lead's own record when there is no reply-thread row at
+  // all for this lead (getCampaignReplyThreads deliberately skips never-replied
+  // leads — see its own comment — so selectedThread is routinely null here).
+  const outboxLeadAddress = parseAddressList(selectedThread?.lead_email ?? selected?.leads?.email ?? null)[0] ?? null;
   /** The lead's name only when the message really is from the lead — otherwise
    *  the raw address. The Outbox used to label every inbound message with the
    *  lead's name, so a CC'd third party's reply was indistinguishable from the
@@ -1803,39 +1881,67 @@ export function CampaignDetail({
     return { name: from, thirdParty: true };
   };
 
+  // What the sequence actually sent — the opening email AND every follow-up —
+  // straight from the mirrored mail. Needed up here (not just for rendering
+  // below) so it can join the unified participant list next.
+  const outboxSequenceSends = selected?.sequence_messages ?? [];
+
   // Participant view of the thread, shared with the Unibox so both surfaces
-  // agree on who is owed a reply.
-  const outboxParticipantMessages = selectedThread
-    ? [
-        ...selectedThread.messages.map((m) => ({
-          instantly_email_id: m.instantly_email_id,
-          direction: "received",
-          from_email: m.from_email,
-          to_emails: m.to_emails,
-          cc_emails: m.cc_emails,
-          timestamp_email: m.received_at,
-        })),
-        ...selectedThread.sent_messages.map((m) => ({
-          instantly_email_id: m.instantly_email_id,
-          direction: "sent_manual",
-          from_email: m.from_email,
-          to_emails: m.to_emails,
-          cc_emails: m.cc_emails,
-          timestamp_email: m.sent_at,
-        })),
-      ]
-    : [];
-  const outboxOurEmails = ourAddresses(outboxParticipantMessages, [selectedThread?.eaccount ?? null]);
+  // agree on who is owed a reply. Includes sequence sends too (not just
+  // inbound + manual replies) so a cold-outreach thread the lead has never
+  // answered still has a valid reply target: itself (see replyTargetFor).
+  // Sequence sends are included unconditionally, not gated on selectedThread
+  // existing — a lead who has never replied has no reply-thread row at all in
+  // some states, but their sequence sends are still real, replyable messages.
+  const outboxParticipantMessages = [
+    ...(selectedThread?.messages ?? []).map((m) => ({
+      instantly_email_id: m.instantly_email_id,
+      direction: "received",
+      from_email: m.from_email,
+      to_emails: m.to_emails,
+      cc_emails: m.cc_emails,
+      timestamp_email: m.received_at,
+    })),
+    ...(selectedThread?.sent_messages ?? []).map((m) => ({
+      instantly_email_id: m.instantly_email_id,
+      direction: "sent_manual",
+      from_email: m.from_email,
+      to_emails: m.to_emails,
+      cc_emails: m.cc_emails,
+      timestamp_email: m.sent_at,
+    })),
+    ...outboxSequenceSends
+      .filter((m): m is typeof m & { instantly_email_id: string; timestamp_email: string } => !!m.instantly_email_id && !!m.timestamp_email)
+      .map((m) => ({
+        instantly_email_id: m.instantly_email_id,
+        direction: "sent_campaign",
+        from_email: m.from_email,
+        to_emails: m.to_emails,
+        cc_emails: m.cc_emails,
+        timestamp_email: m.timestamp_email,
+      })),
+  ];
+  // Same fallback as the lead address: a never-replied lead has no
+  // selectedThread, but their own sequence sends still know which mailbox
+  // sent them.
+  const outboxFallbackEaccount = outboxSequenceSends.find((m) => !!m.eaccount)?.eaccount ?? null;
+  const outboxFallbackThreadId = outboxSequenceSends.find((m) => !!m.thread_id)?.thread_id ?? null;
+  const outboxOurEmails = ourAddresses(outboxParticipantMessages, [selectedThread?.eaccount ?? outboxFallbackEaccount]);
   const outboxUnansweredIds = new Set(
     unansweredInbound(outboxParticipantMessages, outboxOurEmails).map((m) => m.instantly_email_id),
   );
-  // The message the composer answers — an explicit pick, else the newest
-  // inbound one. Restricted to inbound: replying to our own sent mail would
-  // address it straight back at us.
-  const outboxActiveTarget =
-    outboxParticipantMessages.find(
-      (m) => m.direction === "received" && m.instantly_email_id === outboxReplyTargetId,
-    ) ?? latestInboundMessage(outboxParticipantMessages);
+  // The message the composer answers — an explicit pick (which may itself be
+  // one of our own outbound sends now, see resolveOutboxReplyTarget below),
+  // else the thread's newest message run through replyTargetFor so the
+  // default "Reply" button works even on a pure cold-outreach thread.
+  const outboxExplicitTarget = outboxReplyTargetId
+    ? outboxParticipantMessages.find((m) => m.instantly_email_id === outboxReplyTargetId) ?? null
+    : null;
+  const outboxNewestMessage = outboxParticipantMessages.length > 0
+    ? [...outboxParticipantMessages].sort((a, b) => a.timestamp_email.localeCompare(b.timestamp_email))[outboxParticipantMessages.length - 1]
+    : null;
+  const outboxActiveTarget = outboxExplicitTarget
+    ?? (outboxNewestMessage ? replyTargetFor(outboxNewestMessage, outboxParticipantMessages) : null);
   const outboxActiveTargetId = outboxActiveTarget?.instantly_email_id ?? null;
   // Sender of each message, so a sent reply can name what it answered.
   async function handleOutboxConfirmAddLead(firstName: string, lastName: string) {
@@ -1867,19 +1973,57 @@ export function CampaignDetail({
       .filter((pair): pair is readonly [string, string] => !!pair[1]),
   );
 
+  // Lets an outbound row (a sequence send or one of our own manual replies)
+  // start a reply too, Gmail-style — resolves via replyTargetFor against the
+  // full unified message list, so a cold-outreach row with nobody to answer
+  // yet falls back to itself (a real, usable Instantly id) rather than null.
+  function resolveOutboxReplyTarget(
+    candidate: {
+      instantly_email_id: string;
+      direction: string;
+      from_email: string | null;
+      to_emails: string | null;
+      cc_emails: string | null;
+      timestamp_email: string;
+    } | null,
+  ): { id: string; name: string } | null {
+    if (!candidate) return null;
+    const target = replyTargetFor(candidate, outboxParticipantMessages);
+    // An inbound target is who this actually answers. An outbound one (only
+    // reachable when nobody has replied at all) still addresses the lead in
+    // practice — see replyRecipients — so it must be labeled as such, not
+    // with our own sending address.
+    if (!isInbound(target)) return { id: target.instantly_email_id, name: outboxReplyName };
+    const from = parseAddressList(target.from_email)[0] ?? null;
+    const name = from ? (from === outboxLeadAddress ? outboxReplyName : from) : "Unknown sender";
+    return { id: target.instantly_email_id, name };
+  }
+
   const outboxMessageItems: OutboxMessageItem[] = [];
   // What the sequence actually sent — the opening email AND every follow-up —
   // straight from the mirrored mail. This is the real record of what left; the
   // draft below is only what we composed.
-  const outboxSequenceSends = selected?.sequence_messages ?? [];
   for (const m of outboxSequenceSends) {
+    const seqReplyTarget = resolveOutboxReplyTarget(
+      m.instantly_email_id && m.timestamp_email
+        ? {
+            instantly_email_id: m.instantly_email_id,
+            direction: "sent_campaign",
+            from_email: m.from_email,
+            to_emails: m.to_emails,
+            cc_emails: m.cc_emails,
+            timestamp_email: m.timestamp_email,
+          }
+        : null,
+    );
     outboxMessageItems.push({
       id: `seq-${m.id}`,
       sender: "You",
       to: parseAddressList(m.to_emails).join(", ") || (selectedThread?.lead_email ?? outboxReplyName),
       cc: parseAddressList(m.cc_emails).join(", "),
       fromThirdParty: false,
-      replyTargetId: null,
+      replyTargetId: seqReplyTarget?.id ?? null,
+      replyTargetName: seqReplyTarget?.name ?? null,
       isUnanswered: false,
       inReplyToLabel: null,
       promotableEmail: null,
@@ -1893,13 +2037,34 @@ export function CampaignDetail({
   // a just-sent lead has no mirrored copy yet. Never both — that would show the
   // same email twice.
   if (outboxSequenceSends.length === 0 && selected?.email_drafts?.status === "sent") {
+    // This row is a draft record, not a real Instantly email — it has no
+    // instantly_email_id of its own, so unlike the cases below it can never
+    // fall back to itself. Only resolve if a real inbound message exists.
+    const initialReplyTarget = ((): { id: string; name: string } | null => {
+      const createdAt = selected.email_drafts.created_at;
+      if (!createdAt) return null;
+      const synthetic = {
+        instantly_email_id: "__draft__",
+        direction: "sent_manual",
+        from_email: null,
+        to_emails: null,
+        cc_emails: null,
+        timestamp_email: createdAt,
+      };
+      const target = replyTargetFor(synthetic, outboxParticipantMessages);
+      if (target.instantly_email_id === "__draft__") return null;
+      const from = parseAddressList(target.from_email)[0] ?? null;
+      const name = from ? (from === outboxLeadAddress ? outboxReplyName : from) : "Unknown sender";
+      return { id: target.instantly_email_id, name };
+    })();
     outboxMessageItems.push({
       id: `initial-${selected.email_drafts.id}`,
       sender: "You",
       to: selectedThread?.lead_email ?? outboxReplyName,
       cc: "",
       fromThirdParty: false,
-      replyTargetId: null,
+      replyTargetId: initialReplyTarget?.id ?? null,
+      replyTargetName: initialReplyTarget?.name ?? null,
       isUnanswered: false,
       inReplyToLabel: null,
       promotableEmail: null,
@@ -1920,6 +2085,7 @@ export function CampaignDetail({
         cc: parseAddressList(msg.cc_emails).join(", "),
         fromThirdParty: thirdParty,
         replyTargetId: msg.instantly_email_id,
+        replyTargetName: name,
         isUnanswered: outboxUnansweredIds.has(msg.instantly_email_id),
         inReplyToLabel: null,
         promotableEmail:
@@ -1935,13 +2101,30 @@ export function CampaignDetail({
     // and Instantly addresses a reply to the sender of the message it answers,
     // which is frequently NOT the lead.
     for (const sent of selectedThread.sent_messages) {
+      // Prefer the exact message this reply answered (recorded at send time)
+      // over the nearest-by-timestamp guess — more precise when available.
+      const repliedToInbound = sent.in_reply_to_email_id
+        && outboxParticipantMessages.some((m) => m.direction === "received" && m.instantly_email_id === sent.in_reply_to_email_id)
+        ? sent.in_reply_to_email_id
+        : null;
+      const sentReplyTarget = repliedToInbound
+        ? { id: repliedToInbound, name: outboxSenderByEmailId.get(repliedToInbound) ?? "Unknown sender" }
+        : resolveOutboxReplyTarget({
+            instantly_email_id: sent.instantly_email_id,
+            direction: "sent_manual",
+            from_email: sent.from_email,
+            to_emails: sent.to_emails,
+            cc_emails: sent.cc_emails,
+            timestamp_email: sent.sent_at,
+          });
       outboxMessageItems.push({
         id: `sent-${sent.id}`,
         sender: sent.sent_by_name ?? "You",
         to: parseAddressList(sent.to_emails).join(", "),
         cc: parseAddressList(sent.cc_emails).join(", "),
         fromThirdParty: false,
-        replyTargetId: null,
+        replyTargetId: sentReplyTarget?.id ?? null,
+        replyTargetName: sentReplyTarget?.name ?? null,
         isUnanswered: false,
         inReplyToLabel: sent.in_reply_to_email_id
           ? outboxSenderByEmailId.get(sent.in_reply_to_email_id) ?? null
@@ -2004,16 +2187,32 @@ export function CampaignDetail({
   // is invalid CSS and silently falls back to black — use the var directly.
   // Colors are solid (no opacity shading) and keyed by stage id, not array
   // position, since stageDistribution only includes non-empty stages and their
-  // order/count shifts per campaign.
+  // order/count shifts per campaign. Stage ids are DeliveryBucket values (see
+  // app/api/v1/campaigns/[id]/report/route.ts) — the same "sent excludes
+  // replied/bounced" definition used everywhere else on this tab, so this
+  // donut can no longer disagree with the Sent/Replied/Bounced tiles above it.
   const PIPELINE_STAGE_STYLE: Record<string, { fill: string; opacity: number }> = {
-    pending:  { fill: "var(--muted-foreground)", opacity: 0.35 },
-    draft:    { fill: "var(--primary)", opacity: 1 },
-    approved: { fill: "var(--primary)", opacity: 1 },
-    sent:     { fill: "var(--primary)", opacity: 1 },
-    replied:  { fill: "#22c55e", opacity: 1 },
+    not_queued:  { fill: "var(--muted-foreground)", opacity: 0.35 },
+    sending:     { fill: "var(--muted-foreground)", opacity: 0.6 },
+    sent:        { fill: "var(--primary)", opacity: 1 },
+    replied:     { fill: "#22c55e", opacity: 1 },
+    bounced:     { fill: "var(--destructive)", opacity: 1 },
+    send_failed: { fill: "var(--destructive)", opacity: 0.5 },
+  };
+  // "Sent" reads as the delivered TOTAL on the tile row above (matches
+  // DELIVERY_BUCKET_LABELS everywhere else, e.g. the Leads/Outbox filter
+  // dropdowns) — but here it's specifically the leftover slice with no reply
+  // or bounce yet, so it needs its own name or it'd look like a second,
+  // smaller "Sent" number right next to the real one.
+  const PIPELINE_STAGE_NAME_OVERRIDE: Record<string, string> = {
+    sent: "No reply yet",
   };
   const pipelineData = report && report.stageDistribution.length > 0
-    ? report.stageDistribution.map((s) => ({ name: s.label, value: s.count, ...(PIPELINE_STAGE_STYLE[s.stage] ?? { fill: "var(--primary)", opacity: 1 }) }))
+    ? report.stageDistribution.map((s) => ({
+        name: PIPELINE_STAGE_NAME_OVERRIDE[s.stage] ?? s.label,
+        value: s.count,
+        ...(PIPELINE_STAGE_STYLE[s.stage] ?? { fill: "var(--primary)", opacity: 1 }),
+      }))
     : [{ name: "No data", value: 1, fill: "var(--muted)", opacity: 1 }];
 
   const funnelData = report ? [
@@ -2032,12 +2231,35 @@ export function CampaignDetail({
   ].filter((d) => d.value > 0);
   if (tempData.length === 0) tempData.push({ name: "No data", value: 1, fill: "var(--muted)", opacity: 1 });
 
-  const stepPerformancePct = stepPerformance.map((s) => ({
-    name: `Email ${s.step}`,
-    sent: s.sent,
-    total: s.total,
-    pct: s.total > 0 ? Math.round((s.sent / s.total) * 100) : 0,
-  }));
+  // Real delivery per step (confirmed by Instantly's own send webhook) — NOT
+  // email_drafts.status="sent", which only means Instantly accepted the draft
+  // into its queue. Deliberately simple: exact sent count/percent per step,
+  // plus how many of those bounced (bounced_step === this step) — a bounce
+  // still counts as "sent" (the mail left, the mailbox rejected it), so it's
+  // shown as a marker inside the sent portion, not a separate bucket.
+  const analyticsTotalSteps = 1 + sequenceFollowUpSteps(campaignSteps).filter((s) => s.subject.trim() || s.body.trim()).length;
+  const stepDeliveryPct = campaignSteps.length === 0 ? [] : Array.from({ length: analyticsTotalSteps }, (_, i) => i + 1).map((step) => {
+    const total = campaignLeads.length;
+    const sent = campaignLeads.filter((cl) => effectiveLastStep(cl) >= step).length;
+    const bounced = campaignLeads.filter((cl) => (cl.bounced_step ?? 0) === step).length;
+    return {
+      step,
+      name: step === 1 ? "Opening email" : `Follow-up ${step - 1}`,
+      sent,
+      bounced,
+      total,
+      pct: total > 0 ? Math.round((sent / total) * 100) : 0,
+    };
+  });
+
+  // Small tile row above the step-performance panel — cheap aggregates over
+  // stepDeliveryPct/campaignLeads, no new fetches.
+  const followupsSentTotal = campaignLeads.filter((cl) => effectiveLastStep(cl) >= 2).length;
+  const followupsDueTotal = campaignLeads.filter((cl) => hasUpcomingFollowup(cl, campaignSteps)).length;
+  const followupsStoppedTotal = campaignLeads.filter((cl) => {
+    const b = deliveryBucket(cl);
+    return b === "replied" || b === "bounced";
+  }).length;
 
   const OUTBOX_FILTERS: Array<{ id: typeof outboxFilter; label: string }> = [
     { id: "all",       label: "All" },
@@ -2045,6 +2267,8 @@ export function CampaignDetail({
     { id: "certified", label: "Certified" },
     { id: "sending",   label: "Sending" },
     { id: "sent",      label: "Sent" },
+    { id: "followup_sent", label: "Follow-up sent" },
+    { id: "followup",  label: "Follow-up due" },
     { id: "replied",   label: "Replied" },
     { id: "bounced",   label: "Bounced" },
   ];
@@ -2060,6 +2284,8 @@ export function CampaignDetail({
     // swallows Bounced / Replied (draft status stays "sent" after those outcomes).
     if (filter === "sending") return delivery === "sending";
     if (filter === "sent") return delivery === "sent";
+    if (filter === "followup") return hasUpcomingFollowup(cl, campaignSteps);
+    if (filter === "followup_sent") return hasReceivedFollowup(cl);
     if (filter === "bounced") return delivery === "bounced";
     if (filter === "replied") return delivery === "replied" || !!thread;
     if (filter === "action") {
@@ -2297,15 +2523,18 @@ export function CampaignDetail({
             /* ── Analytics view ── */
             <div className="px-6 pb-4 flex flex-col gap-3 flex-1 min-h-0">
               {/* Stat cards */}
-              <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-7 gap-3">
+              <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-8 gap-3">
                 {[
                   { label: "Leads",      value: analyticsTotalLeads, icon: Users,          accent: "" },
-                  // Sent / Replied / Bounced are exclusive outcomes of the same
-                  // delivered mail — they add up to the delivered total shown as
-                  // Sent's sub-line, and no lead is counted in two of them.
-                  { label: "Sent",       value: analyticsSent,       icon: Send,           accent: "", sub: `${analyticsDelivered} delivered` },
-                  { label: "Replied",    value: analyticsReplied,    icon: MessageSquare,  accent: "", sub: `${analyticsReplyRate}% reply rate` },
-                  { label: "Bounced",    value: analyticsBounced,    icon: AlertTriangle,  accent: "red" },
+                  // Sent (delivered total) splits into exactly one of No reply
+                  // yet / Replied / Bounced — those three always sum back to
+                  // Sent, so nothing is double-counted or hidden inside another
+                  // tile the way the old "Sent = delivered minus everything
+                  // else" framing did.
+                  { label: "Sent",         value: analyticsDelivered, icon: Send,          accent: "", sub: "reached an inbox" },
+                  { label: "No reply yet", value: analyticsSent,      icon: Clock,          accent: "", sub: "delivered, nothing back yet" },
+                  { label: "Replied",      value: analyticsReplied,   icon: MessageSquare, accent: "", sub: `${analyticsReplyRate}% reply rate` },
+                  { label: "Bounced",      value: analyticsBounced,   icon: AlertTriangle, accent: "red" },
                   { label: "Certified",  value: report?.totals.certified ?? 0, icon: CheckCircle2, accent: "", sub: report ? `${report.rates.certifyRate}% of drafts` : undefined },
                   { label: "Hot",        value: analyticsHot,        icon: Flame,          accent: "red" },
                   { label: "Cold",       value: analyticsCold,       icon: Snowflake,      accent: "sky" },
@@ -2426,30 +2655,53 @@ export function CampaignDetail({
                 </div>
               </div>
 
+              {/* Follow-up summary tiles — cheap aggregates over the same data
+                  the step-performance panel below already computes. No due
+                  DATES are tracked anywhere in this app (only which step was
+                  last confirmed), so these are honestly "how many still have
+                  more sequence ahead of them", not "how many are due today". */}
+              {stepDeliveryPct.length > 1 && (
+                <div className="grid grid-cols-3 gap-3">
+                  <StatTile label="Follow-ups sent" value={followupsSentTotal} icon={Send} sub="at least one, all-time" />
+                  <StatTile label="Follow-ups pending" value={followupsDueTotal} icon={Clock} tone={followupsDueTotal > 0 ? "amber" : "neutral"} sub="still have more steps queued" />
+                  <StatTile label="Stopped" value={followupsStoppedTotal} icon={AlertTriangle} sub="replied or bounced — sequence ends" />
+                </div>
+              )}
+
               {/* Sequence step performance + Replied vs Sent */}
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
-                {stepPerformancePct.length > 0 && (
+                {stepDeliveryPct.length > 0 && (
                   <div className="rounded-xl border border-border bg-card p-4 lg:col-span-2">
                     <div className="flex items-center gap-1.5 mb-1">
                       <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">Sequence step performance</p>
                       <InfoTip
                         side="right"
-                        text="Each row is one email in this campaign's sequence — Email 1 is the initial outreach, Email 2 is the first follow-up, and so on. The bar shows what percentage of leads at that step have been handed to Instantly. Instantly then drips the actual sends out at the campaign's daily limit, so this runs ahead of the Sent tile above."
+                        text="Each row is one email in this campaign's sequence — Opening email is the initial outreach, Follow-up 1 is the first follow-up, and so on. Sent = actually delivered, confirmed by Instantly's own send webhook (not just handed to Instantly's queue). A bounce still counts as sent — the mail left, the mailbox rejected it — so the red marker sits inside the sent portion, showing how many of that step's sends bounced."
                       />
                     </div>
-                    <p className="text-[10px] text-muted-foreground mb-3">% of leads queued to Instantly, per email in the sequence</p>
+                    <p className="text-[10px] text-muted-foreground mb-3">% of leads actually delivered each email in the sequence</p>
                     <div className="space-y-3">
-                      {stepPerformancePct.map((s) => (
+                      {stepDeliveryPct.map((s) => (
                         <div key={s.name}>
                           <div className="flex items-center justify-between text-xs mb-1">
                             <span className="font-medium">{s.name}</span>
-                            <span className="text-muted-foreground tabular-nums">{s.sent}/{s.total} queued · {s.pct}%</span>
+                            <span className="text-muted-foreground tabular-nums">
+                              {s.sent}/{s.total} sent · {s.pct}%
+                              {s.bounced > 0 && <span className="ml-1.5 text-destructive">· {s.bounced} bounced</span>}
+                            </span>
                           </div>
-                          <div className="h-2.5 rounded-full bg-muted overflow-hidden">
+                          <div className="h-2.5 rounded-full bg-muted overflow-hidden relative">
                             <div
                               className="h-full rounded-full transition-all"
                               style={{ width: `${s.pct}%`, background: "var(--primary)" }}
                             />
+                            {s.bounced > 0 && s.total > 0 && (
+                              <div
+                                className="absolute top-0 h-full w-[2px] bg-destructive"
+                                style={{ left: `${Math.max(0, (s.sent - s.bounced) / s.total * 100)}%` }}
+                                title={`${s.bounced} bounced at this step`}
+                              />
+                            )}
                           </div>
                         </div>
                       ))}
@@ -2516,7 +2768,7 @@ export function CampaignDetail({
                 Leads table pattern. "Not queued" and "Send failed" are left
                 out of the picker entirely (not meaningful filters day-to-day);
                 the remaining buckets only show up once they're non-empty. */}
-            <Select value={leadsDelivery} onValueChange={(v) => setLeadsDelivery(v as DeliveryBucket | "all")}>
+            <Select value={leadsDelivery} onValueChange={(v) => setLeadsDelivery(v as DeliveryBucket | "all" | "followup" | "followup_sent")}>
               <SelectTrigger className="h-8 w-36 gap-2 rounded-md px-3 text-xs shadow-sm">
                 <SelectValue />
               </SelectTrigger>
@@ -2529,6 +2781,12 @@ export function CampaignDetail({
                       {DELIVERY_BUCKET_LABELS[b]} ({deliveryCounts[b] ?? 0})
                     </SelectItem>
                   ))}
+                {followupSentCount > 0 && (
+                  <SelectItem value="followup_sent">Follow-up sent ({followupSentCount})</SelectItem>
+                )}
+                {followupDueCount > 0 && (
+                  <SelectItem value="followup">Follow-up due ({followupDueCount})</SelectItem>
+                )}
               </SelectContent>
             </Select>
 
@@ -3547,6 +3805,7 @@ export function CampaignDetail({
                         isUnanswered={item.isUnanswered}
                         isReplyTarget={outboxReplyOpen && !!item.replyTargetId && item.replyTargetId === outboxActiveTargetId}
                         inReplyToLabel={item.inReplyToLabel}
+                        replyTargetName={item.replyTargetName}
                         stepLabel={item.stepLabel}
                         addingLead={outboxSavingLead && outboxAddLeadFor === item.promotableEmail}
                         onAddAsLead={item.promotableEmail
@@ -3584,14 +3843,24 @@ export function CampaignDetail({
                 </>)}
 
                 {/* Reply to the latest inbound message. Opens a plain composer;
-                    the AI only writes a draft when "AI draft" is pressed. */}
-                {selectedThread && (() => {
-                  const lastMsg = selectedThread.messages[selectedThread.messages.length - 1] ?? null;
-                  if (!lastMsg) return null;
-                  const latestDraft = lastMsg.reply_drafts[lastMsg.reply_drafts.length - 1] ?? null;
+                    the AI only writes a draft when "AI draft" is pressed.
+                    Works even with no selectedThread at all (a never-replied
+                    lead: getCampaignReplyThreads deliberately skips those, see
+                    its own comment) as long as we at least have a thread id to
+                    reply into, from this lead's own sequence sends. */}
+                {(selectedThread || outboxFallbackThreadId) && (() => {
+                  const outboxThreadId = selectedThread?.thread_key ?? outboxFallbackThreadId!;
+                  // No inbound message at all (a pure cold-outreach thread) is
+                  // fine — there is simply no AI reply draft to prefill, and the
+                  // composer falls straight to a manual reply against our own
+                  // sent message (see outboxActiveTarget/replyTargetFor).
+                  const lastMsg = selectedThread?.messages[selectedThread.messages.length - 1] ?? null;
+                  const latestDraft = lastMsg?.reply_drafts[lastMsg.reply_drafts.length - 1] ?? null;
                   const hasDraftReady = !!latestDraft && latestDraft.status !== "generating" && latestDraft.status !== "sent" && latestDraft.status !== "rejected";
                   const isGenerating = latestDraft?.status === "generating" || outboxNewReplyLoading;
-                  const campaignLeadId = selectedThread.campaign_lead_id;
+                  // AI drafting is only wired to a real reply-thread row — a
+                  // never-replied lead still gets the plain manual composer.
+                  const campaignLeadId = selectedThread?.campaign_lead_id ?? null;
 
                   // Same participant model as the Unibox: reply-all by default,
                   // recipients shown literally, and the target chosen per
@@ -3599,17 +3868,17 @@ export function CampaignDetail({
                   // last and silently drops everyone else, the lead included.
                   const outboxParticipants = threadParticipants(outboxParticipantMessages, {
                     ourEmails: outboxOurEmails,
-                    leadEmail: selectedThread.lead_email,
+                    leadEmail: outboxLeadAddress,
                   });
                   // Reply all puts every participant in To (Instantly's
                   // additional_recipients); plain Reply addresses only the
                   // sender of the message being answered.
-                  const outboxTo = replyRecipients(outboxActiveTarget, outboxParticipants);
+                  const outboxTo = replyRecipients(outboxActiveTarget, outboxParticipants, outboxLeadAddress);
                   const outboxRecipientsCtx: ReplyRecipientContext = {
                     to: outboxReplyAll ? [...outboxTo.to, ...outboxTo.cc] : outboxTo.to,
                     lockedTo: outboxTo.to[0] ?? null,
                     participants: outboxParticipants.map((p) => p.email),
-                    leadEmail: selectedThread.lead_email,
+                    leadEmail: outboxLeadAddress,
                     leadName: outboxReplyName,
                     replyToUuid: outboxActiveTargetId,
                   };
@@ -3668,9 +3937,9 @@ export function CampaignDetail({
                             />
                           ) : (
                             <ManualReplyBox
-                              threadId={selectedThread.thread_key}
+                              threadId={outboxThreadId}
                               token={appSession?.access_token ?? ""}
-                              replyToSubject={selectedThread.original_email?.subject ?? null}
+                              replyToSubject={selectedThread?.original_email?.subject ?? null}
                               onSent={() => { setOutboxReplyOpen(false); void loadReplies(); }}
                               onCancel={() => setOutboxReplyOpen(false)}
                               onNewAiDraft={campaignLeadId ? handleAiDraftClick : undefined}
@@ -3859,6 +4128,49 @@ export function CampaignDetail({
               </div>
             )}
           </div>
+
+          {/* Right rail: leads who have actually received this step */}
+          {activeSeqStep && (() => {
+            const receivedLeads = campaignLeads.filter((cl) => effectiveLastStep(cl) >= activeSeqStep.step_order);
+            return (
+              <div className="w-72 shrink-0 border-l border-border flex flex-col overflow-y-auto p-4 gap-2">
+                <p className="eyebrow shrink-0">
+                  Step {sequenceDisplayStep(activeSeqStep.step_order)} delivered ({receivedLeads.length}/{campaignLeads.length})
+                </p>
+                {receivedLeads.length === 0 ? (
+                  <p className="text-xs text-muted-foreground py-4">No leads have received this step yet.</p>
+                ) : (
+                  receivedLeads.map((cl) => {
+                    const name = [cl.leads?.first_name, cl.leads?.last_name].filter(Boolean).join(" ") || "Unknown";
+                    const delivery = deliveryBucket(cl);
+                    return (
+                      <button
+                        key={cl.id}
+                        type="button"
+                        onClick={() => { setSelectedId(cl.id); setViewTab("outbox"); }}
+                        title="Open this lead's mail thread in Outbox"
+                        className="flex items-center gap-2 rounded-lg border border-border bg-field hover:border-primary/40 px-3 py-2 text-left transition-colors"
+                      >
+                        <Avatar name={name} size="sm" />
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs font-medium truncate">{name}</p>
+                          <p className="text-[11px] text-muted-foreground truncate">{cl.leads?.title || cl.leads?.email}</p>
+                        </div>
+                        {(delivery === "replied" || delivery === "bounced") && (
+                          <span className={cn(
+                            "shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase",
+                            delivery === "replied" ? "bg-blue-500/15 text-blue-600" : "bg-destructive/15 text-destructive",
+                          )}>
+                            {delivery === "replied" ? "Replied" : "Bounced"}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+            );
+          })()}
         </div>
       )}
 

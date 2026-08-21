@@ -27,6 +27,10 @@ export interface CompletionOpts {
   // model's full context and, on low balance, reject the request even
   // though the actual output is tiny.
   maxTokens?: number;
+  // Sampling randomness. Omit to get the drafting default (see
+  // DEFAULT_TEMPERATURE in registry.ts) — callers only set this when a task
+  // genuinely wants more variety than rule-following.
+  temperature?: number;
 }
 
 export type CreditCheck = {

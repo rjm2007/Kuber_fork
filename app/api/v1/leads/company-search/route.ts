@@ -22,8 +22,12 @@ export const maxDuration = 60;
  * always asks for Apollo's maximum page size (searchOrganizations pins it) and
  * every additional page is a separate, deliberate call from the client.
  *
- * Apollo charges nothing when a search matches no companies, so the ledger row
- * below is written only when results actually come back.
+ * Apollo charges nothing when a search matches no companies — measured against
+ * the live account on 18 Aug 2026 (see
+ * scripts/apollo-zero-result-credit-probe.ts: balance 3959 before and after a
+ * zero-match page), not inferred — so the paid ledger row below is written only
+ * when results actually come back. Every other outcome still gets a `system`
+ * row, because a lookup that produced nothing is the one a manager asks about.
  */
 export async function POST(req: NextRequest) {
   let user: Awaited<ReturnType<typeof requireManager>>;
@@ -72,6 +76,27 @@ export async function POST(req: NextRequest) {
         });
   } catch (err) {
     const status = (err as { status?: number }).status;
+    // A lookup that fails has to leave a trace. On 18 Aug 2026 a manager
+    // reported "I ran two or three lookups and only one returned anything", and
+    // the answer had to be reconstructed from the Apollo credit balance —
+    // because this route logged nothing except successes with results. Logged
+    // under `system`, not `apollo`: Settings > Keys > Usage sums
+    // payload.credits_consumed across every apollo-source row without filtering
+    // on event name, and a failed call must not appear in the spend total.
+    await db.from("enrichment_logs").insert({
+      source: "system",
+      event: "COMPANY_LOOKUP_FAILED",
+      payload: {
+        stage: "company_search",
+        query: name,
+        country: locations ?? null,
+        website: website ?? null,
+        page,
+        status: status ?? null,
+        error: (err as Error).message.slice(0, 500),
+        credits_consumed: 0,
+      },
+    });
     if (status === 401) return fail(502, "UPSTREAM_APOLLO", "Invalid or unauthorized Apollo key");
     if (status === 403) return fail(502, "UPSTREAM_APOLLO", "This Apollo plan does not allow organization search");
     return fail(502, "UPSTREAM_APOLLO", (err as Error).message);
@@ -89,7 +114,10 @@ export async function POST(req: NextRequest) {
   // Settings > Keys > Usage sums payload.credits_consumed across every
   // apollo-source row without filtering on event name, so this must be exactly
   // ONE row per paid page: a second row double-counts, a missing row hides the
-  // spend. Apollo bills nothing for an empty result, so nothing is logged then.
+  // spend. Apollo bills nothing for an empty result — measured, not assumed,
+  // on 18 Aug 2026 (scripts/apollo-zero-result-credit-probe.ts) — so an empty
+  // search writes a `system` row that carries the facts without touching the
+  // spend total.
   // A mock search spends nothing, so it must never write an apollo-source row:
   // Usage sums payload.credits_consumed across those without filtering on event
   // name, and a fake credit there would corrupt the one number this whole
@@ -114,6 +142,27 @@ export async function POST(req: NextRequest) {
         total_entries: result.pagination.total_entries,
         credits_consumed: 1,
         balance_before: credits.remaining,
+      },
+    });
+  } else {
+    // Zero matches. Free (probed), so it belongs under `system` where it cannot
+    // move the spend total — but it must still be recorded, or a manager's
+    // "nothing came back" leaves no evidence anywhere. `balance_after` is the
+    // reading we already took before the call; if it ever drifts against a run
+    // of these rows, the "empty search is free" finding needs re-testing.
+    await db.from("enrichment_logs").insert({
+      source: "system",
+      event: "COMPANY_LOOKUP_NO_RESULTS",
+      payload: {
+        stage: "company_search",
+        query: name,
+        country: locations ?? null,
+        website: website ?? null,
+        page,
+        returned: 0,
+        total_entries: result.pagination.total_entries,
+        credits_consumed: 0,
+        balance_after: credits.remaining,
       },
     });
   }

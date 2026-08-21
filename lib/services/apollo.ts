@@ -136,7 +136,29 @@ export async function searchPeople(opts: {
     // result count by exactly 0 because person_titles already implies the
     // seniority. Still sent (costs nothing) unless Advanced overrides it.
     body.person_seniorities = a.seniorities?.length ? a.seniorities : (opts.seniorities ?? APOLLO_SENIORITIES);
-    body.q_keywords = opts.keyword;
+    // The keyword describes the COMPANY we want ("blown film", "masterbatch"),
+    // so it belongs on the company's keyword tags, not q_keywords.
+    //
+    // q_keywords matches free text on the PERSON, so it only hit someone whose
+    // own profile happened to contain "stretch film" — which is almost nobody.
+    // Measured live against the free people-search endpoint on 19 Aug 2026,
+    // same titles, same email statuses, Latin America, the client's own
+    // keyword list from the Apollo requirements doc:
+    //
+    //   film extrusion   q_keywords 0    org tags  92
+    //   plastic film     q_keywords 0    org tags  90
+    //   stretch film     q_keywords 6    org tags 155
+    //   ... 10 keywords  q_keywords 8    org tags 388
+    //
+    // That 8 is not a coincidence: it is exactly the "asked for 25, received 8"
+    // the client reported on 13 Aug, and it survived the 14 Aug widening of
+    // titles and employee ranges because neither was ever the bottleneck.
+    //
+    // Checked for regression across all 22 terms in INDUSTRY_KEYWORD_CATEGORIES
+    // before switching: org tags returned more on 12 of 12 sampled, fewer on
+    // none. The catalog's short `query` values were tuned for q_keywords and
+    // work at least as well here, so no catalog change is needed.
+    if (opts.keyword) body.q_organization_keyword_tags = [opts.keyword];
     body.organization_num_employees_ranges = employeeRanges(a.employeeRanges) ?? EMPLOYEE_RANGES;
     body.include_similar_titles = a.includeSimilarTitles ?? true;
     setList("organization_locations", mapLocations(a.organizationLocations));
@@ -174,7 +196,14 @@ export async function searchPeople(opts: {
 // ── Organization search (Company Lookup) ────────────────────────────────────
 // Unlike people search, this endpoint COSTS 1 credit per page — charged per
 // page requested, not per result returned, so always ask for the biggest page
-// we are allowed. Apollo returns 0 credits when nothing matches.
+// we are allowed.
+//
+// A page matching nothing is free. That was an assumption until 18 Aug 2026,
+// when it was measured against the live account: balance 3959 before and 3959
+// after a zero-match page (scripts/apollo-zero-result-credit-probe.ts). It is
+// load-bearing — the wizard tells the client an empty search cost nothing, and
+// the route writes no paid ledger row for one — so if this endpoint's billing
+// ever changes, re-run that probe rather than trusting this comment.
 
 export interface ApolloPagination {
   page: number;
@@ -197,10 +226,22 @@ export interface ApolloOrganization {
   logo_url: string | null;
   founded_year: number | null;
   phone: string | null;
-  // Apollo's published field list does not pin these down (see the PRD's
-  // verification table), and live responses have been seen using more than one
-  // spelling — so they are normalised out of the raw row rather than read
-  // straight off it. Null means "not returned", which the UI shows as "—".
+  // ALWAYS NULL from mixed_companies/search. Apollo's Organization Search
+  // response does not carry these five fields at all — verified against the
+  // published schema on 18 Aug 2026, after a client demo showed a dash in the
+  // Location and Staff column of all 100 results. Nothing on our side strips
+  // them; the endpoint never sends them.
+  //
+  // They are reachable three ways, none of them cheap enough to use at search
+  // time: organizations/enrich (1 credit PER company, so 100 per page),
+  // people/bulk_match (already paid for at import — this is how the values land
+  // on the organization row today, see enrich-leads.ts), or the free people
+  // search, which returns only has_city / has_employee_count BOOLEANS and not
+  // the values themselves.
+  //
+  // Kept on the type because the mock provider and company-import both carry
+  // them, and because a future enrich step would populate exactly these. Do not
+  // render them off a search result — that is the bug this comment replaces.
   estimated_num_employees: number | null;
   country: string | null;
   city: string | null;
@@ -258,8 +299,14 @@ function firstNumber(row: RawOrg, keys: string[]): number | null {
 }
 
 /** Exported so the mock provider can build raw Apollo-shaped rows and run them
- *  through this exact parser — the field-name guessing above is the part most
- *  likely to be wrong, so the mock should exercise it rather than bypass it. */
+ *  through this exact parser rather than bypassing it.
+ *
+ *  Note what that does and does not prove: running fixtures through the real
+ *  parser catches a renamed key, but it cannot catch a field Apollo never sends,
+ *  because the fixtures decide what is there. Until 18 Aug 2026 the mock filled
+ *  city/country/employees on every row and the self-check asserted they
+ *  survived — a green test over a field the live endpoint omits entirely. The
+ *  fixtures now mirror the documented response, absences included. */
 export function normalizeOrg(row: RawOrg): ApolloOrganization {
   return {
     id: String(row.id ?? ""),

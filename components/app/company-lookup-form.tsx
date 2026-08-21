@@ -128,10 +128,8 @@ function CompanyTableSkeleton({ rows = 8 }: { rows?: number }) {
         <thead className="bg-secondary/30 text-muted-foreground">
           <tr>
             <th className="px-3 py-2 text-left font-medium">Company</th>
-            <th className="px-3 py-2 text-left font-medium">Location</th>
-            <th className="px-3 py-2 text-right font-medium">Staff</th>
+            <th className="px-3 py-2 text-right font-medium">Founded</th>
             <th className="px-3 py-2 text-left font-medium">Website</th>
-            <th className="px-3 py-2" />
           </tr>
         </thead>
         <tbody>
@@ -143,12 +141,8 @@ function CompanyTableSkeleton({ rows = 8 }: { rows?: number }) {
                   <Skeleton className="h-3.5 w-36" />
                 </div>
               </td>
-              <td className="px-3 py-2.5"><Skeleton className="h-3.5 w-24" /></td>
               <td className="px-3 py-2.5"><Skeleton className="ml-auto h-3.5 w-10" /></td>
               <td className="px-3 py-2.5"><Skeleton className="h-3.5 w-28" /></td>
-              <td className="w-10 px-2 py-2.5">
-                <Skeleton className="ml-auto size-7 rounded-full" />
-              </td>
             </tr>
           ))}
         </tbody>
@@ -341,16 +335,30 @@ function DetailFact({ label, value }: { label: string; value: ReactNode }) {
   );
 }
 
+/**
+ * Details for one search result.
+ *
+ * Only fields Apollo's Organization Search actually returns appear here.
+ * Location, staff count and industry are absent from that endpoint's response —
+ * they are not withheld by us and no filter causes it — so the Industry and
+ * Full location facts this used to render were dashes on every company of every
+ * search, which is how it looked in front of a client on 18 Aug 2026. Those
+ * three fields arrive on the organization record automatically once the import's
+ * paid reveal runs (see enrich-leads.ts), which is why the note below promises
+ * them rather than buying them here: filling this panel properly would cost a
+ * further credit per company enriched, and it is not worth one at this stage.
+ */
 function CompanyPreview({ company, actions }: { company: Company; actions?: ReactNode }) {
-  const location = [company.city, company.state, company.country].filter(Boolean).join(", ");
   const socials = companySocialItems(company);
-  const hasFacts = !!(company.industry || company.founded_year || company.domain || location || socials.length);
+  const hasFacts = !!(company.founded_year || company.domain || socials.length);
   return (
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-      <DetailFact label="Industry" value={company.industry} />
       <DetailFact label="Founded" value={company.founded_year} />
       <DetailFact label="Domain" value={company.domain} />
-      <DetailFact label="Full location" value={location || null} />
+      <p className="sm:col-span-2 lg:col-span-2 text-[11px] leading-relaxed text-muted-foreground">
+        Apollo does not return location, staff count or industry when searching for
+        companies by name. They fill in on their own once this company is imported.
+      </p>
       {(socials.length > 0 || actions) && (
         <div className="sm:col-span-2 lg:col-span-4 flex flex-wrap items-end justify-between gap-3">
           <div className="min-w-0">
@@ -960,11 +968,15 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
                 <>
                   <div className="overflow-hidden rounded-lg border border-border bg-field dark:bg-card">
                     <table className="w-full text-xs">
+                      {/* Columns are limited to what Apollo's Organization Search
+                          actually returns. Location and staff count are NOT in that
+                          response — they only arrive with the paid reveal after
+                          import — so showing them here rendered a dash on every row
+                          of every search. See CompanyPreview for the full note. */}
                       <thead className="bg-secondary/30 text-muted-foreground">
                         <tr>
                           <th className="px-3 py-2 text-left font-medium">Company</th>
-                          <th className="px-3 py-2 text-left font-medium">Location</th>
-                          <th className="px-3 py-2 text-right font-medium">Staff</th>
+                          <th className="px-3 py-2 text-right font-medium">Founded</th>
                           <th className="px-3 py-2 text-left font-medium">Website</th>
                         </tr>
                       </thead>
@@ -997,11 +1009,8 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
                                   </span>
                                 </div>
                               </td>
-                              <td className="px-3 py-2.5 text-muted-foreground">
-                                {[c.city, c.country].filter(Boolean).join(", ") || "—"}
-                              </td>
                               <td className="px-3 py-2.5 text-right tabular-nums text-muted-foreground">
-                                {c.employees?.toLocaleString() ?? "—"}
+                                {c.founded_year ?? "—"}
                               </td>
                               <td className="px-3 py-2.5">
                                 <CompanyWebsiteLink company={c} />
@@ -1009,7 +1018,7 @@ export function CompanyLookupForm({ onImport }: { onImport: (n: number) => void 
                             </tr>
                             {open && (
                               <tr className="border-t border-border bg-secondary/30">
-                                <td colSpan={4} className="px-3 py-3">
+                                <td colSpan={3} className="px-3 py-3">
                                   <CompanyPreview
                                     company={c}
                                     actions={

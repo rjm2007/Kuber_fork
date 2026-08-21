@@ -2,12 +2,11 @@ import { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/auth/api-auth";
 import { ok, fail } from "@/lib/api-response";
 import {
-  CAMPAIGN_BUCKET_LABELS,
-  CAMPAIGN_KANBAN_COLS,
-  campaignBucket,
   computeCampaignStats,
-  type CampaignKanbanBucket,
+  deliveryBucket,
+  DELIVERY_BUCKET_LABELS,
   type CampaignStatsRow,
+  type DeliveryBucket,
 } from "@/lib/campaign-status";
 import { assertCampaignAccess } from "@/lib/auth/scope";
 import { dbForUser } from "@/lib/supabase/scoped";
@@ -50,13 +49,6 @@ export async function GET(
   const { data: rows } = await rowsQuery;
 
   const leads = rows ?? [];
-  const bucketCounts: Record<CampaignKanbanBucket, number> = {
-    pending: 0,
-    draft: 0,
-    approved: 0,
-    sent: 0,
-    replied: 0,
-  };
 
   let draftsGenerated = 0;
   let certified = 0;
@@ -64,6 +56,17 @@ export async function GET(
   let generating = 0;
   let pending = 0;
   let succeeded = 0;
+
+  // Delivery-outcome funnel (Pipeline donut) — deliberately NOT campaignBucket
+  // above, which is a draft-pipeline stage for the Kanban board and doesn't
+  // know about bounces (a bounced lead's draft stays status="sent" forever,
+  // so campaignBucket keeps calling it "sent"). This tab's other numbers
+  // (the Sent/Replied/Bounced tiles, Sequence step performance) all come from
+  // deliveryBucket() already — the donut used to be the one outlier still
+  // counting bounced leads as "sent", which is what made 90 disagree with 83.
+  const deliveryBucketCounts: Record<DeliveryBucket, number> = {
+    not_queued: 0, sending: 0, sent: 0, replied: 0, bounced: 0, send_failed: 0,
+  };
 
   for (const row of leads) {
     const draft = unwrapDraft(row.email_drafts as DraftRow);
@@ -74,7 +77,7 @@ export async function GET(
     if (ds === "generating") generating++;
     if (!draft || !row.draft_id) pending++;
     if (ds === "draft" || ds === "approved" || ds === "sent") succeeded++;
-    bucketCounts[campaignBucket(row)]++;
+    deliveryBucketCounts[deliveryBucket(row)]++;
   }
 
   // One bucket per lead: a replied or bounced lead is NOT also counted as sent.
@@ -100,10 +103,11 @@ export async function GET(
   const attempted = succeeded + failed;
   const successRate = attempted > 0 ? Math.round((succeeded / attempted) * 100) : 0;
 
-  const stageDistribution = CAMPAIGN_KANBAN_COLS.map((col) => ({
-    stage: col.id,
-    label: CAMPAIGN_BUCKET_LABELS[col.id],
-    count: bucketCounts[col.id],
+  const DELIVERY_STAGE_ORDER: DeliveryBucket[] = ["sending", "sent", "replied", "bounced", "send_failed", "not_queued"];
+  const stageDistribution = DELIVERY_STAGE_ORDER.map((stage) => ({
+    stage,
+    label: DELIVERY_BUCKET_LABELS[stage],
+    count: deliveryBucketCounts[stage],
   })).filter((s) => s.count > 0);
 
   return ok({
