@@ -11,7 +11,7 @@ import {
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useApp } from "@/lib/app-context";
 import { ThemeProvider } from "@/lib/theme-context";
-import { APP_LOGO_INITIAL, APP_NAME } from "@/lib/branding";
+import { APP_LOGO_INITIAL, APP_NAME, BRAND_LOGO_CHANGED } from "@/lib/branding";
 import { isCampaignEligible, type Lead } from "@/lib/leads";
 import { deleteLead, fetchLogo, fetchUniboxUnread, fetchApolloCredits } from "@/lib/api-client";
 import { RouteSkeleton } from "@/components/app/page-skeletons";
@@ -89,6 +89,17 @@ function AppShell({ children }: { children: React.ReactNode }) {
     if (!session) return;
     fetchLogo(session.access_token).then((r) => setLogoUrl(r.logo_url)).catch(() => setLogoUrl(null));
   }, [session]);
+
+  // `session` keeps a stable identity across auth events (see app-context), so
+  // the fetch above runs once per full page load — and the shell is a layout
+  // that survives client-side nav. Uploading a new logo in Settings therefore
+  // left this sidebar showing the old one until a hard refresh, which is what
+  // "the logo change doesn't work" actually was. Settings tells us directly.
+  useEffect(() => {
+    const onLogoChange = (e: Event) => setLogoUrl((e as CustomEvent<string | null>).detail);
+    window.addEventListener(BRAND_LOGO_CHANGED, onLogoChange);
+    return () => window.removeEventListener(BRAND_LOGO_CHANGED, onLogoChange);
+  }, []);
 
   useEffect(() => {
     if (!session) return;
