@@ -15,6 +15,7 @@ import { ReplyDraftBox, replyDraftHasContent } from "@/components/app/reply-draf
 import { ManualReplyBox, type ReplyRecipientContext } from "@/components/app/manual-reply-box";
 import { AddParticipantLeadDialog } from "@/components/app/add-participant-lead-dialog";
 import {
+  isInbound,
   ourAddresses,
   parseAddressList,
   replyRecipients,
@@ -554,10 +555,16 @@ export function UniboxThreadView({
         {topLevelMessages.map((m) => {
           const row = (msg: UniboxMessage) => {
             const replyTarget = replyTargetFor(msg, sorted);
-            const replyTargetFrom = replyTarget ? parseAddressList(replyTarget.from_email)[0] ?? null : null;
-            const replyTargetName = replyTargetFrom
-              ? (replyTargetFrom === leadAddress ? leadName : replyTargetFrom)
-              : null;
+            // An outbound target (only reachable when nobody has replied at
+            // all) still addresses the lead in practice — see
+            // replyRecipients — so label it as such, not with our own
+            // sending address.
+            const replyTargetName = !isInbound(replyTarget)
+              ? leadName
+              : (() => {
+                  const from = parseAddressList(replyTarget.from_email)[0] ?? null;
+                  return from ? (from === leadAddress ? leadName : from) : null;
+                })();
             return (
             <MessageRow
               m={msg}

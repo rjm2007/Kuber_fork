@@ -74,6 +74,7 @@ import { ReplyDraftBox, replyDraftHasContent } from "@/components/app/reply-draf
 import { ManualReplyBox, type ReplyRecipientContext } from "@/components/app/manual-reply-box";
 import { AddParticipantLeadDialog } from "@/components/app/add-participant-lead-dialog";
 import {
+  isInbound,
   ourAddresses,
   parseAddressList,
   replyRecipients,
@@ -240,6 +241,11 @@ type CampaignLead = {
      *  (see resolveOutboxReplyTarget). Absent on pre-migration rows. */
     instantly_email_id?: string | null;
     eaccount?: string | null;
+    /** The Unibox thread this send belongs to — the fallback source for
+     *  replying when getCampaignReplyThreads has no entry for this lead at
+     *  all (a never-replied lead is the common case, so that endpoint
+     *  deliberately skips them; see its own comment for why). */
+    thread_id?: string | null;
   }>;
   /** Set once someone answered this bounce by adding another contact at the same
    *  company. The row stays bounced (and still counts as one) — this only marks
@@ -1860,7 +1866,10 @@ export function CampaignDetail({
     bodyText: string | null;
   };
 
-  const outboxLeadAddress = parseAddressList(selectedThread?.lead_email ?? null)[0] ?? null;
+  // Falls back to the lead's own record when there is no reply-thread row at
+  // all for this lead (getCampaignReplyThreads deliberately skips never-replied
+  // leads — see its own comment — so selectedThread is routinely null here).
+  const outboxLeadAddress = parseAddressList(selectedThread?.lead_email ?? selected?.leads?.email ?? null)[0] ?? null;
   /** The lead's name only when the message really is from the lead — otherwise
    *  the raw address. The Outbox used to label every inbound message with the
    *  lead's name, so a CC'd third party's reply was indistinguishable from the
@@ -1912,7 +1921,12 @@ export function CampaignDetail({
         timestamp_email: m.timestamp_email,
       })),
   ];
-  const outboxOurEmails = ourAddresses(outboxParticipantMessages, [selectedThread?.eaccount ?? null]);
+  // Same fallback as the lead address: a never-replied lead has no
+  // selectedThread, but their own sequence sends still know which mailbox
+  // sent them.
+  const outboxFallbackEaccount = outboxSequenceSends.find((m) => !!m.eaccount)?.eaccount ?? null;
+  const outboxFallbackThreadId = outboxSequenceSends.find((m) => !!m.thread_id)?.thread_id ?? null;
+  const outboxOurEmails = ourAddresses(outboxParticipantMessages, [selectedThread?.eaccount ?? outboxFallbackEaccount]);
   const outboxUnansweredIds = new Set(
     unansweredInbound(outboxParticipantMessages, outboxOurEmails).map((m) => m.instantly_email_id),
   );
@@ -1975,6 +1989,11 @@ export function CampaignDetail({
   ): { id: string; name: string } | null {
     if (!candidate) return null;
     const target = replyTargetFor(candidate, outboxParticipantMessages);
+    // An inbound target is who this actually answers. An outbound one (only
+    // reachable when nobody has replied at all) still addresses the lead in
+    // practice — see replyRecipients — so it must be labeled as such, not
+    // with our own sending address.
+    if (!isInbound(target)) return { id: target.instantly_email_id, name: outboxReplyName };
     const from = parseAddressList(target.from_email)[0] ?? null;
     const name = from ? (from === outboxLeadAddress ? outboxReplyName : from) : "Unknown sender";
     return { id: target.instantly_email_id, name };
@@ -3824,17 +3843,24 @@ export function CampaignDetail({
                 </>)}
 
                 {/* Reply to the latest inbound message. Opens a plain composer;
-                    the AI only writes a draft when "AI draft" is pressed. */}
-                {selectedThread && (() => {
+                    the AI only writes a draft when "AI draft" is pressed.
+                    Works even with no selectedThread at all (a never-replied
+                    lead: getCampaignReplyThreads deliberately skips those, see
+                    its own comment) as long as we at least have a thread id to
+                    reply into, from this lead's own sequence sends. */}
+                {(selectedThread || outboxFallbackThreadId) && (() => {
+                  const outboxThreadId = selectedThread?.thread_key ?? outboxFallbackThreadId!;
                   // No inbound message at all (a pure cold-outreach thread) is
                   // fine — there is simply no AI reply draft to prefill, and the
                   // composer falls straight to a manual reply against our own
                   // sent message (see outboxActiveTarget/replyTargetFor).
-                  const lastMsg = selectedThread.messages[selectedThread.messages.length - 1] ?? null;
+                  const lastMsg = selectedThread?.messages[selectedThread.messages.length - 1] ?? null;
                   const latestDraft = lastMsg?.reply_drafts[lastMsg.reply_drafts.length - 1] ?? null;
                   const hasDraftReady = !!latestDraft && latestDraft.status !== "generating" && latestDraft.status !== "sent" && latestDraft.status !== "rejected";
                   const isGenerating = latestDraft?.status === "generating" || outboxNewReplyLoading;
-                  const campaignLeadId = selectedThread.campaign_lead_id;
+                  // AI drafting is only wired to a real reply-thread row — a
+                  // never-replied lead still gets the plain manual composer.
+                  const campaignLeadId = selectedThread?.campaign_lead_id ?? null;
 
                   // Same participant model as the Unibox: reply-all by default,
                   // recipients shown literally, and the target chosen per
@@ -3842,17 +3868,17 @@ export function CampaignDetail({
                   // last and silently drops everyone else, the lead included.
                   const outboxParticipants = threadParticipants(outboxParticipantMessages, {
                     ourEmails: outboxOurEmails,
-                    leadEmail: selectedThread.lead_email,
+                    leadEmail: outboxLeadAddress,
                   });
                   // Reply all puts every participant in To (Instantly's
                   // additional_recipients); plain Reply addresses only the
                   // sender of the message being answered.
-                  const outboxTo = replyRecipients(outboxActiveTarget, outboxParticipants, selectedThread.lead_email);
+                  const outboxTo = replyRecipients(outboxActiveTarget, outboxParticipants, outboxLeadAddress);
                   const outboxRecipientsCtx: ReplyRecipientContext = {
                     to: outboxReplyAll ? [...outboxTo.to, ...outboxTo.cc] : outboxTo.to,
                     lockedTo: outboxTo.to[0] ?? null,
                     participants: outboxParticipants.map((p) => p.email),
-                    leadEmail: selectedThread.lead_email,
+                    leadEmail: outboxLeadAddress,
                     leadName: outboxReplyName,
                     replyToUuid: outboxActiveTargetId,
                   };
@@ -3911,9 +3937,9 @@ export function CampaignDetail({
                             />
                           ) : (
                             <ManualReplyBox
-                              threadId={selectedThread.thread_key}
+                              threadId={outboxThreadId}
                               token={appSession?.access_token ?? ""}
-                              replyToSubject={selectedThread.original_email?.subject ?? null}
+                              replyToSubject={selectedThread?.original_email?.subject ?? null}
                               onSent={() => { setOutboxReplyOpen(false); void loadReplies(); }}
                               onCancel={() => setOutboxReplyOpen(false)}
                               onNewAiDraft={campaignLeadId ? handleAiDraftClick : undefined}

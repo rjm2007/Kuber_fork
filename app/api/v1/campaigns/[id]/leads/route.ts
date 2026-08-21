@@ -179,7 +179,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   if (pageLeadIds.length > 0) {
     const { data: sends } = await db
       .from("unibox_emails")
-      .select("id, campaign_lead_id, step, subject, body_html, body_text, timestamp_email, to_emails, cc_emails, from_email, instantly_email_id, eaccount")
+      .select("id, campaign_lead_id, step, subject, body_html, body_text, timestamp_email, to_emails, cc_emails, from_email, instantly_email_id, eaccount, thread_id")
       .eq("campaign_id", id)
       .eq("direction", "sent_campaign")
       .in("campaign_lead_id", pageLeadIds)

@@ -562,9 +562,10 @@ export async function getThreads(db: Db, filters: {
   scope?: UniboxScope;
   /**
    * Include threads the lead has never answered (a pure outbound campaign
-   * send). Both the Unibox and the campaign Outbox want these — a lead who
-   * has never replied can still be answered on our own sent message (see
-   * replyTargetFor), so the thread is not empty even with zero inbound mail.
+   * send). The Unibox wants these — it is a mailbox, not a reply queue.
+   * getCampaignReplyThreads deliberately does NOT set this: it resolves each
+   * thread with ~5 queries, and a never-replied lead is the common case in a
+   * campaign, not the exception — see the comment there.
    */
   include_unreplied?: boolean;
 }): Promise<{
@@ -1135,10 +1136,17 @@ export async function runUniboxSync(db: Db, maxPages = 8): Promise<{ ingested: n
 export async function getCampaignReplyThreads(db: Db, campaignId: string) {
   // No Unibox primary/others tab filter — campaign Outbox should show every
   // inbound reply for the campaign, including messages Instantly puts in Others.
-  // include_unreplied: true so a lead who has never written back still gets a
-  // thread entry here — otherwise their sequence sends have nowhere to attach
-  // a Reply button to (Gmail-style reply-to-our-own-message, see replyTargetFor).
-  const { threads } = await getThreads(db, { campaign_id: campaignId, limit: 500, include_unreplied: true });
+  //
+  // Deliberately NOT include_unreplied: this walks one thread at a time at
+  // roughly five queries each (see below), so pulling in every never-replied
+  // lead here too — the majority of a campaign, not the exception — turned a
+  // handful of queries into hundreds and broke the whole Outbox tab under
+  // load (confirmed live on a 200-lead campaign). A lead who has never
+  // replied still gets a working Reply button in the Outbox via their
+  // sequence sends, fetched separately and much more cheaply in the campaign
+  // leads API (see components/app/campaign-drawer.tsx's outboxParticipantMessages
+  // / thread-id fallback) — this endpoint only needs to cover the ones who did.
+  const { threads } = await getThreads(db, { campaign_id: campaignId, limit: 500 });
   const out = [];
 
   for (const t of threads) {
