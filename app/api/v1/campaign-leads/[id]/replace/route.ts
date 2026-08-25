@@ -4,18 +4,23 @@ import { ok, fail } from "@/lib/api-response";
 import { assertCampaignAccess } from "@/lib/auth/scope";
 import { dbForUser } from "@/lib/supabase/scoped";
 import { ReplaceBouncedLeadSchema } from "@/lib/validators/campaigns";
-import { buildReplacementLead } from "@/lib/services/replace-lead";
 import { logLeadEvent } from "@/lib/services/lead-events";
 import { internalAppBaseUrl } from "@/lib/internal-url";
 
 /**
- * Replace a bounced contact with another address at the SAME company.
+ * Correct a bounced contact's identity in place — same lead_id, updated
+ * name/email/title only.
  *
  * A bounce means the address was wrong, not that the company is unreachable —
- * and the company is already enriched, so nothing about it needs redoing. This
- * route is the whole recovery path: create (or reuse) a lead under that org,
- * drop it into this campaign, and kick draft generation. From there it rejoins
- * the normal flow — Draft Ready → employee certifies → Send.
+ * and the company is already enriched, so nothing about it needs redoing.
+ * Earlier this route created a SEPARATE lead + campaign_leads row and
+ * soft-deleted the bounced one, which split a person's identity across two
+ * records and only fixed the one campaign it was run from. Updating the same
+ * `leads` row instead means the correction is visible everywhere that lead_id
+ * is already referenced — every campaign, every thread, every drawer — with
+ * nothing else to keep in sync. The campaign_leads row is un-bounced in the
+ * same update so the corrected contact rejoins the normal flow (Draft Ready →
+ * certify → Send) without a fresh insert.
  *
  * Deliberately NOT reusing POST /api/v1/leads: that path is manager-only, mints
  * an import batch, and fires an org scrape this org concluded long ago. Here the
@@ -36,7 +41,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     .from("campaign_leads")
     .select(`
       id, campaign_id, crm_status, first_sent_at, lead_id,
-      leads!lead_id!inner ( email, assigned_to, country, organization_id, organizations ( name, unsubscribed ) )
+      leads!lead_id!inner ( first_name, last_name, email, title, assigned_to, organization_id, organizations ( name, unsubscribed ) )
     `)
     .eq("id", id)
     .maybeSingle();
@@ -45,9 +50,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   try { await assertCampaignAccess(db, user, cl.campaign_id as string); } catch (r) { return r as Response; }
 
   const bounced = (Array.isArray(cl.leads) ? cl.leads[0] : cl.leads) as {
+    first_name: string | null;
+    last_name: string | null;
     email: string | null;
+    title: string | null;
     assigned_to: string | null;
-    country: string | null;
     organization_id: string | null;
     organizations: { name: string | null; unsubscribed: boolean } | { name: string | null; unsubscribed: boolean }[] | null;
   };
@@ -61,15 +68,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   // Only a genuine bounce. crm_status='failed' is overloaded — first_sent_at is
   // what separates "we mailed them and the mailbox rejected it" from "Instantly
-  // refused the lead at add-time" (see deliveryBucket). Replacing the address is
-  // only the right fix for the former; the latter needs a re-send, not a person.
+  // refused the lead at add-time" (see deliveryBucket). Correcting the address is
+  // only the right fix for the former; the latter needs a re-send, not a correction.
   if (!(cl.crm_status === "failed" && cl.first_sent_at)) {
-    return fail(409, "NOT_BOUNCED", "Only a bounced lead can be replaced");
+    return fail(409, "NOT_BOUNCED", "Only a bounced lead can be corrected");
   }
 
-  if (!bounced.organization_id) {
-    return fail(409, "NO_ORGANIZATION", "This lead has no company to attach a replacement to");
-  }
   if (org?.unsubscribed) {
     return fail(409, "UNSUBSCRIBED", `${org.name ?? "This company"} has unsubscribed — no one there can be contacted`);
   }
@@ -79,132 +83,68 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return fail(400, "SAME_EMAIL", "That is the address that bounced — enter a different one");
   }
 
-  // Reuse before insert: this address may already be a lead (a colleague's
-  // import, another campaign). Inserting a second row would split one person's
-  // history in two and hand Instantly a duplicate.
-  const { data: existing } = await db
+  // The new address must not already belong to a DIFFERENT lead — this route
+  // edits one identity in place, it does not merge two. A collision means the
+  // right move is picking a still-different address, not silently combining
+  // two people's history.
+  const { data: collision } = await db
     .from("leads")
-    .select("id, assigned_to, first_name, last_name")
+    .select("id")
     .eq("email", email)
     .eq("is_deleted", false)
+    .neq("id", cl.lead_id)
     .maybeSingle();
-
-  let leadId: string;
-  let reused = false;
-
-  if (existing) {
-    // An unowned lead is free to take. One already held by a colleague is not:
-    // silently moving it would pull it out of their queue, and leaving it put
-    // would send this campaign's mail from THEIR mailbox (sendCampaign buckets
-    // by the owner's sending address).
-    if (existing.assigned_to && existing.assigned_to !== bounced.assigned_to) {
-      return fail(409, "LEAD_HELD_BY_OTHER", "That address already exists as a lead assigned to another employee", { lead_id: existing.id });
-    }
-    leadId = existing.id as string;
-    reused = true;
-    if (!existing.assigned_to && bounced.assigned_to) {
-      await db.from("leads").update({
-        assigned_to: bounced.assigned_to,
-        assigned_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      }).eq("id", leadId);
-    }
-  } else {
-    const { data: created, error: insErr } = await db
-      .from("leads")
-      .insert({
-        ...buildReplacementLead(
-          {
-            organization_id: bounced.organization_id,
-            assigned_to: bounced.assigned_to,
-            country: bounced.country,
-          },
-          parsed.data,
-          user.id,
-        ),
-        // Who this contact stands in for. The reverse pointer
-        // (campaign_leads.replaced_by_lead_id) answers "was this bounce
-        // handled?"; this one answers "where did this person come from?".
-        replaces_lead_id: cl.lead_id,
-      })
-      .select("id")
-      .single();
-    if (insErr) return fail(500, "INTERNAL", insErr.message);
-    leadId = created.id as string;
-    await logLeadEvent(db, leadId, "created", `Added to replace a bounced contact at ${org?.name ?? "this company"}`, {
-      actorId: user.id,
-      metadata: { replaces_lead_id: cl.lead_id, campaign_id: cl.campaign_id },
-    });
-  }
-
-  const { data: alreadyIn } = await db
-    .from("campaign_leads")
-    .select("id")
-    .eq("campaign_id", cl.campaign_id)
-    .eq("lead_id", leadId)
-    .maybeSingle();
-  if (alreadyIn) {
-    return fail(409, "ALREADY_IN_CAMPAIGN", "That contact is already in this campaign", { campaign_lead_id: alreadyIn.id });
+  if (collision) {
+    return fail(409, "EMAIL_TAKEN", "That address already belongs to another lead", { lead_id: collision.id });
   }
 
   const now = new Date().toISOString();
-  const { data: inserted, error: clErr } = await db
-    .from("campaign_leads")
-    .insert({
-      campaign_id: cl.campaign_id,
-      lead_id: leadId,
-      // Campaign-ready immediately: the org is enriched, so the lead is too
-      // (compute_lead_status derives it), and this is the status fetchDraftTargets
-      // picks up. No enrichment queue, nothing to wait for.
-      crm_status: "enriched",
-      created_by: user.id,
-      created_at: now,
-    })
-    .select("id")
-    .single();
-  if (clErr) return fail(500, "INTERNAL", clErr.message);
+  const oldName = [bounced.first_name, bounced.last_name].filter(Boolean).join(" ") || "(no name)";
+  const newFirstName = parsed.data.first_name.trim();
+  const newLastName = parsed.data.last_name?.trim() || null;
+  const newTitle = parsed.data.title?.trim() || null;
+  const newName = [newFirstName, newLastName].filter(Boolean).join(" ");
 
-  // Mark the bounce handled. Its crm_status stays 'failed' and it stays in
-  // bounced_count — the bounce really did happen and the numbers must keep
-  // saying so. This only tells a human "someone already dealt with this one",
-  // which is otherwise indistinguishable from an untouched bounce.
-  await db.from("campaign_leads").update({
-    replaced_by_lead_id: leadId,
-    replaced_at: now,
-    replaced_by_user_id: user.id,
+  const { error: leadErr } = await db.from("leads").update({
+    email,
+    first_name: newFirstName,
+    last_name: newLastName,
+    title: newTitle,
+    updated_by: user.id,
     updated_at: now,
-  }).eq("id", cl.id);
-
-  // Retire the bounced contact: the address is dead and nobody should work,
-  // assign or re-campaign it. is_deleted alone, deliberately NOT
-  // removeLeadFromOutreach() — that closes the campaign membership, which would
-  // drop this row out of the Bounced filter and out of bounced_count. The
-  // campaign_leads row (and every count built on it) is untouched; only the
-  // person leaves the Leads list.
-  await db.from("leads").update({ is_deleted: true, updated_at: now }).eq("id", cl.lead_id);
-
-  const { count } = await db
-    .from("campaign_leads")
-    .select("id", { count: "exact", head: true })
-    .eq("campaign_id", cl.campaign_id);
-  await db.from("campaigns").update({ total_leads: count ?? 0, updated_at: now }).eq("id", cl.campaign_id);
+  }).eq("id", cl.lead_id);
+  if (leadErr) return fail(500, "INTERNAL", leadErr.message);
 
   const { data: campaign } = await db.from("campaigns").select("name").eq("id", cl.campaign_id).maybeSingle();
   const campaignName = campaign?.name ?? "this campaign";
 
-  await logLeadEvent(db, leadId, "added_to_campaign", `Added to campaign "${campaignName}" as a replacement`, {
-    actorId: user.id,
-    metadata: { campaign_id: cl.campaign_id, replaces_lead_id: cl.lead_id, reused_existing_lead: reused },
-  });
-  // The bounced row stays exactly where it is in the campaign — still bounced,
-  // still counted. Only the person is retired from the Leads list.
-  await logLeadEvent(db, cl.lead_id as string, "status_changed",
-    `Bounced — replaced by ${email} in "${campaignName}", and removed from the leads list`, {
+  // Un-bounce and clear the stale draft so fetchDraftTargets writes a fresh one
+  // for the corrected name/email — the old draft was written for the person who
+  // bounced. first_sent_at resets too: nothing has actually been sent to this
+  // corrected identity yet, so follow-up scheduling must not anchor on the old
+  // (failed) send time.
+  const { error: clErr } = await db.from("campaign_leads").update({
+    crm_status: "enriched",
+    draft_id: null,
+    first_sent_at: null,
+    replaced_at: now,
+    replaced_by_user_id: user.id,
+    updated_at: now,
+  }).eq("id", cl.id);
+  if (clErr) return fail(500, "INTERNAL", clErr.message);
+
+  await logLeadEvent(db, cl.lead_id as string, "contact_corrected",
+    `Bounced contact corrected in "${campaignName}": ${oldName} <${bounced.email ?? "?"}> → ${newName} <${email}>`, {
       actorId: user.id,
-      metadata: { campaign_id: cl.campaign_id, replacement_lead_id: leadId, soft_deleted: true },
+      metadata: {
+        campaign_id: cl.campaign_id,
+        campaign_lead_id: cl.id,
+        before: { first_name: bounced.first_name, last_name: bounced.last_name, email: bounced.email, title: bounced.title },
+        after: { first_name: newFirstName, last_name: newLastName, email, title: newTitle },
+      },
     });
 
-  // Draft the new lead. fetchDraftTargets only picks campaign_leads with
+  // Draft the corrected lead. fetchDraftTargets only picks campaign_leads with
   // draft_id IS NULL, so firing the campaign-wide generator writes exactly one
   // draft — everyone else's is untouched.
   if (process.env.INTERNAL_SECRET) {
@@ -219,5 +159,5 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     );
   }
 
-  return ok({ lead_id: leadId, campaign_lead_id: inserted.id, reused });
+  return ok({ lead_id: cl.lead_id, campaign_lead_id: cl.id });
 }

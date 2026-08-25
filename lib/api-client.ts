@@ -1364,7 +1364,7 @@ export async function addLeadsToCampaign(token: string, campaignId: string, lead
  *  reuses) the lead, adds it to this campaign and starts its draft. */
 export async function replaceBouncedLead(token: string, campaignLeadId: string, body: {
   email: string; first_name: string; last_name?: string; title?: string;
-}): Promise<{ lead_id: string; campaign_lead_id: string; reused: boolean }> {
+}): Promise<{ lead_id: string; campaign_lead_id: string }> {
   return apiFetch(`/api/v1/campaign-leads/${campaignLeadId}/replace`, {
     method: "POST",
     body: JSON.stringify(body),
