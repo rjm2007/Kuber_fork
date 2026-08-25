@@ -1967,9 +1967,10 @@ export function CampaignDetail({
       if (!session) return;
       const { campaign_lead_id } = await replaceBouncedLead(session.access_token, replaceTarget.campaignLeadId, input);
       setReplaceTarget(null);
-      toast.success("Replacement added — writing their email now");
+      toast.success("Contact corrected — writing their email now");
       await loadData();
-      // Land the user on the new contact: their draft is what needs certifying.
+      // Same row as before (in-place correction) — reopen it so the new draft
+      // is what the user lands on to certify.
       handleOpenInOutbox(campaign_lead_id);
     } catch (e) {
       // Stays open with the message — most failures here are fixable in place
@@ -2475,7 +2476,12 @@ export function CampaignDetail({
     { id: "action",    label: "Needs action" },
     { id: "certified", label: "Certified" },
     { id: "sending",   label: "Sending" },
-    { id: "sent",      label: "Sent" },
+    // Not "Sent" — deliveryBucket's "sent" excludes anyone who has since
+    // replied or bounced, so sitting right above "Follow-up sent" (which
+    // counts across ALL outcomes, replied/bounced included) made it read as
+    // a delivered total it isn't and made Follow-up sent look impossibly
+    // larger. Same distinction the Analytics tab makes with "No reply yet".
+    { id: "sent",      label: "No reply yet" },
     { id: "followup_sent", label: "Follow-up sent" },
     { id: "followup",  label: "Follow-up due" },
     { id: "replied",   label: "Replied" },
@@ -2836,7 +2842,7 @@ export function CampaignDetail({
               {/* Chart grid */}
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
                 {/* Pipeline donut + legend */}
-                <div className="swatch-bar-top rounded-xl border border-border bg-card p-4">
+                <div className="swatch-bar-top rounded-xl border border-border bg-field dark:bg-card p-4">
                   <p className="eyebrow mb-2">Pipeline</p>
                   <div className="flex items-center gap-3">
                     <ResponsiveContainer width="45%" height={140}>
@@ -2871,7 +2877,7 @@ export function CampaignDetail({
                 </div>
 
                 {/* Draft funnel bar chart */}
-                <div className="swatch-bar-top rounded-xl border border-border bg-card p-4">
+                <div className="swatch-bar-top rounded-xl border border-border bg-field dark:bg-card p-4">
                   <p className="eyebrow mb-2">Draft funnel</p>
                   {report ? (
                     <ResponsiveContainer width="100%" height={140}>
@@ -2903,7 +2909,7 @@ export function CampaignDetail({
                 </div>
 
                 {/* Lead temperature donut + legend */}
-                <div className="swatch-bar-top rounded-xl border border-border bg-card p-4">
+                <div className="swatch-bar-top rounded-xl border border-border bg-field dark:bg-card p-4">
                   <p className="eyebrow mb-2">Lead temperature</p>
                   <div className="flex items-center gap-3">
                     <ResponsiveContainer width="45%" height={140}>
@@ -2954,7 +2960,7 @@ export function CampaignDetail({
               {/* Sequence step performance + Replied vs Sent */}
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
                 {stepDeliveryPct.length > 0 && (
-                  <div className="rounded-xl border border-border bg-card p-4 lg:col-span-2">
+                  <div className="rounded-xl border border-border bg-field dark:bg-card p-4 lg:col-span-2">
                     <div className="flex items-center gap-1.5 mb-1">
                       <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">Sequence step performance</p>
                       <InfoTip
@@ -2993,7 +2999,7 @@ export function CampaignDetail({
                 )}
 
                 {/* Replied vs Sent */}
-                <div className="rounded-xl border border-border bg-card p-4">
+                <div className="rounded-xl border border-border bg-field dark:bg-card p-4">
                   <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-1">Replied vs. delivered</p>
                   <p className="text-[10px] text-muted-foreground mb-2">
                     {analyticsReplyRate}% of delivered emails on this campaign got a reply
@@ -3061,7 +3067,14 @@ export function CampaignDetail({
                   .filter((b) => (deliveryCounts[b] ?? 0) > 0)
                   .map((b) => (
                     <SelectItem key={b} value={b}>
-                      {DELIVERY_BUCKET_LABELS[b]} ({deliveryCounts[b] ?? 0})
+                      {/* Sitting right next to "Follow-up sent" invites reading
+                          this as the delivered total, but deliveryBucket's
+                          "sent" excludes anyone who has since replied or
+                          bounced — same distinction the Analytics tab makes
+                          with "No reply yet" vs "Sent". Only overridden here;
+                          DELIVERY_BUCKET_LABELS.sent stays "Sent" for the
+                          per-lead badge, where it reads fine standing alone. */}
+                      {b === "sent" ? "No reply yet" : DELIVERY_BUCKET_LABELS[b]} ({deliveryCounts[b] ?? 0})
                     </SelectItem>
                   ))}
                 {/* Per step, so "sent" and "due" say WHICH follow-up. Empty

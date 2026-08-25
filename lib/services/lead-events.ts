@@ -42,7 +42,11 @@ export type LeadEventType =
   | "reply_received"
   | "interest_changed"
   | "unsubscribed"
-  | "status_changed";
+  | "status_changed"
+  // A bounced contact's identity (name/email/title) was corrected in place —
+  // same lead_id, so every campaign referencing it sees the correction too.
+  // Distinct from status_changed: this is an identity edit, not a stage move.
+  | "contact_corrected";
 
 /**
  * Fire-and-forget: never let activity logging break the actual operation.
