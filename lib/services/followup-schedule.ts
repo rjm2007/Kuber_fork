@@ -1,0 +1,205 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
+
+/**
+ * WHEN a follow-up is written, and for whom.
+ *
+ * The whole design turns on one fact: a follow-up's due date is driven by when
+ * that lead's OPENING email actually left, not by when the campaign was created.
+ * Instantly drips a campaign out over days, so 100 leads sent across a week have
+ * 100 different follow-up dates. Keying off `campaign_leads.first_sent_at` (set
+ * by the `email_sent` webhook) makes that sort itself out with no special cases:
+ * each lead simply carries its own clock.
+ *
+ * Consequences worth stating, because they look like bugs otherwise:
+ *   • A lead that has never been sent has no due date and is never picked up.
+ *     Correct — there is nothing to follow up on.
+ *   • A campaign sitting in draft generates no follow-ups at all.
+ *   • 50 sent today and 50 tomorrow produce two batches automatically.
+ */
+
+/** How far ahead of the due date a follow-up is written.
+ *
+ *  One day, deliberately. Writing at campaign start would spend tokens on leads
+ *  who reply or bounce first (roughly a quarter of them). Writing on the due day
+ *  itself races Instantly, which may fire the step before the text lands. A day
+ *  of lead time is the cheap middle. */
+export const FOLLOWUP_LEAD_TIME_DAYS = 1;
+
+/** Statuses that mean the conversation is over — no follow-up should be written
+ *  or sent. Instantly also stops the sequence itself on reply, so this mostly
+ *  saves us the tokens rather than preventing a send.
+ *
+ *  These MUST be real values of the `campaign_lead_crm_status_enum` type.
+ *  Postgres rejects the whole query with `22P02 invalid input value for enum`
+ *  if even one is wrong — it does not ignore the unknown value, it 400s. An
+ *  earlier version of this list carried "bounced" and "unsubscribed", which do
+ *  not exist, and the effect was that the sweep silently returned nothing and
+ *  no follow-up was ever written. Verified live: the enum accepts `new`,
+ *  `enriched`, `draft`, `approved`, `sent`, `replied`, `failed`.
+ *
+ *  A bounce is recorded as `failed` by the email_bounced webhook, and an
+ *  unsubscribe is carried on `lead_temperature`, not here. */
+const DEAD_STATUSES = ["replied", "failed"];
+
+export type FollowupStep = { step_order: number; delay: number; delay_unit: string | null };
+
+/** A step's delay expressed in days. Instantly's `delay` is "wait this long
+ *  BEFORE this step", carried on the step row itself. */
+export function delayInDays(step: FollowupStep): number {
+  const n = step.delay ?? 0;
+  switch ((step.delay_unit ?? "days").toLowerCase()) {
+    case "minutes": return n / (60 * 24);
+    case "hours":   return n / 24;
+    default:        return n;
+  }
+}
+
+/**
+ * When step `stepOrder` falls due for a lead whose opening email left at
+ * `firstSentAt`.
+ *
+ * Delays are cumulative: step 2 waits its own delay after the opening email,
+ * step 3 waits its delay after step 2. Summing every step up to and including
+ * the target is what makes step 3 land after step 2 rather than beside it.
+ *
+ * Returns null when the opening email has not been sent, which is the signal to
+ * skip the lead entirely.
+ */
+export function followupDueAt(
+  firstSentAt: string | null | undefined,
+  steps: FollowupStep[],
+  stepOrder: number,
+): Date | null {
+  if (!firstSentAt) return null;
+  const base = new Date(firstSentAt);
+  if (Number.isNaN(base.getTime())) return null;
+
+  const totalDays = steps
+    .filter((s) => s.step_order > 1 && s.step_order <= stepOrder)
+    .reduce((sum, s) => sum + delayInDays(s), 0);
+
+  return new Date(base.getTime() + totalDays * 24 * 60 * 60 * 1000);
+}
+
+/** True when a follow-up should be written now: due within the lead-time window.
+ *  Already-overdue counts as due — a missed run must catch up rather than skip. */
+export function isDueForWriting(dueAt: Date | null, now = new Date()): boolean {
+  if (!dueAt) return false;
+  const horizon = new Date(now.getTime() + FOLLOWUP_LEAD_TIME_DAYS * 24 * 60 * 60 * 1000);
+  return dueAt <= horizon;
+}
+
+export type FollowupTarget = {
+  campaignId: string;
+  campaignLeadId: string;
+  leadId: string;
+  stepOrder: number;
+  dueAt: string;
+  instantlyLeadId: string | null;
+};
+
+/**
+ * Every follow-up that needs writing right now, across all live campaigns.
+ *
+ * Deliberately one sweep rather than per-campaign: the daily job has no campaign
+ * in hand, and a lead's due date has nothing to do with which campaign it sits
+ * in. Ordered by due date so that if the batch is capped, the most urgent are
+ * written first — a follow-up due tomorrow matters more than one due next week.
+ */
+export async function findFollowupsToWrite(
+  db: SupabaseClient,
+  opts: { limit?: number; now?: Date; companyId?: string } = {},
+): Promise<FollowupTarget[]> {
+  const limit = opts.limit ?? 50;
+  const now = opts.now ?? new Date();
+
+  // Live campaigns only. A draft campaign has sent nothing, and a paused one
+  // should not be quietly preparing work while the user believes it is stopped.
+  //
+  // companyId narrows the sweep to one tenant. Unscoped is correct in
+  // production, where the cron serves every company at once. It is NEVER
+  // correct from a developer machine: local dev points at the same Supabase as
+  // production, so an unscoped run on localhost reaches the client's live
+  // campaigns. That happened on 25 Aug 2026 — a local test wrote 6 follow-ups
+  // into the client's APOLLO CAMPAIGN 2 and pushed them to Instantly. The route
+  // now refuses an unscoped run outside production; this parameter is how a
+  // local run stays inside the dev tenant.
+  let campaignQuery = db
+    .from("campaigns")
+    .select("id")
+    .eq("is_deleted", false)
+    .in("status", ["active", "processing"]);
+
+  if (opts.companyId) campaignQuery = campaignQuery.eq("company_id", opts.companyId);
+
+  const { data: campaigns } = await campaignQuery;
+
+  const campaignIds = (campaigns ?? []).map((c) => c.id as string);
+  if (campaignIds.length === 0) return [];
+
+  const { data: allSteps } = await db
+    .from("campaign_steps")
+    .select("campaign_id, step_order, delay, delay_unit")
+    .in("campaign_id", campaignIds)
+    .gt("step_order", 1)
+    .order("step_order");
+
+  const stepsByCampaign = new Map<string, FollowupStep[]>();
+  for (const s of allSteps ?? []) {
+    const id = s.campaign_id as string;
+    if (!stepsByCampaign.has(id)) stepsByCampaign.set(id, []);
+    stepsByCampaign.get(id)!.push(s as FollowupStep);
+  }
+  if (stepsByCampaign.size === 0) return [];
+
+  // Only leads whose opening email has actually left. `first_sent_at` is written
+  // by the email_sent webhook, so its presence IS the proof that step 1 landed.
+  const { data: leads } = await db
+    .from("campaign_leads")
+    .select("id, campaign_id, lead_id, crm_status, first_sent_at, instantly_lead_id")
+    .in("campaign_id", [...stepsByCampaign.keys()])
+    .not("first_sent_at", "is", null)
+    .not("crm_status", "in", `(${DEAD_STATUSES.join(",")})`)
+    .limit(5000);
+
+  if (!leads?.length) return [];
+
+  // Which (lead, step) pairs already have a draft. One query rather than one per
+  // lead: this sweep runs across every campaign and would otherwise be N+1.
+  const { data: existing } = await db
+    .from("email_drafts")
+    .select("lead_id, campaign_id, step_number")
+    .in("campaign_id", [...stepsByCampaign.keys()])
+    .gt("step_number", 1);
+
+  const written = new Set(
+    (existing ?? []).map((d) => `${d.campaign_id}:${d.lead_id}:${d.step_number}`),
+  );
+
+  const targets: FollowupTarget[] = [];
+  for (const cl of leads) {
+    const steps = stepsByCampaign.get(cl.campaign_id as string) ?? [];
+    for (const step of steps) {
+      const key = `${cl.campaign_id}:${cl.lead_id}:${step.step_order}`;
+      if (written.has(key)) continue;
+
+      const dueAt = followupDueAt(cl.first_sent_at as string, steps, step.step_order);
+      if (!isDueForWriting(dueAt, now)) continue;
+
+      targets.push({
+        campaignId: cl.campaign_id as string,
+        campaignLeadId: cl.id as string,
+        leadId: cl.lead_id as string,
+        stepOrder: step.step_order,
+        dueAt: dueAt!.toISOString(),
+        instantlyLeadId: (cl.instantly_lead_id as string | null) ?? null,
+      });
+      // Only the earliest unwritten step per lead. Writing step 3 before step 2
+      // exists would produce a follow-up referring to a message never sent.
+      break;
+    }
+  }
+
+  targets.sort((a, b) => a.dueAt.localeCompare(b.dueAt));
+  return targets.slice(0, limit);
+}

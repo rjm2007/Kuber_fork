@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { generateOneDraft } from "@/lib/services/generate-drafts";
+import { syncApprovedDraftToInstantly } from "@/lib/services/draft-sync";
 
 /** Draft statuses a regeneration may start from. Anything else (sent, generating) is refused. */
 export const REGENERATABLE_STATUSES = ["draft", "failed", "rejected", "approved"] as const;
@@ -194,6 +195,27 @@ export async function regenerateOneDraft(
     .select("id, subject, body, status, version")
     .eq("id", result.draftId)
     .single();
+
+  // Instantly holds its OWN copy of the text, in that lead's customBodyN custom
+  // variable, and reads it only once — when the lead is added. Rewriting the
+  // draft in our database therefore changes nothing about what the customer
+  // receives unless we push it.
+  //
+  // Gated on 'approved' because that is the point at which the text is meant to
+  // go out. Opening emails under human-in-the-loop come back as 'draft' and are
+  // pushed later by the certify path, so this is a no-op for them. Follow-ups
+  // are auto-approved by design, so this IS their push — without it, a
+  // regenerated follow-up looked correct in the UI while Instantly happily sent
+  // the previous version.
+  //
+  // Best-effort: a regeneration that succeeded must not be reported as failed
+  // because Instantly was briefly unreachable. The daily follow-up writer and
+  // the certify path both re-sync from the same approved rows.
+  if (newDraft?.status === "approved") {
+    try {
+      await syncApprovedDraftToInstantly(db, oldDraft.lead_id, oldDraft.campaign_id);
+    } catch { /* pushed again by the next sync of this lead */ }
+  }
 
   return { ok: true, draft: newDraft as DraftVersionRow };
 }

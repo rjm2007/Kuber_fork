@@ -3,10 +3,52 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { createScopedClient } from "@/lib/supabase/scoped";
 import { internalAppBaseUrl } from "@/lib/internal-url";
 import { safeSecretEqual } from "@/lib/auth/secret";
-import { regenerateOneDraft, BULK_REGENERATABLE_STATUSES } from "@/lib/services/regenerate-draft";
-import { countPendingItems } from "@/lib/services/regeneration-jobs";
+import { regenerateOneDraft } from "@/lib/services/regenerate-draft";
+import { countPendingItems, bulkRegeneratableStatuses } from "@/lib/services/regeneration-jobs";
 
 export const maxDuration = 55;
+
+/**
+ * Which draft this job item means, resolved NOW rather than at enqueue time —
+ * the user may have edited, or the generator replaced it, during the minutes the
+ * job sat queued.
+ *
+ * Step 1 follows campaign_leads.draft_id, which is the pointer to the live
+ * opening email. That column tracks ONLY step 1, so a follow-up job must look
+ * the draft up by (campaign, lead, step) instead. Using draft_id for a step-2
+ * job would have quietly regenerated everyone's opening email when the user
+ * clicked Regenerate all on a follow-up.
+ */
+async function resolveDraftId(
+  db: ReturnType<typeof createScopedClient>,
+  campaignId: string,
+  item: { campaign_lead_id: string; lead_id: string },
+  stepNumber: number,
+): Promise<string | null> {
+  if (stepNumber === 1) {
+    const { data: cl } = await db
+      .from("campaign_leads")
+      .select("draft_id")
+      .eq("id", item.campaign_lead_id)
+      .maybeSingle();
+    return (cl?.draft_id as string | null) ?? null;
+  }
+
+  // Excludes 'rejected', which are superseded historical versions rather than
+  // the live draft for this step.
+  const { data: draft } = await db
+    .from("email_drafts")
+    .select("id")
+    .eq("campaign_id", campaignId)
+    .eq("lead_id", item.lead_id)
+    .eq("step_number", stepNumber)
+    .neq("status", "rejected")
+    .order("version", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  return (draft?.id as string | null) ?? null;
+}
 
 // Regeneration is one LLM call per lead and the single-draft route budgets 60s
 // for one of them, so five sequential calls is the safe ceiling for a 55s
@@ -34,7 +76,7 @@ export async function POST(req: NextRequest) {
 
   const { data: job } = await db
     .from("draft_regeneration_jobs")
-    .select("id, campaign_id, status, custom_instruction, requested_by, succeeded, failed, company_id")
+    .select("id, campaign_id, status, custom_instruction, requested_by, succeeded, failed, company_id, step_number")
     .eq("id", jobId)
     .maybeSingle();
 
@@ -79,28 +121,24 @@ export async function POST(req: NextRequest) {
   let succeeded = 0;
   let failed = 0;
 
-  for (const item of items) {
-    // The draft to regenerate is whatever campaign_leads points at NOW, not a
-    // draft id captured at enqueue time — the user may have edited or the
-    // generator may have replaced it during the minutes this job has been queued.
-    const { data: cl } = await cdb
-      .from("campaign_leads")
-      .select("draft_id")
-      .eq("id", item.campaign_lead_id)
-      .maybeSingle();
+  const stepNumber = (job.step_number as number | null) ?? 1;
 
-    if (!cl?.draft_id) {
-      await markItem(cdb, item.id, "skipped", "Lead no longer has a draft");
+  for (const item of items) {
+    const draftId = await resolveDraftId(cdb, job.campaign_id as string, item, stepNumber);
+
+    if (!draftId) {
+      await markItem(cdb, item.id, "skipped", "Lead no longer has a draft for this step");
       continue;
     }
 
-    const result = await regenerateOneDraft(cdb, cl.draft_id, {
+    const result = await regenerateOneDraft(cdb, draftId, {
       userId: job.requested_by ?? undefined,
       customInstruction: job.custom_instruction ?? undefined,
       bulkJobId: jobId,
       // Re-checked per lead, not just at enqueue: a draft certified or sent
-      // while the job was queued must not be overwritten by it.
-      allowedStatuses: BULK_REGENERATABLE_STATUSES,
+      // while the job was queued must not be overwritten by it. Follow-ups
+      // widen this to include 'approved' — see bulkRegeneratableStatuses.
+      allowedStatuses: bulkRegeneratableStatuses(stepNumber),
     });
 
     if (result.ok) {

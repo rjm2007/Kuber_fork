@@ -915,22 +915,27 @@ export async function previewRegeneration(
   token: string,
   campaignId: string,
   campaignLeadIds?: string[],
+  stepNumber?: number,
 ): Promise<{ eligible: number; by_status: { draft: number; failed: number }; skipped: RegenerationSkipped }> {
-  const qs = campaignLeadIds?.length ? `?campaign_lead_ids=${campaignLeadIds.join(",")}` : "";
-  return apiFetch(`/api/v1/campaigns/${campaignId}/regenerate-drafts${qs}`, {}, token);
+  const qs = new URLSearchParams();
+  if (campaignLeadIds?.length) qs.set("campaign_lead_ids", campaignLeadIds.join(","));
+  if (stepNumber && stepNumber > 1) qs.set("step_number", String(stepNumber));
+  const suffix = qs.size ? `?${qs}` : "";
+  return apiFetch(`/api/v1/campaigns/${campaignId}/regenerate-drafts${suffix}`, {}, token);
 }
 
 /** Queue a background bulk regeneration. Omit ids to cover every eligible lead. */
 export async function regenerateCampaignDrafts(
   token: string,
   campaignId: string,
-  opts?: { campaignLeadIds?: string[]; customInstruction?: string },
+  opts?: { campaignLeadIds?: string[]; customInstruction?: string; stepNumber?: number },
 ): Promise<{ job_id: string; total: number; skipped: RegenerationSkipped }> {
   return apiFetch(`/api/v1/campaigns/${campaignId}/regenerate-drafts`, {
     method: "POST",
     body: JSON.stringify({
       ...(opts?.campaignLeadIds?.length ? { campaign_lead_ids: opts.campaignLeadIds } : {}),
       ...(opts?.customInstruction ? { custom_instruction: opts.customInstruction } : {}),
+      ...(opts?.stepNumber && opts.stepNumber > 1 ? { step_number: opts.stepNumber } : {}),
     }),
   }, token);
 }

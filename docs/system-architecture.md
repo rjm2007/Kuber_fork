@@ -529,13 +529,14 @@ We will look at the exact ordering and race windows when we study each pipeline.
 
 Verified against the live database (`select * from cron.job`) and the repo. There are **three separate schedulers**, which is itself an important fact about this system.
 
-### 10.1 Supabase pg_cron — 4 jobs, all `active = true` (the real schedule)
+### 10.1 Supabase pg_cron — 5 jobs, all `active = true` (the real schedule)
 
 | JOB | HOW TRIGGERED | HOW OFTEN | WHAT IT GENERALLY DOES |
 |---|---|---|---|
 | `enrichment-watchdog` | pg_cron → `ping_internal_route('/api/internal/enrichment-watchdog')` → pg_net HTTPS POST | `*/10 * * * *` (every 10 min) | Nudges scraping; revives stalled bulk-regeneration jobs; revives stalled initial draft generation. **Free by design** — nothing behind it can spend an Apollo credit. |
 | `unibox-sync` | pg_cron → `ping_internal_route('/api/v1/unibox/sync', 60000)` | `*/15 * * * *` | Reconciliation sweep over the shared Instantly mailbox. The webhook is the real delivery path; this catches what it drops. |
 | `resume-apollo-reveal` | pg_cron → `ping_internal_route('/api/internal/resume-apollo-reveal', 60000)` | `10 4 * * *` (04:10 UTC daily) | Resumes email-reveal for **one** import whose self-chain died. **The only scheduled job in the app that can spend money.** |
+| `write-followups` | pg_cron → `ping_internal_route('/api/internal/write-followups', 60000)` | `0 2 * * *` (02:00 UTC = 07:30 IST daily) | Writes the personalised follow-ups falling due within a day and pushes each to Instantly. Idempotent, self-healing, and also nudged every 10 min by `enrichment-watchdog`. Costs **no LLM tokens and no Apollo credits** on a pass with nothing due. See §14. |
 | `purge-cron-history` | pg_cron, pure SQL | `20 3 * * *` | `delete from cron.job_run_details where end_time < now() - interval '7 days'` |
 
 `ping_internal_route(path, timeout_ms)` is `SECURITY DEFINER`, reads `internal_secret` and `app_base_url` out of Supabase Vault at call time (so the secret is never in `cron.job`'s plaintext command), and has `EXECUTE` **revoked** from `public`, `anon`, `authenticated` and `service_role` — only the cron owner can run it.
@@ -683,9 +684,322 @@ Every one of the following exists because of a real, measured overspend:
 
 ---
 
+---
+
 ## 13. NOT COVERED HERE (deliberately)
 
 Apollo search, Apollo email reveal, Firecrawl scraping + LLM extraction, initial draft generation, bulk regeneration, Company Lookup, campaign fan-out to Instantly, reply drafting, and Unibox sync all have their own internal rules. Those are the one-by-one studies.
+
+---
+
+## 14. PERSONALISED FOLLOW-UPS (steps 2 and 3)
+
+Built 25 August 2026. This section is deliberately complete: the feature spans a
+prompt, a scheduler, a worker, a cron job, a watchdog hook and a UI surface, and
+none of those pieces makes sense read alone.
+
+### 14.1 The problem it replaces
+
+Before this, every prospect on earth received the same follow-up:
+
+> "Just following up on my previous note, would love your thoughts."
+
+Two places in the code produced that, and neither was a bug in the ordinary sense:
+
+| Where | What it did |
+|---|---|
+| `lib/services/followup-regenerate.ts` | Its own header states the intent: *"no lead/org data, no Kuber context, no product library, no shared base system prompt."* It rewrites existing text and is told nothing about the customer. |
+| `lib/services/campaign-fanout.ts` | When a follow-up was never written, it seeds `customBody2` with a fixed sentence so Instantly does not render an empty email. That fallback is what most prospects actually received. |
+
+**Instantly was never the constraint.** Verified in the live workspace, our sequence
+steps are:
+
+```
+step 1  →  subject "{{customSubject}}"  body "{{customBody}}"
+step 2  →  subject ""                   body "{{customBody2}}"
+step 3  →  subject ""                   body "{{customBody3}}"
+```
+
+The **entire body is one per-lead variable**. Nothing about the follow-up is a
+shared template — Instantly was faithfully delivering exactly what we handed it.
+
+### 14.2 BACKEND — how a follow-up is written
+
+#### The prompt
+
+`lib/services/settings.ts` → `FOLLOWUP_CONTRACT`, selected by
+`resolveDraftSystemPrompt(db, ownerId, stepNumber)` whenever `stepNumber > 1`.
+
+**A follow-up never uses the user's `draft_template`.** This is the single most
+important rule in the feature. A template is a full opening pitch; reproducing it
+as step 2 produces a second cold email. Measured before the fix existed: a step-2
+draft came back at **1,430 characters** carrying the whole offerings block, the
+18,000 MT figure, the client counts, the awards and the partner list. After the
+fix, the same leads produced **233–370 characters**.
+
+The contract enforces two requirements that pull against each other, and both are
+mandatory:
+
+| Requirement | Why it is in the prompt explicitly |
+|---|---|
+| **Two to four sentences** | Client instruction, 21 Aug 2026: *"Follow-up message should be very small. Follow to the point."* |
+| **Names THEIR business concretely** | Otherwise the model writes about *our* products and the email fits any company on earth. The prompt names the failure mode and bans the filler phrasings ("your sourcing needs", "your requirements") that the first version produced. |
+
+It also bans, by name: re-introducing Kuber, the product range, the capacity
+figures, client counts, awards, partner names, bullet points, and any subject
+line. `NON_NEGOTIABLE_RULES` still applies on top, so a follow-up cannot invent a
+price or a certification either.
+
+#### The signature
+
+`generate-drafts.ts` sets `signatureForStep = stepNumber > 1 ? "" : signatureBlock`.
+
+A follow-up threads as a reply, so the signature is already visible in the message
+directly above it. Repeating it read as a bot and padded a deliberately short
+nudge — measured, a 235-character follow-up carried a 90-character signature.
+Step 1 keeps its signature.
+
+#### The generator
+
+`generateOneDraft()` needed no new branch. It already accepted `stepNumber`,
+already cleared the subject for `stepNumber > 1` (so Instantly threads it), and
+`fetchDraftTargets()` already filtered by `step_number`. The feature was mostly
+absent rather than impossible.
+
+### 14.3 SCHEDULING — when a follow-up is written
+
+`lib/services/followup-schedule.ts`
+
+**The whole design turns on one fact: the due date comes from when that lead's
+opening email actually left, not from when the campaign was created.** Instantly
+drips a campaign out over days, so 100 leads sent across a week have 100 different
+follow-up dates. Keying off `campaign_leads.first_sent_at` — written by the
+`email_sent` webhook — makes that sort itself out with no special cases.
+
+| Export | Purpose |
+|---|---|
+| `delayInDays(step)` | Normalises a step's `delay` + `delay_unit` (minutes/hours/days) to days |
+| `followupDueAt(firstSentAt, steps, stepOrder)` | Due date. Delays are **cumulative**: step 3 = sent + step2.delay + step3.delay, which is what makes step 3 land after step 2 rather than beside it. Returns `null` when never sent. |
+| `isDueForWriting(dueAt, now)` | True when due within `FOLLOWUP_LEAD_TIME_DAYS`. **Already-overdue counts as due**, so a missed run catches up rather than skipping. |
+| `findFollowupsToWrite(db, opts)` | The sweep. Returns targets ordered by due date. |
+
+`FOLLOWUP_LEAD_TIME_DAYS = 1`. Writing at campaign start would spend tokens on the
+roughly quarter of leads who reply or bounce first; writing on the due day itself
+races Instantly, which may fire the step before the text lands.
+
+**What the sweep excludes, and why each matters:**
+
+| Excluded | Reason |
+|---|---|
+| Campaigns not `active`/`processing` | A draft campaign has sent nothing; a paused one must not quietly prepare work |
+| Leads with no `first_sent_at` | No opening email means nothing to follow up on |
+| `crm_status` in `replied`, `failed` | Conversation is over. A bounce is recorded as `failed`; Instantly also stops the sequence itself on reply |
+| `(campaign, lead, step)` that already has a draft | This is what makes the job **idempotent** |
+| Later steps when an earlier one is unwritten | Only the earliest unwritten step per lead — writing step 3 first would reference a message never sent |
+
+> **Trap worth remembering.** `crm_status` is a Postgres **enum**. Passing a value
+> that is not in it (`bounced`, `unsubscribed`) does not filter loosely — Postgres
+> rejects the entire query with `22P02 invalid input value for enum`, the sweep
+> returns nothing, and **no follow-up is ever written**, silently. The live enum
+> accepts: `new`, `enriched`, `draft`, `approved`, `sent`, `replied`, `failed`.
+
+### 14.4 THE WORKER
+
+`lib/services/write-followups.ts` → `writeDueFollowups(db, opts)`
+
+```
+findFollowupsToWrite()          → what is due
+  for each target, within a 40s time budget:
+    read the campaign_lead in the shape generateOneDraft expects
+    generateOneDraft(..., stepNumber)   → writes email_drafts row
+    syncApprovedDraftToInstantly()      → pushes to that lead's customBody2
+```
+
+**Two halves, and the second is the one that is easy to forget.** Writing the
+draft only updates our database. Instantly holds its own copy of the text in the
+lead's `customBody2`, seeded at fan-out with the generic fallback. Without the
+push, the database would show a personalised follow-up while Instantly cheerfully
+sent boilerplate.
+
+`syncApprovedDraftToInstantly` rebuilds the **whole** custom-variable set from
+every approved/sent draft for that lead, so pushing after writing step 2 carries
+step 1 along unchanged rather than clobbering it.
+
+**Follow-ups are auto-approved.** `human_in_loop` is deliberately passed as
+`false` — agreed with the client 21 Aug 2026, *"no need to certify the
+follow-ups"*. Leaving them awaiting a human who will never come would mean
+Instantly sends the fallback instead.
+
+**Writes are company-scoped.** The sweep is cross-company by necessity; every
+write goes through `createScopedClient(campaign.company_id)` so rows are stamped
+correctly, exactly as `sendCampaign` does.
+
+### 14.5 TRIGGERS AND WATCHDOG
+
+`app/api/internal/write-followups/route.ts` — `POST` (internal secret) and `GET`
+(Vercel Cron bearer), same shape as `enrichment-watchdog` and
+`reconcile-counters`.
+
+| Trigger | Cadence | Notes |
+|---|---|---|
+| Scheduled run | daily | A follow-up's due date moves in days; a tighter cadence only re-asks the same question |
+| `runEnrichmentWatchdog` → `triggerFollowupWriter` | every 10 min | The safety net. Fire-and-forget with `limit: 25`, so the watchdog is never held open by a 40-second job |
+
+**Why the watchdog hook exists.** A single missed daily run would leave that day's
+follow-ups unwritten and Instantly would send the generic fallback — a silent
+quality regression nobody would notice until a prospect received boilerplate.
+Because the sweep skips anything already written, all but one of the ~144 daily
+watchdog calls find nothing and return immediately.
+
+**Self-healing.** The job asks *"due within a day and not yet written"*, never
+*"due today"*. A missed day is picked up by the next run, including anything
+already overdue. A failed schedule therefore delays follow-ups rather than losing
+them, and the worst case is still the fallback sentence, never a blank email.
+
+### 14.6 THE MULTI-TENANT GUARD (read this before testing locally)
+
+`guardUnscoped()` in the route **refuses a company-wide sweep from anywhere that
+is not production**.
+
+Local development points at the **same Supabase and the same Instantly workspace**
+as production. An unscoped sweep on a developer machine therefore writes into the
+client's live campaigns and pushes text to their real Instantly leads.
+
+**This is not hypothetical.** On 25 Aug 2026 a local test of this very route wrote
+6 follow-ups into the client's `APOLLO CAMPAIGN 2` and pushed all 6 to Instantly.
+The content was an improvement on the fallback and was kept, but it was an
+unapproved production write from a dev machine.
+
+| Caller | Behaviour |
+|---|---|
+| Production (`NODE_ENV=production`) | Unscoped sweep allowed — the daily cron serves every company |
+| Anywhere else, no `company_id` | **HTTP 400 `COMPANY_ID_REQUIRED`**, nothing runs |
+| Anywhere else, with `company_id` | Runs, scoped to that tenant only |
+
+Deliberately a hard refusal rather than a log warning: a warning nobody reads is
+what allowed the first incident.
+
+**Testing locally:**
+
+```bash
+curl -X POST http://localhost:3000/api/internal/write-followups \
+  -H "Content-Type: application/json" \
+  -H "x-internal-secret: $INTERNAL_SECRET" \
+  -d '{"company_id":"00000000-0000-0000-0000-00000000000a"}'
+```
+
+Dev company is `...000a`. The client is `...000b` — never pass it by hand.
+
+### 14.7 UI — where a follow-up is read and regenerated
+
+**Status: designed and agreed, not yet built.** Design: Option A, revision 2.
+
+The Sequences tab becomes three columns, left to right in the order the work is
+actually done:
+
+```
+Step              Leads in that step        That lead's follow-up
+Follow-up 1  →    Jose Castillo        →    Hi Jose, following up on my note
+Follow-up 2       Guillermo Luna            about your blown film line...
+                  Sarahi Sanchez            [Regenerate] [Edit]
+```
+
+| Column | Contents |
+|---|---|
+| Left, `w-72` | Follow-up steps. **Already built** and already excludes the opening email — `sequenceFollowUpSteps()` filters `step_order > 1`. The opening email is handled in Outbox, where it is certified. |
+| Middle, new | Every lead in that step. `SearchInput`; a `Select` filter for *To be sent / Already sent / Not written / All* with counts in brackets, matching the Leads tab; `SegmentedTabs` sort defaulting to **soonest first**, so what sends next is at the top. |
+| Right | Either that lead's own follow-up, or the shared template. A `SegmentedTabs` switch flips between them. The template editor is **already built** and must not be lost — a step still needs its delay and instructions edited. |
+
+Status pills are one or two words through the existing `Pill` component with
+`shape="sm"`: `Today`, `Tomorrow`, `Thu`, `Draft`, `22 Aug`. Longer explanation
+belongs in the email panel header, where there is room.
+
+**Components are all existing** — `Select`, `SegmentedTabs`, `SearchInput`,
+`Pill`, `Button`, `ScrollArea`, `EmptyState`, `Skeleton`, `ConfirmDialog`. Lead
+rows follow the row-card rule in `CLAUDE.md`: each row its own `bg-field` card
+with a gap, like the Outbox lead rail.
+
+**Regenerate all** lives in template mode and touches only leads not yet sent, with
+the count in the button and a `ConfirmDialog` first.
+
+**Cost behaviour, which the client asked about explicitly:**
+
+| Action | Costs an AI call? |
+|---|---|
+| Open a lead and read the follow-up | No — read from `email_drafts` |
+| Switch lead, switch tab, close the drawer | No — nothing is held in component state |
+| Return the next day | No — same saved row |
+| Edit by hand and save | No |
+| Press Regenerate | Yes. One lead, only on request |
+| Press Regenerate all | Yes. One per unsent lead, after confirmation |
+
+**Version history comes free.** `regenerateOneDraft` demotes the current row to
+`rejected` and inserts `version + 1` with `parent_draft_id` pointing back, so an
+earlier follow-up can always be recovered — the same mechanism opening emails
+already use.
+
+### 14.8 FILES
+
+| File | Role |
+|---|---|
+| `lib/services/settings.ts` | `FOLLOWUP_CONTRACT`; `resolveDraftSystemPrompt(db, ownerId, stepNumber)` picks it for `stepNumber > 1` |
+| `lib/services/generate-drafts.ts` | Passes `stepNumber` into prompt resolution; suppresses the signature for follow-ups |
+| `lib/services/followup-schedule.ts` | **New.** Due-date maths and the sweep |
+| `lib/services/write-followups.ts` | **New.** The worker: generate, then push to Instantly |
+| `app/api/internal/write-followups/route.ts` | **New.** POST + GET, plus `guardUnscoped()` |
+| `lib/services/enrichment-watchdog.ts` | `triggerFollowupWriter()` added to `runEnrichmentWatchdog` |
+| `components/app/campaign-drawer.tsx` | Sequences tab — the UI in 14.7, incl. per-lead version history and Regenerate all |
+| `supabase/migrations/2026_08_25_cron_write_followups.sql` | **New.** The daily schedule |
+| `lib/services/regeneration-jobs.ts` | `draftsForStep()` + `bulkRegeneratableStatuses()` — made bulk regeneration step-aware |
+| `app/api/enrich/regenerate-drafts/route.ts` | `resolveDraftId()` — a step-2 job no longer resolves via `campaign_leads.draft_id` |
+| `lib/services/regenerate-draft.ts` | Pushes an approved regenerated draft to Instantly |
+| `scripts/check-regen-step-targeting.mjs` | **New.** Runnable assertions for the two targeting rules |
+
+**No schema change.** `email_drafts.step_number` already existed; a follow-up is
+simply a draft with `step_number = 2`. There were zero such rows before this, so
+nothing had to be migrated.
+
+### 14.9 VERIFIED BEHAVIOUR
+
+Measured on the dev tenant, 25 Aug 2026.
+
+| Check | Result |
+|---|---|
+| Due-date maths | 8 unit assertions pass: cumulative step 3, hours/minutes conversion, never-sent → null, overdue still writes |
+| Sweep picks the right leads | 3 due leads written; 2 sent today, 1 replied and 2 never-sent all correctly skipped |
+| Idempotent | Second run immediately after: `found: 0` |
+| Guard | Unscoped local run refused `400 COMPANY_ID_REQUIRED`; scoped run succeeded |
+| Length | 233–370 characters, 2–4 sentences (was 1,430) |
+| Banned content | 0 of 7 contained the stats block, awards, product list, bullets or a re-introduction |
+| Names their business | 7 of 7 |
+| Signature | 0 of 7 |
+| Auto-approved | All written as `approved`, no human step |
+| Daily schedule | `cron.job` jobid 7, `write-followups`, `0 2 * * *`, `active = true` |
+| Follow-up bulk regeneration | Dev campaign step 2: 3 eligible under the fix, **0** before it |
+| Step targeting | `node scripts/check-regen-step-targeting.mjs` passes |
+
+### 14.10 THREE BUGS FOUND WHILE BUILDING THE UI
+
+All three were in code that already looked finished.
+
+**1. A regenerated draft never reached Instantly.** `regenerateOneDraft` rewrote
+our row and stopped there. Instantly keeps its own copy of the body in the
+lead's `customBodyN` variable and reads it only once, at add time — so the UI
+showed the new follow-up while Instantly kept sending the old one. Fixed in
+`regenerateOneDraft` itself rather than in each caller, so the single-draft
+route and the bulk worker are both covered. Gated on the new draft being
+`approved`, which is a no-op for human-in-the-loop opening emails.
+
+**2. A step-2 bulk job would have rewritten everyone's opening email.** The
+worker resolved its target through `campaign_leads.draft_id`, a column that
+tracks step 1 only. `resolveDraftId()` now looks a follow-up up by
+`(campaign, lead, step)`.
+
+**3. Follow-up "Regenerate all" could never find anything.** Bulk eligibility
+excluded `approved` to protect certified emails — but follow-ups are
+auto-approved by design, so every one of them was "protected" from the button
+meant to rewrite them. `bulkRegeneratableStatuses(step)` widens the list for
+step 2+ only. `sent` stays excluded everywhere.
 
 ---
 

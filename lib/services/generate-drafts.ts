@@ -623,7 +623,7 @@ export async function generateOneDraft(
 
   try {
     const [baseSystemPrompt, products, companyContext] = await Promise.all([
-      resolveDraftSystemPrompt(db, promptOwnerId),
+      resolveDraftSystemPrompt(db, promptOwnerId, stepNumber),
       getProductOfferings(db),
       getCompanyContext(db),
     ]);
@@ -676,14 +676,20 @@ export async function generateOneDraft(
       throw new Error(`Draft shape mismatch — ${issues}`);
     }
 
+    // A follow-up threads as a reply, so the signature is already sitting in the
+    // message directly above it. Appending it again reads as a bot and pads a
+    // deliberately short nudge with more footer than body — measured 25 Aug 2026,
+    // a 235-character follow-up carried a 90-character signature. Step 1 keeps it.
+    const signatureForStep = stepNumber > 1 ? "" : signatureBlock;
+
     const effectiveSignature = isRevision
       ? resolveRevisedSignature(
           "signature" in validated.data && typeof validated.data.signature === "string"
             ? validated.data.signature
             : undefined,
-          signatureBlock,
+          signatureForStep,
         )
-      : signatureBlock;
+      : signatureForStep;
 
     // Safety nets only — these clean up output, they never impose structure or
     // length, so a custom instruction can still shape the email freely. The

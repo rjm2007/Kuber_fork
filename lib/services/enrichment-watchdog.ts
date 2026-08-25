@@ -302,8 +302,33 @@ export async function triggerDraftGenerationWatchdog(baseUrl: string, db: Db) {
  *  LLM providers. No Apollo call can originate from this function, which is why
  *  it is safe to run every 10 minutes. The one paid job, triggerEnrichWatchdog,
  *  is deliberately excluded and runs on its own daily schedule. */
+/**
+ * Safety net for the daily follow-up writer.
+ *
+ * The writer is scheduled once a day, so a single missed run would leave that
+ * day's follow-ups unwritten and Instantly would send the generic fallback
+ * instead — a silent quality regression nobody would notice until a prospect
+ * received boilerplate. Calling it from the 10-minute watchdog closes that gap.
+ *
+ * Cheap to repeat: the sweep skips any (lead, step) that already has a draft, so
+ * all but one of the ~144 daily calls find nothing and return immediately. Fire
+ * and forget, like triggerScrapeWatchdog — the watchdog must not be held open by
+ * work that can take 40 seconds.
+ */
+function triggerFollowupWriter(baseUrl: string) {
+  void fetch(`${baseUrl}/api/internal/write-followups`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-internal-secret": process.env.INTERNAL_SECRET ?? "",
+    },
+    body: JSON.stringify({ limit: 25 }),
+  }).catch(() => {});
+}
+
 export async function runEnrichmentWatchdog(baseUrl: string, db: Db) {
   triggerScrapeWatchdog(baseUrl);
+  triggerFollowupWriter(baseUrl);
   await triggerRegenerationWatchdog(baseUrl, db);
   await triggerDraftGenerationWatchdog(baseUrl, db);
 }
