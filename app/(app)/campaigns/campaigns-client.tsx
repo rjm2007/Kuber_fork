@@ -152,7 +152,12 @@ export function CampaignsClient({ initialCampaigns }: { initialCampaigns: Campai
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {filtered.map((c) => {
             const style = CAMPAIGN_STATUS_STYLES[c.status] ?? CAMPAIGN_STATUS_STYLES.Draft;
-            const replyRate = c.sent > 0 ? Math.round((c.replied / c.sent) * 100) : 0;
+            // c.sent deliberately EXCLUDES anyone who has since replied or
+            // bounced (see campaignOutcomes) — a narrower "no reply yet"
+            // figure, not the delivered total. The card should read the same
+            // as the Analytics tab: Sent = delivered (reached an inbox,
+            // replies/bounces included), reply rate against that same total.
+            const replyRate = c.delivered > 0 ? Math.round((c.replied / c.delivered) * 100) : 0;
             const assigneeName = role === "manager" ? displayName(c.assignedTo) : null;
             return (
               <Card
@@ -237,7 +242,7 @@ export function CampaignsClient({ initialCampaigns }: { initialCampaigns: Campai
                   <div className="grid grid-cols-4 gap-1 mt-auto pt-3 border-t border-border">
                     {[
                       { label: "Leads", value: c.leads, color: "text-foreground" },
-                      { label: "Sent", value: c.sent, color: "text-foreground" },
+                      { label: "Sent", value: c.delivered, color: "text-foreground" },
                       { label: "Replied", value: c.replied, color: "text-green-400" },
                       { label: "Reply rate", value: `${replyRate}%`, color: replyRate > 0 ? "text-green-400" : "text-muted-foreground" },
                     ].map(({ label, value, color }) => (

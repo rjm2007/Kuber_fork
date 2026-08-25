@@ -132,7 +132,11 @@ export async function GET(
   const idsParam = url.searchParams.get("campaign_lead_ids");
   const campaignLeadIds = idsParam ? idsParam.split(",").filter(Boolean) : undefined;
 
-  const { eligible, skipped } = await resolveRegenerationTargets(db, user, id, { campaignLeadIds });
+  // Defaults to 1 so existing callers (the Outbox header) are unchanged; the
+  // Sequences pane passes the follow-up step it is showing.
+  const stepNumber = Number(url.searchParams.get("step_number") ?? 1) || 1;
+
+  const { eligible, skipped } = await resolveRegenerationTargets(db, user, id, { campaignLeadIds, stepNumber });
 
   return ok({
     eligible: eligible.length,

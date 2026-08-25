@@ -33,11 +33,38 @@ const JOB_COLUMNS =
   "id, campaign_id, status, step_number, custom_instruction, total, succeeded, failed, created_at, started_at, finished_at";
 
 type LeadRef = { id: string; assigned_to: string | null } | { id: string; assigned_to: string | null }[] | null;
-type DraftRef = { id: string; status: string; step_number: number } | { id: string; status: string; step_number: number }[] | null;
+export type DraftRef = { id: string; status: string; step_number: number } | { id: string; status: string; step_number: number }[] | null;
 
 function unwrap<T>(raw: T | T[] | null): T | null {
   if (!raw) return null;
   return Array.isArray(raw) ? (raw[0] ?? null) : raw;
+}
+
+/** The draft belonging to one step. Supabase returns the embed as an array when
+ *  a lead has more than one draft, and as an object when it has exactly one. */
+export function draftsForStep(raw: DraftRef, stepNumber: number) {
+  if (!raw) return null;
+  const rows = Array.isArray(raw) ? raw : [raw];
+  return rows.find((d) => (d.step_number ?? 1) === stepNumber) ?? null;
+}
+
+/**
+ * Which draft statuses a bulk run may overwrite, for a given step.
+ *
+ * Step 1 keeps the strict list: 'approved' there means a human read the email
+ * and certified it, and one bulk click must not undo 200 of those decisions.
+ *
+ * Follow-ups are different by design. The client agreed on 21 Aug 2026 that
+ * follow-ups are not certified, so write-followups marks every one 'approved'
+ * the moment it is written — that status carries no human judgement at all.
+ * Excluding it would leave the follow-up "Regenerate all" permanently reporting
+ * zero eligible drafts. 'sent' stays excluded at every step: what the customer
+ * already received cannot be rewritten.
+ */
+export function bulkRegeneratableStatuses(stepNumber: number): readonly string[] {
+  return stepNumber > 1
+    ? [...BULK_REGENERATABLE_STATUSES, "approved"]
+    : BULK_REGENERATABLE_STATUSES;
 }
 
 /**
@@ -87,18 +114,18 @@ export async function resolveRegenerationTargets(
 
     if (requested && !requested.has(row.id)) continue;
 
-    const draft = unwrap(row.email_drafts as DraftRef);
+    // Pick the draft for the step being regenerated, not whichever the embed
+    // happened to return first. A lead with both an opening email and a
+    // follow-up has several rows here, and taking [0] meant a step-2 run kept
+    // finding the step-1 draft and counting it as "other" — the follow-up
+    // Regenerate all found nothing at all.
+    const draft = draftsForStep(row.email_drafts as DraftRef, stepNumber);
     if (!draft) {
       skipped.no_draft++;
       continue;
     }
-    // campaign_leads.draft_id tracks step 1; other steps are not bulk-regenerated here.
-    if ((draft.step_number ?? 1) !== stepNumber) {
-      skipped.other++;
-      continue;
-    }
 
-    if ((BULK_REGENERATABLE_STATUSES as readonly string[]).includes(draft.status)) {
+    if (bulkRegeneratableStatuses(stepNumber).includes(draft.status)) {
       eligible.push({
         campaign_lead_id: row.id,
         lead_id: lead.id,

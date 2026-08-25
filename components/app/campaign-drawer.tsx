@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import {
   Megaphone, Users, Send, MessageSquare, Clock, Gauge, ArrowUp,
   Globe, Calendar, ExternalLink, Loader2, CheckCircle2, RotateCcw, RefreshCw, Check, Save, History, ChevronDown, ArrowLeft,
@@ -20,6 +20,7 @@ import { StatTile } from "@/components/ui/stat-tile";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { SearchInput } from "@/components/ui/search-input";
+import { Pill } from "@/components/ui/pill";
 import { SegmentedTabs } from "@/components/ui/segmented-tabs";
 import { AppCheckbox } from "@/components/ui/app-checkbox";
 import { Label } from "@/components/ui/label";
@@ -257,7 +258,22 @@ type CampaignLead = {
   replaced_by_user_name?: string | null;
   /** From the email_bounced webhook — the day the address rejected us. */
   bounced_at?: string | null;
+  /** Every draft for this lead, all steps. `email_drafts` is flattened to the
+   *  opening email by loadData; the Sequences tab needs the follow-ups too. */
+  all_drafts?: EmailDraftRow[];
   attachment?: AttachmentInfo;
+};
+
+/** One entry in a draft's version history. Shared by the opening email's panel
+ *  and the per-lead follow-up panel — both read the same /drafts/history route,
+ *  which is step-agnostic. */
+type DraftVersion = {
+  id: string;
+  subject: string | null;
+  body: string | null;
+  status: string;
+  version: number;
+  created_at: string;
 };
 
 type DraftActivity = "generating" | "regenerating" | null;
@@ -402,6 +418,53 @@ function hasUpcomingFollowup(
   const followUpCount = sequenceFollowUpSteps(steps).filter((s) => s.subject.trim() || s.body.trim()).length;
   if (followUpCount === 0) return false;
   return effectiveLastStep(cl) < 1 + followUpCount;
+}
+
+/**
+ * PER-STEP variants of the two predicates above.
+ *
+ * The aggregate versions answer "any follow-up at all", which lumps step 2 and
+ * step 3 into one number: a lead who received only follow-up 1 and a lead who
+ * received both counted identically, and "Follow-up due" never said WHICH one
+ * was coming. On the client's live campaign that read as "Follow-up sent 86 /
+ * Follow-up due 84" with no way to tell the steps apart.
+ *
+ * `last_step_sent` already records the step number, so this is purely a
+ * counting change — nothing extra is stored.
+ */
+
+/** That exact follow-up step has already gone out to this lead. */
+function hasReceivedFollowupStep(cl: DeliveryLeadLike, stepOrder: number): boolean {
+  return effectiveLastStep(cl) >= stepOrder;
+}
+
+/** That exact follow-up step is the NEXT one owed to this lead. Only the next
+ *  step counts as due: a lead on step 2 is not "due" for step 3 as well, or one
+ *  lead would appear in two buckets at once and the totals would overcount. */
+function hasUpcomingFollowupStep(
+  cl: DeliveryLeadLike,
+  stepOrder: number,
+  steps: Array<{ step_order: number; subject: string; body: string; delay: number; delay_unit: string }>,
+): boolean {
+  if (!hasUpcomingFollowup(cl, steps)) return false;
+  return effectiveLastStep(cl) === stepOrder - 1;
+}
+
+/** One place that turns a filter value into a yes/no, so the dropdown counts and
+ *  the list can never disagree — they call the same function. */
+function matchesDeliveryFilter(
+  cl: DeliveryLeadLike,
+  value: string,
+  steps: Array<{ step_order: number; subject: string; body: string; delay: number; delay_unit: string }>,
+): boolean {
+  if (value === "all") return true;
+  if (value === "followup") return hasUpcomingFollowup(cl, steps);
+  if (value === "followup_sent") return hasReceivedFollowup(cl);
+  const dueMatch = /^followup_(\d+)$/.exec(value);
+  if (dueMatch) return hasUpcomingFollowupStep(cl, Number(dueMatch[1]), steps);
+  const sentMatch = /^followup_sent_(\d+)$/.exec(value);
+  if (sentMatch) return hasReceivedFollowupStep(cl, Number(sentMatch[1]));
+  return deliveryBucket(cl) === value;
 }
 
 /** True once at least one follow-up (step 2+) has actually gone out —
@@ -727,6 +790,10 @@ export function CampaignDetail({
     skipped: RegenerationSkipped;
     isSubset: boolean;
     campaignLeadIds?: string[];
+    /** 1 for the opening email, 2+ for a follow-up step. Carried through to the
+     *  enqueue so the confirm modal cannot start a run against a different step
+     *  from the one that was previewed. */
+    stepNumber?: number;
   } | null>(null);
   const [bulkRegenSubmitting, setBulkRegenSubmitting] = useState(false);
   const [bulkRegenOpening, setBulkRegenOpening] = useState(false);
@@ -743,10 +810,13 @@ export function CampaignDetail({
   const [error, setError] = useState("");
   const [configOpen, setConfigOpen] = useState(false);
   const [leadsSort, setLeadsSort] = useState<CampaignLeadsSort>("az");
-  const [leadsDelivery, setLeadsDelivery] = useState<DeliveryBucket | "all" | "followup" | "followup_sent">("all");
+  // "followup_2" = step 2 is the next one owed; "followup_sent_2" = step 2 has
+  // already gone. The old flat "followup"/"followup_sent" values are kept so an
+  // existing selection does not break, but the dropdown now offers per-step ones.
+  const [leadsDelivery, setLeadsDelivery] = useState<string>("all");
   const [leadsViewMode, setLeadsViewMode] = useState<"list" | "kanban">("list");
   const [historyOpen, setHistoryOpen] = useState(false);
-  const [versions, setVersions] = useState<Array<{ id: string; subject: string | null; body: string | null; status: string; version: number; created_at: string }>>([]);
+  const [versions, setVersions] = useState<DraftVersion[]>([]);
   const [campaignSteps, setCampaignSteps] = useState<CampaignStepInput[]>([]);
   const [previewVersionId, setPreviewVersionId] = useState<string | null>(null);
   const [restoring, setRestoring] = useState(false);
@@ -788,6 +858,32 @@ export function CampaignDetail({
   // seq edit state — initialized when selectedSequenceStep changes
   const [seqSubjectEdit, setSeqSubjectEdit] = useState("");
   const [seqBodyEdit, setSeqBodyEdit] = useState("");
+  /** Sequences tab, middle column: which lead's own follow-up is open. */
+  const [seqLeadId, setSeqLeadId] = useState<string | null>(null);
+  /** Right panel shows either that lead's own email, or the shared template.
+   *  Both are needed: the template still carries the delay and the writing
+   *  instructions, and losing it would make a step uneditable. */
+  const [seqPane, setSeqPane] = useState<"lead" | "template">("lead");
+  const [seqLeadFilter, setSeqLeadFilter] = useState<"due" | "sent" | "unwritten" | "all">("due");
+  const [seqLeadSearch, setSeqLeadSearch] = useState("");
+  const [seqLeadRegenerating, setSeqLeadRegenerating] = useState<string | null>(null);
+  /** Per-lead follow-up version history.
+   *
+   *  Loaded ON DEMAND rather than in an effect keyed on the open lead, unlike
+   *  the opening email's history. The middle column invites clicking through
+   *  dozens of leads, and a fetch per click to answer a question nobody asked is
+   *  a lot of requests for a panel most people never open. The cost is that the
+   *  button cannot know in advance whether there is anything to show, so it says
+   *  so after opening instead of hiding itself. */
+  const [seqVersions, setSeqVersions] = useState<DraftVersion[]>([]);
+  const [seqHistoryOpen, setSeqHistoryOpen] = useState(false);
+  const [seqHistoryLoading, setSeqHistoryLoading] = useState(false);
+  /** The historical version being read, or null for the current one. */
+  const [seqPreviewVersion, setSeqPreviewVersion] = useState<DraftVersion | null>(null);
+  const [seqRestoring, setSeqRestoring] = useState(false);
+  /** True when the STORED body is the {{customBodyN}} placeholder and the editor is
+   *  only showing sample text in its place. */
+  const [seqBodyWasPlaceholder, setSeqBodyWasPlaceholder] = useState(false);
   const [seqHasContent, setSeqHasContent] = useState(false);
   const [seqRegenOpen, setSeqRegenOpen] = useState(false);
   const [seqRegenQuery, setSeqRegenQuery] = useState("");
@@ -942,8 +1038,13 @@ export function CampaignDetail({
     const rawLeads = leadsRes.campaign_leads as CampaignLead[];
 
     const leads = rawLeads.map((cl) => {
+      // email_drafts is flattened to the STEP 1 draft here, because most of this
+      // screen means "the opening email" when it says draft. That flattening also
+      // threw the follow-up drafts away, so anything asking for step 2 found
+      // nothing. Keep the full set alongside it for the Sequences tab.
+      const allDrafts = getLeadDrafts(cl);
       const step1Draft = getLeadDraftForStep(cl, 1);
-      return step1Draft ? { ...cl, email_drafts: step1Draft } : { ...cl, email_drafts: null };
+      return { ...cl, all_drafts: allDrafts, email_drafts: step1Draft ?? null };
     });
     setCampaignLeads(leads);
     setProgress(prog);
@@ -1138,6 +1239,14 @@ export function CampaignDetail({
     const body = isPlaceholder || !rawBody ? GENERIC_FOLLOWUP_BODY : rawBody;
     setSeqSubjectEdit(subject);
     setSeqBodyEdit(body);
+    // What is SHOWN here is not what is STORED. A step whose body is the bare
+    // {{customBody2}} placeholder is displayed as friendly sample text, because
+    // a raw variable is meaningless to a salesperson. Remember that, so Save can
+    // put the placeholder back instead of writing the sample over it — see
+    // handleSaveSeqDraft. Doing that had already destroyed the placeholder on 40
+    // of the client's follow-up steps, which silently disabled per-lead
+    // personalisation for every lead in those campaigns.
+    setSeqBodyWasPlaceholder(isPlaceholder || !rawBody);
     setSeqHasContent(true);
     setSeqStepSaving(false);
     setSeqRegenOpen(false);
@@ -1431,14 +1540,18 @@ export function CampaignDetail({
    * from what this component happens to have loaded — an employee's "all" is
    * only their own assigned leads, and that boundary is resolved server-side.
    */
-  async function openBulkRegenerate(campaignLeadIds?: string[]) {
+  async function openBulkRegenerate(campaignLeadIds?: string[], stepNumber?: number) {
     setBulkRegenOpening(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) return;
-      const preview = await previewRegeneration(session.access_token, campaign.id, campaignLeadIds);
+      const preview = await previewRegeneration(session.access_token, campaign.id, campaignLeadIds, stepNumber);
       if (preview.eligible === 0) {
-        toast.info("No drafts are eligible — certified and sent emails are not regenerated in bulk.");
+        toast.info(
+          (stepNumber ?? 1) > 1
+            ? "No follow-ups are eligible — already-sent ones cannot be rewritten."
+            : "No drafts are eligible — certified and sent emails are not regenerated in bulk.",
+        );
         return;
       }
       setBulkRegenPreview({
@@ -1446,6 +1559,7 @@ export function CampaignDetail({
         skipped: preview.skipped,
         isSubset: !!campaignLeadIds?.length,
         campaignLeadIds,
+        stepNumber,
       });
     } catch (e) {
       toast.error((e as Error).message);
@@ -1463,6 +1577,7 @@ export function CampaignDetail({
       const { total } = await regenerateCampaignDrafts(session.access_token, campaign.id, {
         campaignLeadIds: bulkRegenPreview.campaignLeadIds,
         customInstruction: instruction || undefined,
+        stepNumber: bulkRegenPreview.stepNumber,
       });
       toast.success(`Regenerating ${total} draft${total !== 1 ? "s" : ""} in the background`);
       setBulkRegenPreview(null);
@@ -1653,9 +1768,18 @@ export function CampaignDetail({
       const stepNum = activeSeqStep.step_order;
       const subject =
         seqSubjectEdit.trim() === LEGACY_MISLEADING_FOLLOWUP_SUBJECT ? "" : seqSubjectEdit;
+      // If the editor was showing sample text for a placeholder body and the user
+      // did not actually change it, keep the placeholder. Writing the sample text
+      // here replaces "use this lead's own follow-up" with one fixed sentence for
+      // everyone, and nothing in the UI would show that it had happened.
+      const bodyToStore =
+        seqBodyWasPlaceholder && seqBodyEdit.trim() === GENERIC_FOLLOWUP_BODY.trim()
+          ? `{{customBody${stepNum}}}`
+          : seqBodyEdit;
+
       const updatedSteps = campaignSteps.map((s) =>
         s.step_order === stepNum
-          ? { ...s, subject, body: seqBodyEdit }
+          ? { ...s, subject, body: bodyToStore }
           : s,
       );
       await saveCampaignSteps(session.access_token, campaign.id, updatedSteps);
@@ -1665,6 +1789,81 @@ export function CampaignDetail({
       toast.error("Failed to save: " + (e as Error).message);
     } finally {
       setSeqStepSaving(false);
+    }
+  }
+
+  /**
+   * Regenerate ONE lead's follow-up.
+   *
+   * Goes through regenerateDraft (the same versioned path opening emails use),
+   * not the older followup-regenerate endpoint: that one rewrites existing text
+   * with no company context, which is exactly what made follow-ups generic. This
+   * route re-runs generation for the draft's own step, so it picks up the
+   * follow-up prompt and the prospect's details.
+   *
+   * The new text is written to the database immediately, so it survives
+   * switching lead, switching tab or closing the drawer — reopening never costs
+   * another AI call. The previous version is kept, not overwritten.
+   */
+  /**
+   * Open (or close) the version history for the lead's follow-up, fetching it
+   * the first time.
+   *
+   * Refetches on every open rather than caching: the user regenerates from the
+   * same panel, so a cached list is stale the moment it is most likely to be
+   * looked at.
+   */
+  async function toggleSeqHistory(draftId: string) {
+    if (seqHistoryOpen) { setSeqHistoryOpen(false); return; }
+    setSeqHistoryOpen(true);
+    setSeqHistoryLoading(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+      const { versions: v } = await fetchDraftHistory(session.access_token, draftId);
+      setSeqVersions(v);
+    } catch {
+      setSeqVersions([]);
+    } finally {
+      setSeqHistoryLoading(false);
+    }
+  }
+
+  /** Bring an older follow-up back as the current one. Restoring is itself
+   *  versioned server-side, so the text being replaced is not lost either. */
+  async function handleRestoreSeqVersion(versionId: string) {
+    setSeqRestoring(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+      await restoreDraftVersion(session.access_token, versionId);
+      setSeqPreviewVersion(null);
+      setSeqHistoryOpen(false);
+      toast.success("Version restored");
+      await loadData();
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setSeqRestoring(false);
+    }
+  }
+
+  async function handleRegenerateLeadFollowup(campaignLeadId: string, draftId: string) {
+    if (!canEditSettings) return;
+    setSeqLeadRegenerating(campaignLeadId);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+      await regenerateDraft(session.access_token, draftId);
+      // The list gained an entry and the previewed one is no longer current.
+      setSeqPreviewVersion(null);
+      setSeqHistoryOpen(false);
+      await loadData();
+      toast.success("Follow-up regenerated");
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setSeqLeadRegenerating(null);
     }
   }
 
@@ -1768,9 +1967,10 @@ export function CampaignDetail({
       if (!session) return;
       const { campaign_lead_id } = await replaceBouncedLead(session.access_token, replaceTarget.campaignLeadId, input);
       setReplaceTarget(null);
-      toast.success("Replacement added — writing their email now");
+      toast.success("Contact corrected — writing their email now");
       await loadData();
-      // Land the user on the new contact: their draft is what needs certifying.
+      // Same row as before (in-place correction) — reopen it so the new draft
+      // is what the user lands on to certify.
       handleOpenInOutbox(campaign_lead_id);
     } catch (e) {
       // Stays open with the message — most failures here are fixable in place
@@ -1811,12 +2011,22 @@ export function CampaignDetail({
   const followupDueCount = campaignLeads.filter((cl) => hasUpcomingFollowup(cl, campaignSteps)).length;
   const followupSentCount = campaignLeads.filter(hasReceivedFollowup).length;
 
+  // One { sent, due } pair per configured follow-up step, so the dropdown can say
+  // "Follow-up 1 sent (86)" instead of lumping every step into one number.
+  // Counted through matchesDeliveryFilter, the same function the list filters
+  // with, so a count can never disagree with the rows it produces.
+  const followupStepCounts = sequenceFollowUpSteps(campaignSteps).map((step) => ({
+    stepOrder: step.step_order,
+    label: `Follow-up ${sequenceDisplayStep(step.step_order)}`,
+    sent: campaignLeads.filter((cl) =>
+      matchesDeliveryFilter(cl, `followup_sent_${step.step_order}`, campaignSteps)).length,
+    due: campaignLeads.filter((cl) =>
+      matchesDeliveryFilter(cl, `followup_${step.step_order}`, campaignSteps)).length,
+  }));
+
   // Applied before the split into list/kanban so BOTH views honour the filter.
   const sortedCampaignLeads = sortCampaignLeads(campaignLeads, leadsSort)
-    .filter((cl) => leadsDelivery === "all"
-      || (leadsDelivery === "followup" ? hasUpcomingFollowup(cl, campaignSteps)
-        : leadsDelivery === "followup_sent" ? hasReceivedFollowup(cl)
-        : deliveryBucket(cl) === leadsDelivery));
+    .filter((cl) => matchesDeliveryFilter(cl, leadsDelivery, campaignSteps));
 
   const filteredLeads = sortedCampaignLeads.filter((cl) => {
     if (!leadsSearch) return true;
@@ -2266,7 +2476,12 @@ export function CampaignDetail({
     { id: "action",    label: "Needs action" },
     { id: "certified", label: "Certified" },
     { id: "sending",   label: "Sending" },
-    { id: "sent",      label: "Sent" },
+    // Not "Sent" — deliveryBucket's "sent" excludes anyone who has since
+    // replied or bounced, so sitting right above "Follow-up sent" (which
+    // counts across ALL outcomes, replied/bounced included) made it read as
+    // a delivered total it isn't and made Follow-up sent look impossibly
+    // larger. Same distinction the Analytics tab makes with "No reply yet".
+    { id: "sent",      label: "No reply yet" },
     { id: "followup_sent", label: "Follow-up sent" },
     { id: "followup",  label: "Follow-up due" },
     { id: "replied",   label: "Replied" },
@@ -2359,6 +2574,80 @@ export function CampaignDetail({
     seqFollowUpSteps.find((s) => s.step_order === selectedSequenceStep) ??
     seqFollowUpSteps[0] ??
     null;
+
+  // ── Sequences tab: the leads in the selected follow-up step ────────────────
+  //
+  // Sorted soonest-first, because the whole point of the list is "what goes out
+  // next". A lead already sent is ordered newest-first instead: looking back,
+  // the most recent is the one worth seeing.
+  const seqStepOrder = activeSeqStep?.step_order ?? 2;
+
+  const seqLeadRows = campaignLeads
+    .map((cl) => {
+      // Read from all_drafts, not email_drafts: the latter has been flattened to
+      // the opening email by loadData and would never contain a follow-up.
+      const draft = (cl.all_drafts ?? []).find((d) => d.step_number === seqStepOrder) ?? null;
+      const sent = hasReceivedFollowupStep(cl, seqStepOrder);
+      const due = hasUpcomingFollowupStep(cl, seqStepOrder, campaignSteps);
+      return { cl, draft, sent, due, written: !!draft?.body };
+    })
+    .filter((r) => {
+      if (seqLeadFilter === "sent") return r.sent;
+      if (seqLeadFilter === "due") return r.due && !r.sent;
+      if (seqLeadFilter === "unwritten") return !r.written && !r.sent;
+      return true;
+    })
+    .filter((r) => {
+      const q = seqLeadSearch.trim().toLowerCase();
+      if (!q) return true;
+      const lead = r.cl.leads;
+      return `${lead?.first_name ?? ""} ${lead?.last_name ?? ""} ${lead?.company_name ?? ""}`
+        .toLowerCase().includes(q);
+    })
+    .sort((a, b) => {
+      if (seqLeadFilter === "sent") {
+        return (b.draft?.created_at ?? "").localeCompare(a.draft?.created_at ?? "");
+      }
+      return (a.cl.first_sent_at ?? "￿").localeCompare(b.cl.first_sent_at ?? "￿");
+    });
+
+  const seqCounts = {
+    due: campaignLeads.filter((cl) =>
+      hasUpcomingFollowupStep(cl, seqStepOrder, campaignSteps)
+      && !hasReceivedFollowupStep(cl, seqStepOrder)).length,
+    sent: campaignLeads.filter((cl) => hasReceivedFollowupStep(cl, seqStepOrder)).length,
+    unwritten: campaignLeads.filter((cl) =>
+      !(cl.all_drafts ?? []).find((d) => d.step_number === seqStepOrder)?.body
+      && !hasReceivedFollowupStep(cl, seqStepOrder)).length,
+    all: campaignLeads.length,
+  };
+
+  const seqActiveLeadRow =
+    seqLeadRows.find((r) => r.cl.id === seqLeadId) ?? seqLeadRows[0] ?? null;
+
+  /** How many of this step's follow-ups a bulk regeneration would rewrite.
+   *  Written-but-not-yet-sent only: an already-delivered follow-up is history.
+   *  A hint for the button label — the server re-resolves the real list under
+   *  the caller's scope, so this can never widen what actually runs. */
+  const seqRegenerableCount = seqLeadRows.filter((r) => r.written && !r.sent).length;
+
+  /** Same reasoning as versionsSpanOneDay: a row of identical date chips is
+   *  useless, so show the clock time while history sits inside one day. */
+  const seqVersionsSpanOneDay =
+    seqVersions.length > 0 &&
+    new Set(seqVersions.map((v) => new Date(v.created_at).toDateString())).size === 1;
+
+  // Switching lead or step must not carry the previous lead's history across —
+  // otherwise the panel shows one person's old drafts under another person's
+  // name, and "Restore" would write them onto the wrong lead. Keyed on the two
+  // pieces of state a user can change rather than on the derived row, so it
+  // fires once per switch instead of on every recompute.
+  useEffect(() => {
+    setSeqHistoryOpen(false);
+    setSeqVersions([]);
+    setSeqPreviewVersion(null);
+  }, [seqLeadId, seqStepOrder]);
+
 
   // Status badge info for analytics tab
   const statusBadge = (() => {
@@ -2553,7 +2842,7 @@ export function CampaignDetail({
               {/* Chart grid */}
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
                 {/* Pipeline donut + legend */}
-                <div className="swatch-bar-top rounded-xl border border-border bg-card p-4">
+                <div className="swatch-bar-top rounded-xl border border-border bg-field dark:bg-card p-4">
                   <p className="eyebrow mb-2">Pipeline</p>
                   <div className="flex items-center gap-3">
                     <ResponsiveContainer width="45%" height={140}>
@@ -2588,7 +2877,7 @@ export function CampaignDetail({
                 </div>
 
                 {/* Draft funnel bar chart */}
-                <div className="swatch-bar-top rounded-xl border border-border bg-card p-4">
+                <div className="swatch-bar-top rounded-xl border border-border bg-field dark:bg-card p-4">
                   <p className="eyebrow mb-2">Draft funnel</p>
                   {report ? (
                     <ResponsiveContainer width="100%" height={140}>
@@ -2620,7 +2909,7 @@ export function CampaignDetail({
                 </div>
 
                 {/* Lead temperature donut + legend */}
-                <div className="swatch-bar-top rounded-xl border border-border bg-card p-4">
+                <div className="swatch-bar-top rounded-xl border border-border bg-field dark:bg-card p-4">
                   <p className="eyebrow mb-2">Lead temperature</p>
                   <div className="flex items-center gap-3">
                     <ResponsiveContainer width="45%" height={140}>
@@ -2671,7 +2960,7 @@ export function CampaignDetail({
               {/* Sequence step performance + Replied vs Sent */}
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
                 {stepDeliveryPct.length > 0 && (
-                  <div className="rounded-xl border border-border bg-card p-4 lg:col-span-2">
+                  <div className="rounded-xl border border-border bg-field dark:bg-card p-4 lg:col-span-2">
                     <div className="flex items-center gap-1.5 mb-1">
                       <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">Sequence step performance</p>
                       <InfoTip
@@ -2710,7 +2999,7 @@ export function CampaignDetail({
                 )}
 
                 {/* Replied vs Sent */}
-                <div className="rounded-xl border border-border bg-card p-4">
+                <div className="rounded-xl border border-border bg-field dark:bg-card p-4">
                   <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-1">Replied vs. delivered</p>
                   <p className="text-[10px] text-muted-foreground mb-2">
                     {analyticsReplyRate}% of delivered emails on this campaign got a reply
@@ -2778,15 +3067,32 @@ export function CampaignDetail({
                   .filter((b) => (deliveryCounts[b] ?? 0) > 0)
                   .map((b) => (
                     <SelectItem key={b} value={b}>
-                      {DELIVERY_BUCKET_LABELS[b]} ({deliveryCounts[b] ?? 0})
+                      {/* Sitting right next to "Follow-up sent" invites reading
+                          this as the delivered total, but deliveryBucket's
+                          "sent" excludes anyone who has since replied or
+                          bounced — same distinction the Analytics tab makes
+                          with "No reply yet" vs "Sent". Only overridden here;
+                          DELIVERY_BUCKET_LABELS.sent stays "Sent" for the
+                          per-lead badge, where it reads fine standing alone. */}
+                      {b === "sent" ? "No reply yet" : DELIVERY_BUCKET_LABELS[b]} ({deliveryCounts[b] ?? 0})
                     </SelectItem>
                   ))}
-                {followupSentCount > 0 && (
-                  <SelectItem value="followup_sent">Follow-up sent ({followupSentCount})</SelectItem>
-                )}
-                {followupDueCount > 0 && (
-                  <SelectItem value="followup">Follow-up due ({followupDueCount})</SelectItem>
-                )}
+                {/* Per step, so "sent" and "due" say WHICH follow-up. Empty
+                    buckets are hidden, same rule the delivery buckets follow. */}
+                {followupStepCounts.map((f) => (
+                  <Fragment key={f.stepOrder}>
+                    {f.sent > 0 && (
+                      <SelectItem value={`followup_sent_${f.stepOrder}`}>
+                        {f.label} sent ({f.sent})
+                      </SelectItem>
+                    )}
+                    {f.due > 0 && (
+                      <SelectItem value={`followup_${f.stepOrder}`}>
+                        {f.label} due ({f.due})
+                      </SelectItem>
+                    )}
+                  </Fragment>
+                ))}
               </SelectContent>
             </Select>
 
@@ -4010,17 +4316,251 @@ export function CampaignDetail({
             )}
           </div>
 
+          {/* Middle column: the leads in this follow-up step.
+              A step used to show only its shared template, which said nothing
+              about the 100 people actually receiving it. Now that every lead has
+              their own follow-up text, this is where you pick whose to read. */}
+          <div className="w-80 shrink-0 border-r border-border flex flex-col min-h-0">
+            <div className="p-3 space-y-2 border-b border-border">
+              <SearchInput
+                value={seqLeadSearch}
+                onChange={setSeqLeadSearch}
+                placeholder="Search name or company"
+                className="h-8"
+              />
+              <Select value={seqLeadFilter} onValueChange={(v) => { setSeqLeadFilter(v as typeof seqLeadFilter); setSeqLeadId(null); }}>
+                <SelectTrigger className="h-8 w-full gap-2 rounded-md px-3 text-xs shadow-sm">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent align="start">
+                  <SelectItem value="due">To be sent ({seqCounts.due})</SelectItem>
+                  <SelectItem value="sent">Already sent ({seqCounts.sent})</SelectItem>
+                  <SelectItem value="unwritten">Not written ({seqCounts.unwritten})</SelectItem>
+                  <SelectItem value="all">All ({seqCounts.all})</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-2 space-y-1.5">
+              {seqLeadRows.length === 0 ? (
+                <p className="text-xs text-muted-foreground text-center py-8 px-3">
+                  {seqLeadFilter === "due"
+                    ? "No follow-ups waiting to go out for this step."
+                    : "Nothing here yet."}
+                </p>
+              ) : (
+                seqLeadRows.map(({ cl, draft, sent, written }) => {
+                  const isActive = seqActiveLeadRow?.cl.id === cl.id;
+                  const name = [cl.leads?.first_name, cl.leads?.last_name].filter(Boolean).join(" ") || cl.leads?.email || "Lead";
+                  return (
+                    <button
+                      key={cl.id}
+                      type="button"
+                      onClick={() => { setSeqLeadId(cl.id); setSeqPane("lead"); }}
+                      className={cn(
+                        "w-full text-left rounded-lg border p-2.5 transition-colors",
+                        isActive
+                          ? "border-primary bg-primary/10"
+                          : "border-border bg-field hover:border-primary/40",
+                      )}
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div className="min-w-0 flex-1">
+                          <p className={cn("text-xs font-semibold truncate", isActive && "text-primary")}>{name}</p>
+                          <p className="text-[11px] text-muted-foreground truncate">{cl.leads?.company_name ?? ""}</p>
+                        </div>
+                        {sent ? (
+                          <Pill shape="sm" className="bg-emerald-500/15 text-emerald-600 border-transparent">Sent</Pill>
+                        ) : !written ? (
+                          <Pill shape="sm" className="bg-transparent text-muted-foreground border-border">Draft</Pill>
+                        ) : (
+                          <Pill shape="sm" className="bg-amber-500/15 text-amber-600 border-transparent">Ready</Pill>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          </div>
+
           {/* Right panel: editable step email */}
           <div className="flex-1 overflow-y-auto p-6">
             {!activeSeqStep ? (
               <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
                 Select a step to preview
               </div>
+            ) : seqPane === "lead" ? (
+              /* ── One lead's own follow-up ───────────────────────────────
+                 Read-only once sent: rewriting a delivered email would only
+                 change our record, never what the customer received. The
+                 server refuses it too — this is not the only guard. */
+              <div className="max-w-2xl mx-auto space-y-4">
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <div className="min-w-0">
+                    <p className="font-display text-sm font-semibold truncate">
+                      {seqActiveLeadRow
+                        ? [seqActiveLeadRow.cl.leads?.first_name, seqActiveLeadRow.cl.leads?.last_name].filter(Boolean).join(" ") || "Lead"
+                        : "No lead selected"}
+                    </p>
+                    <p className="text-xs text-muted-foreground truncate">
+                      {seqActiveLeadRow?.cl.leads?.title ? `${seqActiveLeadRow.cl.leads.title} · ` : ""}
+                      {seqActiveLeadRow?.cl.leads?.company_name ?? ""}
+                    </p>
+                  </div>
+                  <SegmentedTabs
+                    size="sm"
+                    value={seqPane}
+                    onValueChange={(v) => setSeqPane(v as "lead" | "template")}
+                    options={[
+                      { value: "lead", label: "This lead" },
+                      { value: "template", label: "Template" },
+                    ]}
+                  />
+                </div>
+
+                {!seqActiveLeadRow ? (
+                  <p className="text-sm text-muted-foreground py-10 text-center">
+                    Pick a lead on the left to read the follow-up written for them.
+                  </p>
+                ) : !seqActiveLeadRow.draft?.body ? (
+                  <div className="rounded-lg border border-border bg-field p-6 text-center space-y-2">
+                    <p className="text-sm font-medium">No follow-up written yet</p>
+                    <p className="text-xs text-muted-foreground max-w-sm mx-auto">
+                      It is written automatically the day before it is due, once the
+                      opening email has actually gone out.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="rounded-lg border border-border bg-field p-4 space-y-3">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-mono text-[10px] uppercase tracking-wide text-muted-foreground">
+                        Follow-up {sequenceDisplayStep(activeSeqStep.step_order)}
+                      </span>
+                      {seqActiveLeadRow.sent && (
+                        <Pill shape="sm" className="bg-emerald-500/15 text-emerald-600 border-transparent">Sent</Pill>
+                      )}
+                    </div>
+                    <div
+                      className="text-sm leading-relaxed [&_p]:mb-2"
+                      dangerouslySetInnerHTML={{
+                        __html: (seqPreviewVersion ?? seqActiveLeadRow.draft).body ?? "",
+                      }}
+                    />
+                    {!seqActiveLeadRow.sent && canEditSettings && (
+                      <div className="pt-3 border-t border-border flex items-center gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          disabled={seqLeadRegenerating === seqActiveLeadRow.cl.id}
+                          onClick={() => void handleRegenerateLeadFollowup(seqActiveLeadRow.cl.id, seqActiveLeadRow.draft!.id)}
+                          className="h-7 gap-1.5 px-3 text-xs [&_svg]:size-3"
+                        >
+                          {seqLeadRegenerating === seqActiveLeadRow.cl.id
+                            ? <Loader2 className="animate-spin" />
+                            : <RotateCcw />}
+                          Regenerate
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => void toggleSeqHistory(seqActiveLeadRow.draft!.id)}
+                          className={cn(
+                            "h-7 gap-1.5 px-3 text-xs [&_svg]:size-3",
+                            seqHistoryOpen && "border-primary text-primary bg-primary/5 hover:bg-primary/10 hover:text-primary",
+                          )}
+                        >
+                          <History />
+                          Version history
+                          <ChevronDown className={cn("transition-transform", seqHistoryOpen && "rotate-180")} />
+                        </Button>
+                        <span className="text-[11px] text-muted-foreground">Saved automatically</span>
+                      </div>
+                    )}
+
+                    {/* Version history. Regenerating is cheap enough that people
+                        do it a few times and then decide the second attempt was
+                        the good one; without this the only way back was another
+                        roll of the dice. */}
+                    {seqHistoryOpen && (
+                      <div className="enter space-y-2 rounded-lg border border-border bg-secondary/30 p-3">
+                        {seqHistoryLoading ? (
+                          <p className="text-xs text-muted-foreground flex items-center gap-2">
+                            <Loader2 className="size-3 animate-spin" /> Loading versions…
+                          </p>
+                        ) : seqVersions.length < 2 ? (
+                          <p className="text-xs text-muted-foreground">
+                            Only one version so far. Regenerate and the earlier text shows up here.
+                          </p>
+                        ) : (
+                          <>
+                            <div className="flex flex-wrap gap-2">
+                              {seqVersions.map((v) => {
+                                const isCurrent = v.id === seqActiveLeadRow.draft!.id;
+                                const isShown = seqPreviewVersion ? seqPreviewVersion.id === v.id : isCurrent;
+                                return (
+                                  <Button
+                                    key={v.id}
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => setSeqPreviewVersion(isCurrent ? null : v)}
+                                    className={cn(
+                                      "font-mono text-xs h-auto px-2.5 py-1.5",
+                                      isShown
+                                        ? "border-primary bg-primary/10 text-primary hover:bg-primary/10"
+                                        : "border-border bg-secondary/30 text-muted-foreground hover:border-muted-foreground",
+                                    )}
+                                  >
+                                    v{v.version} · {format(new Date(v.created_at), seqVersionsSpanOneDay ? "HH:mm" : "MMM d, HH:mm")}
+                                  </Button>
+                                );
+                              })}
+                            </div>
+                            {seqPreviewVersion && (
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <p className="text-xs text-amber-400">Viewing an older version (read-only)</p>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  disabled={seqRestoring}
+                                  onClick={() => void handleRestoreSeqVersion(seqPreviewVersion.id)}
+                                >
+                                  {seqRestoring ? <Loader2 className="size-3 animate-spin" /> : "Restore this version"}
+                                </Button>
+                                <Button size="sm" variant="ghost" onClick={() => setSeqPreviewVersion(null)}>
+                                  Back to current
+                                </Button>
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    )}
+                    {seqActiveLeadRow.sent && (
+                      <p className="pt-3 border-t border-border text-[11px] text-muted-foreground">
+                        Already sent, so it can no longer be changed.
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
             ) : (
               <div className="max-w-2xl mx-auto space-y-4">
                 {/* Header */}
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
+                    <SegmentedTabs
+                      size="sm"
+                      value={seqPane}
+                      onValueChange={(v) => setSeqPane(v as "lead" | "template")}
+                      options={[
+                        { value: "lead", label: "This lead" },
+                        { value: "template", label: "Template" },
+                      ]}
+                    />
                     <span className="font-display text-sm font-semibold text-foreground">
                       Step {sequenceDisplayStep(activeSeqStep.step_order)}
                     </span>
@@ -4046,6 +4586,26 @@ export function CampaignDetail({
                         <RotateCcw />
                         Regenerate
                       </Button>
+                      {/* Rewrites every LEAD's follow-up for this step, which is
+                          a different thing from the button beside it: that one
+                          rewrites this shared template. The wording has to carry
+                          the distinction because the two sit together — after
+                          changing the instructions here, redoing everyone's is
+                          the natural next step. */}
+                      {seqRegenerableCount > 0 && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          disabled={bulkRegenOpening || seqRegenerating}
+                          title="Rewrite every lead's personalised follow-up for this step. Already-sent ones are left alone."
+                          onClick={() => void openBulkRegenerate(undefined, activeSeqStep.step_order)}
+                          className="h-7 gap-1.5 px-3 text-xs text-muted-foreground hover:text-foreground [&_svg]:size-3"
+                        >
+                          {bulkRegenOpening ? <Loader2 className="animate-spin" /> : <Users />}
+                          Regenerate all ({seqRegenerableCount})
+                        </Button>
+                      )}
                       <Button
                         type="button"
                         size="sm"

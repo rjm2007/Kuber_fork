@@ -132,6 +132,56 @@ const TEMPLATE_CONTRACT = [
   "TEMPLATE STARTS",
 ].join("\n");
 
+/**
+ * How a FOLLOW-UP (step 2 and later) is framed.
+ *
+ * Deliberately NOT the user's template. A template is a full opening pitch; a
+ * follow-up that reproduces it is a second cold email, which is exactly what
+ * the client rejected. Measured on 25 Aug 2026 before this existed: a step-2
+ * draft came back at 1,430 characters carrying the whole offerings block,
+ * the statistics and the partner list.
+ *
+ * The prospect's own details still arrive in the user message, so the nudge is
+ * unique per company. Short and personalised are both required.
+ */
+const FOLLOWUP_CONTRACT = [
+  "You are writing a SHORT follow-up nudge to someone who already received an",
+  "opening email from us and has not replied. It threads as a reply in that same",
+  "conversation, so they can still see the original message above yours.",
+  "",
+  "LENGTH IS THE HARD RULE",
+  "- The whole body is the greeting line plus TWO TO FOUR short sentences.",
+  "- If you cannot say it in four sentences, say less. Never more.",
+  "",
+  "WHAT IT MUST CONTAIN",
+  "- A greeting as the first line.",
+  "- One clause referring back to the earlier email.",
+  "- THEIR business, named concretely. Say what THIS company makes, in their own",
+  "  words from [THEIR COMPANY]: the product, the process or the market they",
+  "  serve. \"your blown film line\", \"the dairy pouches you produce\",",
+  "  \"your stretch film production\". This single clause is what stops the email",
+  "  being a mass mailing, and it is the most common thing to get wrong.",
+  "  Writing about OUR products instead of THEIR business is a failure. Vague",
+  "  filler such as \"your sourcing needs\", \"your requirements\" or \"your",
+  "  operations\" is also a failure: it would fit any company on earth.",
+  "  If [THEIR COMPANY] genuinely says nothing about what they make, name the",
+  "  company itself rather than inventing an activity.",
+  "- At most ONE mention of a single matched product of ours, and only in",
+  "  relation to what they make. Never list the range.",
+  "- One short, easy question at the end.",
+  "",
+  "WHAT IT MUST NOT CONTAIN",
+  "- Do NOT re-introduce Kuber Polyplast. They already know who we are.",
+  "- Do NOT repeat the product range, the offerings block, the capacity figures,",
+  "  the client counts, the awards or the partner names.",
+  "- Do NOT use bullet points, headings or bold blocks.",
+  "- Do NOT write a subject line. Return an empty string for subject.",
+  "- Do NOT paste or re-use the opening email template. This is a nudge, not a",
+  "  second pitch.",
+  "",
+  'Return STRICT JSON: {"subject": "", "body": string, "product_match": string}',
+].join("\n");
+
 /** The campaign owner's personal email template, if they have set one. */
 export async function resolveDraftTemplate(
   db: SupabaseClient,
@@ -183,7 +233,22 @@ async function buildClientContextBlock(db: SupabaseClient): Promise<string> {
  * Full drafting system prompt for a campaign: the owner's prompt (or company
  * default) + JSON output instructions + the client-context block.
  */
-export async function resolveDraftSystemPrompt(db: SupabaseClient, ownerId: string | null | undefined): Promise<string> {
+export async function resolveDraftSystemPrompt(
+  db: SupabaseClient,
+  ownerId: string | null | undefined,
+  stepNumber = 1,
+): Promise<string> {
+  // A follow-up is never the template. Reproducing an opening pitch as step 2
+  // is a second cold email, which is exactly what the client rejected.
+  // The prospect block still arrives in the user message, so the nudge stays
+  // specific to that company while staying short.
+  if (stepNumber > 1) {
+    const contextBlock = await buildClientContextBlock(db);
+    return `${FOLLOWUP_CONTRACT}${NON_NEGOTIABLE_RULES}
+
+${contextBlock}`;
+  }
+
   const template = await resolveDraftTemplate(db, ownerId);
 
   // A template is a shape to reproduce, so it gets the template contract and
