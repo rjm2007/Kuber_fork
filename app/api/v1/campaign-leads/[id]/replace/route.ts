@@ -133,6 +133,30 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   }).eq("id", cl.id);
   if (clErr) return fail(500, "INTERNAL", clErr.message);
 
+  // Same reasoning as clearing draft_id above, applied to the FOLLOW-UPS: any
+  // already-written follow-up greets the person who bounced, by name. Clearing
+  // draft_id alone only replaces the opening email, because that column tracks
+  // step 1 and nothing else.
+  //
+  // This bites only on a slow bounce. Bounces usually land within minutes, long
+  // before a follow-up is written — but some mail servers retry for days, and
+  // then the follow-up exists first. Without this, the corrected contact would
+  // be greeted by the previous person's name, because findFollowupsToWrite
+  // skips any lead that already has a draft for the step and has no way to know
+  // that draft was written for someone else.
+  //
+  // Marked superseded rather than deleted, so the activity log's before/after
+  // still has something to point at. The sweep ignores 'rejected', so a fresh
+  // follow-up is written once the corrected opening email actually sends.
+  const { error: fuErr } = await db
+    .from("email_drafts")
+    .update({ status: "rejected", updated_at: now })
+    .eq("campaign_id", cl.campaign_id)
+    .eq("lead_id", cl.lead_id)
+    .gt("step_number", 1)
+    .neq("status", "sent");
+  if (fuErr) return fail(500, "INTERNAL", fuErr.message);
+
   await logLeadEvent(db, cl.lead_id as string, "contact_corrected",
     `Bounced contact corrected in "${campaignName}": ${oldName} <${bounced.email ?? "?"}> → ${newName} <${email}>`, {
       actorId: user.id,

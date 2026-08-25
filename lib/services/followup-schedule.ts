@@ -164,13 +164,23 @@ export async function findFollowupsToWrite(
 
   if (!leads?.length) return [];
 
-  // Which (lead, step) pairs already have a draft. One query rather than one per
-  // lead: this sweep runs across every campaign and would otherwise be N+1.
+  // Which (lead, step) pairs already have a LIVE draft. One query rather than
+  // one per lead: this sweep runs across every campaign and would otherwise be
+  // N+1.
+  //
+  // 'rejected' is excluded because it means superseded, not written. Two things
+  // produce those rows: regenerating (which leaves the previous version behind,
+  // alongside a live one that still blocks correctly), and correcting a bounced
+  // contact (which supersedes every follow-up for that lead, because they greet
+  // the person who bounced by name — see the replace route). In the second case
+  // nothing live is left, and the lead must become writable again rather than
+  // keeping a follow-up addressed to someone else.
   const { data: existing } = await db
     .from("email_drafts")
     .select("lead_id, campaign_id, step_number")
     .in("campaign_id", [...stepsByCampaign.keys()])
-    .gt("step_number", 1);
+    .gt("step_number", 1)
+    .neq("status", "rejected");
 
   const written = new Set(
     (existing ?? []).map((d) => `${d.campaign_id}:${d.lead_id}:${d.step_number}`),
