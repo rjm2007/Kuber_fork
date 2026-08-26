@@ -87,7 +87,12 @@ export function ManualReplyBox({
   }, [recipients?.replyToUuid, toKey]);
 
   const bodyText = body.replace(/<[^>]+>/g, "").replace(/&nbsp;/gi, " ").trim();
-  const canSend = subject.trim() && (bodyText.length > 0 || attachments.length > 0);
+  // Subject is deliberately NOT required. This is a reply: it threads on
+  // reply_to_uuid, and the server fills a missing subject from the thread. It
+  // used to be part of this condition, which meant a thread with no subject to
+  // seed from left the button greyed out with nothing on screen explaining why
+  // — reported from production on 26 Aug 2026 as "cannot send the reply".
+  const canSend = bodyText.length > 0 || attachments.length > 0;
 
   async function handleSend() {
     if (!canSend) return;

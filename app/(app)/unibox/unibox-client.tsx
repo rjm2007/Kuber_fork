@@ -326,7 +326,16 @@ export function UniboxClient() {
                   token={token}
                   canReply={!!threadDetail?.reply_to_uuid}
                   latestDraft={latestDraft}
-                  replyToSubject={threadDetail?.messages?.find((m) => m.direction === "received")?.subject ?? null}
+                  // Prefer what they wrote, but fall back to ANY message with a
+                  // subject. A thread where the lead has never replied has no
+                  // received message at all, and seeding null there left the
+                  // Subject box empty and the Send button silently dead —
+                  // exactly the case where you most want to chase them.
+                  replyToSubject={
+                    threadDetail?.messages?.find((m) => m.direction === "received" && m.subject)?.subject
+                    ?? threadDetail?.messages?.find((m) => m.subject)?.subject
+                    ?? null
+                  }
                   // Our mailbox on this thread — keeps it out of the CC list we
                   // build from the thread's participants.
                   eaccount={threadDetail?.eaccount ?? null}

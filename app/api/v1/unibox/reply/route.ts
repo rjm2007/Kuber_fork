@@ -46,8 +46,8 @@ export async function POST(req: NextRequest) {
     reply_to_uuid?: string;
   } | null;
 
-  if (!body?.thread_id || !body.subject || !body.body_html) {
-    return fail(400, "VALIDATION_ERROR", "thread_id, subject, and body_html required");
+  if (!body?.thread_id || !body.body_html) {
+    return fail(400, "VALIDATION_ERROR", "thread_id and body_html required");
   }
 
   const to = normalizeEmailList(body.to);
@@ -101,6 +101,18 @@ export async function POST(req: NextRequest) {
   // no way to drop them, so they are removed from the caller's To list rather
   // than sent twice. Everything else becomes additional_recipients — real To
   // recipients, not CC.
+  // A reply threads on reply_to_uuid, so the subject is a courtesy line rather
+  // than routing — required here only because the client always had one to send.
+  // It does not always: a thread where the lead never replied has no received
+  // message to seed "Re: ..." from, and rejecting that left the composer unable
+  // to send at all. Fall back to the newest subject anywhere in the thread, then
+  // to a plain "Re:", so chasing a silent lead is never blocked.
+  const threadSubject = [...thread.messages]
+    .reverse()
+    .find((m) => m.subject?.trim())?.subject?.trim();
+  const subject = body.subject?.trim()
+    || (threadSubject ? `Re: ${threadSubject.replace(/^Re:\s*/i, "")}` : "Re:");
+
   const forcedTo = parseAddressList(
     thread.messages.find((m) => m.instantly_email_id === replyToUuid)?.from_email ?? null,
   )[0] ?? null;
@@ -109,7 +121,7 @@ export async function POST(req: NextRequest) {
   const result = await sendThreadReply(db, {
     replyToUuid,
     eaccount,
-    subject: body.subject,
+    subject,
     bodyHtml: body.body_html,
     bodyText: body.body_text,
     additionalTo: additionalTo.length ? additionalTo : undefined,
