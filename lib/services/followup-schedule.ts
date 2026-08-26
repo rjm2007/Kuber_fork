@@ -43,8 +43,14 @@ const DEAD_STATUSES = ["replied", "failed"];
 
 export type FollowupStep = { step_order: number; delay: number; delay_unit: string | null };
 
-/** A step's delay expressed in days. Instantly's `delay` is "wait this long
- *  BEFORE this step", carried on the step row itself. */
+/** A step's delay expressed in days.
+ *
+ *  Instantly's `delay` is the wait AFTER this step, before the next one — NOT
+ *  the wait before this step. Getting that backwards is what made every
+ *  follow-up due date too late by a whole step (see followupDueAt). Measured
+ *  against 811 real send pairs on 26 Aug 2026: with step 1 delay=7 and step 2
+ *  delay=14, step 2 actually landed 7.5 days after step 1 on average (min 6),
+ *  not 14. */
 export function delayInDays(step: FollowupStep): number {
   const n = step.delay ?? 0;
   switch ((step.delay_unit ?? "days").toLowerCase()) {
@@ -58,9 +64,16 @@ export function delayInDays(step: FollowupStep): number {
  * When step `stepOrder` falls due for a lead whose opening email left at
  * `firstSentAt`.
  *
- * Delays are cumulative: step 2 waits its own delay after the opening email,
- * step 3 waits its delay after step 2. Summing every step up to and including
- * the target is what makes step 3 land after step 2 rather than beside it.
+ * Delays are cumulative and each one belongs to the step BEFORE the wait:
+ * step 2 lands after step 1's delay, step 3 after step 1's plus step 2's. So the
+ * sum runs over every step strictly before the target — step 1 included, which
+ * is why the caller must fetch it.
+ *
+ * This read `> 1 && <= stepOrder` until 26 Aug 2026, i.e. it charged each step
+ * its OWN delay and ignored step 1's entirely. With the client's 7/14/21 ladder
+ * that put step 2 at day 14 when Instantly sends it on day 7, so every
+ * personalised follow-up was written a week after Instantly had already sent
+ * the generic fallback in its place. Verified against 811 real send pairs.
  *
  * Returns null when the opening email has not been sent, which is the signal to
  * skip the lead entirely.
@@ -75,7 +88,7 @@ export function followupDueAt(
   if (Number.isNaN(base.getTime())) return null;
 
   const totalDays = steps
-    .filter((s) => s.step_order > 1 && s.step_order <= stepOrder)
+    .filter((s) => s.step_order < stepOrder)
     .reduce((sum, s) => sum + delayInDays(s), 0);
 
   return new Date(base.getTime() + totalDays * 24 * 60 * 60 * 1000);
@@ -137,11 +150,12 @@ export async function findFollowupsToWrite(
   const campaignIds = (campaigns ?? []).map((c) => c.id as string);
   if (campaignIds.length === 0) return [];
 
+  // Step 1 is fetched too. It is never a follow-up TARGET, but its delay is
+  // what schedules step 2, so leaving it out made every due date a step late.
   const { data: allSteps } = await db
     .from("campaign_steps")
     .select("campaign_id, step_order, delay, delay_unit")
     .in("campaign_id", campaignIds)
-    .gt("step_order", 1)
     .order("step_order");
 
   const stepsByCampaign = new Map<string, FollowupStep[]>();
@@ -149,6 +163,10 @@ export async function findFollowupsToWrite(
     const id = s.campaign_id as string;
     if (!stepsByCampaign.has(id)) stepsByCampaign.set(id, []);
     stepsByCampaign.get(id)!.push(s as FollowupStep);
+  }
+  // Campaigns with no follow-up step at all have nothing to schedule.
+  for (const [id, steps] of stepsByCampaign) {
+    if (!steps.some((s) => s.step_order > 1)) stepsByCampaign.delete(id);
   }
   if (stepsByCampaign.size === 0) return [];
 
@@ -186,12 +204,40 @@ export async function findFollowupsToWrite(
     (existing ?? []).map((d) => `${d.campaign_id}:${d.lead_id}:${d.step_number}`),
   );
 
+  // Steps Instantly has ALREADY delivered. Writing one of those spends an LLM
+  // call on an email the customer received days ago, and then pushes the new
+  // text into a variable nothing will read again.
+  //
+  // Not hypothetical: when the due-date bug above was fixed, 575 follow-ups
+  // became "due and unwritten" at once and 569 of them had already gone out.
+  // Without this filter the very next sweep would have written all 569.
+  //
+  // `step` is Instantly's "{sequence}_{stepIndex}_{variant}" and stepIndex is
+  // 0-based, so step_order N is stepIndex N-1. Matching on the index alone
+  // keeps every A/B variant of that step counted as sent.
+  const { data: delivered } = await db
+    .from("unibox_emails")
+    .select("instantly_lead_id, step")
+    .eq("direction", "sent_campaign")
+    .in("campaign_id", [...stepsByCampaign.keys()])
+    .not("instantly_lead_id", "is", null);
+
+  const sentSteps = new Set<string>();
+  for (const row of delivered ?? []) {
+    const index = Number((row.step as string | null)?.split("_")[1]);
+    if (Number.isFinite(index)) sentSteps.add(`${row.instantly_lead_id}:${index + 1}`);
+  }
+
   const targets: FollowupTarget[] = [];
   for (const cl of leads) {
     const steps = stepsByCampaign.get(cl.campaign_id as string) ?? [];
     for (const step of steps) {
+      if (step.step_order <= 1) continue; // step 1 is the opening email, not a follow-up
       const key = `${cl.campaign_id}:${cl.lead_id}:${step.step_order}`;
       if (written.has(key)) continue;
+      // Already delivered — too late to personalise, and the next step is what
+      // matters now, so keep scanning rather than breaking out.
+      if (sentSteps.has(`${cl.instantly_lead_id}:${step.step_order}`)) continue;
 
       const dueAt = followupDueAt(cl.first_sent_at as string, steps, step.step_order);
       if (!isDueForWriting(dueAt, now)) continue;
