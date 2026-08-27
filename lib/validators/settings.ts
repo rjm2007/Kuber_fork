@@ -25,6 +25,12 @@ export const PatchSettingsSchema = z.object({
   // Supports {{first_name}}, {{name}}, {{company}}.
   generic_email_subject:   z.string().max(300).optional(),
   generic_email_body:      z.string().optional(),
+  // Seeded into every lead's follow-up custom variables at fan-out time, and
+  // used verbatim by any lead who never gets a personalized follow-up drafted
+  // (an AI/credit outage, or simply not written yet) — see
+  // lib/services/campaign-fanout.ts. Supports {{first_name}}. No subject: a
+  // follow-up always threads with an empty subject.
+  followup_fallback_body:  z.string().optional(),
 });
 
 // The subset of company settings an employee may edit: the Product Offerings
@@ -54,6 +60,7 @@ export const SETTINGS_KEYS = [
   "reply_drafter_prompt",
   "generic_email_subject",
   "generic_email_body",
+  "followup_fallback_body",
 ] as const;
 
 // ── Per-user settings (`user_settings` table) ────────────────────────────────

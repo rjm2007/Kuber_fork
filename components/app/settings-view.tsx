@@ -44,7 +44,7 @@ const EmailSendingView = dynamic(
 );
 
 type Section = "profile" | "ai" | "knowledge" | "appearance" | "account" | "team" | "email" | "keys";
-type AiSection = "my-writing" | "my-signature" | "template" | "default" | "replies" | "footer";
+type AiSection = "my-writing" | "my-signature" | "template" | "default" | "followup" | "replies" | "footer";
 type KnowledgeSection = "company" | "products";
 type KeysSection = "credentials" | "usage";
 type ProductOffering = { name: string; description: string };
@@ -77,10 +77,11 @@ const PERSONAL_AI_NAV_ITEMS: { id: AiSection; label: string; icon: React.Compone
 ];
 
 const COMPANY_AI_NAV_ITEMS: { id: AiSection; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
-  { id: "template", label: "Email Template", icon: PenLine },
-  { id: "default",  label: "Default draft",  icon: FileText },
-  { id: "replies",  label: "Reply AI",       icon: Bot },
-  { id: "footer",   label: "Email Footer",   icon: Type },
+  { id: "template", label: "Email Template",  icon: PenLine },
+  { id: "default",  label: "Default draft",   icon: FileText },
+  { id: "followup", label: "Follow-up fallback", icon: FileText },
+  { id: "replies",  label: "Reply AI",        icon: Bot },
+  { id: "footer",   label: "Email Footer",    icon: Type },
 ];
 
 const KEYS_NAV_ITEMS: { id: KeysSection; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
@@ -354,6 +355,7 @@ export function SettingsView() {
   const [systemPrompt,   setSystemPrompt  ] = useState("");
   const [genericSubject, setGenericSubject] = useState("");
   const [genericBody,    setGenericBody   ] = useState("");
+  const [followupFallbackBody, setFollowupFallbackBody] = useState("");
   const [logoPath,       setLogoPath      ] = useState<string | null>(null);
   const [logoUrl,        setLogoUrl       ] = useState<string | null>(null);
   const [logoUploading,  setLogoUploading ] = useState(false);
@@ -432,6 +434,7 @@ export function SettingsView() {
           setSystemPrompt(s.system_prompt ?? "");
           setGenericSubject(s.generic_email_subject ?? "");
           setGenericBody(s.generic_email_body ?? "");
+          setFollowupFallbackBody(s.followup_fallback_body ?? "");
           setSigContact(s.signature_contact ?? "");
           setReplyDrafterPrompt(s.reply_drafter_prompt ?? "");
           try { setProductOfferings(JSON.parse(s.product_offerings ?? "[]") as ProductOffering[]); } catch { setProductOfferings([]); }
@@ -536,6 +539,7 @@ export function SettingsView() {
           system_prompt:           systemPrompt,
           generic_email_subject:   genericSubject,
           generic_email_body:      genericBody,
+          followup_fallback_body:  followupFallbackBody,
           signature_contact:       sigContact,
           reply_drafter_prompt:    replyDrafterPrompt,
         });
@@ -961,6 +965,36 @@ export function SettingsView() {
                         minHeight={280}
                         placeholder="Write the exact email body. Use {{first_name}} and {{company}} where you want them filled in."
                         helper="This text is sent as-is after variable substitution — the AI does not rewrite it."
+                      />
+                    </section>
+                  )}
+
+                  {isManager && aiSection === "followup" && (
+                    <section className="space-y-4">
+                      <div className="flex items-center gap-2 border-b border-border pb-4">
+                        <FileText className="size-4 text-muted-foreground" />
+                        <div>
+                          <p className="eyebrow">Fallback</p>
+                          <h3 className="font-display text-base font-semibold mt-0.5">Follow-up fallback</h3>
+                        </div>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Sent for any follow-up step (2, 3, …) whose lead has no AI-personalized
+                        follow-up drafted yet — e.g. an AI provider outage, or a follow-up simply
+                        not written before it&apos;s due. Without this, that follow-up would send
+                        blank. Every lead is seeded with this text the moment a campaign sends;
+                        it&apos;s automatically replaced once a personalized follow-up is drafted
+                        and approved for that lead. No subject — a follow-up always threads as a
+                        reply to the opening email. Placeholder:{" "}
+                        <code className="rounded bg-secondary px-1 py-0.5 text-[11px] font-mono">{"{{first_name}}"}</code>.
+                      </p>
+                      <RichTextEditor
+                        label="Body"
+                        value={followupFallbackBody}
+                        onChange={setFollowupFallbackBody}
+                        minHeight={200}
+                        placeholder={'Hi {{first_name}}, Just following up on my previous note — would love your thoughts. Best regards'}
+                        helper="Left blank, this default text is used. This text is sent as-is — the AI does not rewrite it."
                       />
                     </section>
                   )}

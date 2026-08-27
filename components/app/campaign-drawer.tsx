@@ -365,6 +365,11 @@ function findSampleDraftForStep(leads: CampaignLead[], stepNumber: number): Emai
 const LEGACY_MISLEADING_FOLLOWUP_SUBJECT =
   "Introduction: Kuber Polyplast | Masterbatch Solutions for Packaging Manufacturers";
 
+// Preview-only fallback for the Sequences tab when no lead has a sample draft
+// for this step yet — display text, not what actually sends. The real
+// fallback lives in lib/services/settings.ts (DEFAULT_FOLLOWUP_FALLBACK_BODY),
+// editable at Settings > AI & Outreach > Follow-up fallback; this constant is
+// not wired to that setting and can drift from it.
 const GENERIC_FOLLOWUP_BODY =
   "Hi {{firstName}},\n\nJust following up on my previous note — would love your thoughts.\n\nBest regards";
 
