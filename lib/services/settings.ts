@@ -28,6 +28,29 @@ export async function getSystemPrompt(db: SupabaseClient): Promise<string> {
 
 export { DRAFT_JSON_SUFFIX };
 
+// Used verbatim (no AI rewrite) whenever a lead has no personalized follow-up
+// drafted yet — an LLM/credit outage, or simply not written before send —
+// so Instantly's {{customBodyN}} merge tag never renders blank. Editable at
+// Settings > AI & Outreach > Follow-up fallback.
+const DEFAULT_FOLLOWUP_FALLBACK_BODY =
+  "Hi {{first_name}},<br><br>Just following up on my previous note — would love your thoughts.<br><br>Best regards";
+
+export async function getFollowupFallbackTemplate(db: SupabaseClient): Promise<string> {
+  const { data } = await db
+    .from("settings")
+    .select("value")
+    .eq("key", "followup_fallback_body")
+    .maybeSingle();
+
+  return data?.value?.trim() || DEFAULT_FOLLOWUP_FALLBACK_BODY;
+}
+
+/** Fills {{first_name}} — the only placeholder this template supports, since a
+ *  follow-up fallback has no company/product context to personalize with. */
+export function renderFollowupFallback(template: string, firstName: string): string {
+  return template.replace(/\{\{\s*first_name\s*\}\}/gi, firstName || "there");
+}
+
 export async function getClientContext(db: SupabaseClient): Promise<ClientContext> {
   const { data: rows } = await db
     .from("settings")

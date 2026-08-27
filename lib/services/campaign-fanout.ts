@@ -12,6 +12,7 @@ import {
 } from "@/lib/services/instantly";
 import { toInstantlyTimezone } from "@/lib/instantly-timezones";
 import { getSendingAccounts } from "@/lib/services/service-keys";
+import { getFollowupFallbackTemplate, renderFollowupFallback } from "@/lib/services/settings";
 
 // Instantly's own limit on POST /api/v2/leads/add is maxItems: 1000 per call —
 // 100 was our own extra-cautious choice, not anything the API requires. 500
@@ -162,6 +163,10 @@ export async function sendCampaign(
     delayUnit: (s.delay_unit ?? "days") as InstantlyStep["delayUnit"],
   }));
   if (steps.length === 0) throw new Error("Campaign has no steps — cannot send");
+
+  // Fetched once per send, not per lead — this seeds every follow-up step's
+  // customBodyN below for any lead without a personalized draft yet.
+  const followupFallbackTemplate = await getFollowupFallbackTemplate(db);
 
   // 3) Sending account — Settings > Email & Sending first, INSTANTLY_SENDING_ACCOUNTS
   //    as the fallback tier (same precedence as every provider key). This is the
@@ -364,14 +369,15 @@ export async function sendCampaign(
           const lead = Array.isArray(r.leads) ? r.leads[0] : r.leads;
           const firstName = (lead?.first_name ?? "").trim() || "there";
           const vars = buildCustomVariables(draftsForLead(r.lead_id), campaign.sender_name);
-          // Seed generic fallback for any follow-up step that has no personalized draft yet.
+          // Seed the configured fallback (Settings > AI & Outreach > Follow-up
+          // fallback) for any follow-up step that has no personalized draft yet.
           // The step template body is {{customBodyN}} — without a value here Instantly would
           // render a blank email. When the user later saves a personalized draft, syncApprovedDraftToInstantly
           // overwrites this variable on the lead.
           for (let si = 1; si < steps.length; si++) {
             const key = `customBody${si + 1}`;
             if (!vars[key]) {
-              vars[key] = `Hi ${firstName},<br><br>Just following up on my previous note — would love your thoughts.<br><br>Best regards`;
+              vars[key] = renderFollowupFallback(followupFallbackTemplate, firstName);
             }
           }
           return {
