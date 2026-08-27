@@ -226,7 +226,12 @@ export async function findFollowupsToWrite(
     .select("lead_id, campaign_id, step_number")
     .in("campaign_id", [...stepsByCampaign.keys()])
     .gt("step_number", 1)
-    .neq("status", "rejected")
+    // 'rejected' is a superseded version and 'failed' is an attempt that
+    // produced nothing — neither is a written follow-up, so neither may block a
+    // retry. Excluding only 'rejected' meant one bad LLM call stranded that
+    // lead's follow-up permanently: the row blocked every later sweep, and the
+    // customer received the generic fallback with nothing on screen to show why.
+    .not("status", "in", "(rejected,failed)")
     .limit(LOOKUP_LIMIT);
   assertComplete(existing, "written-drafts");
 
