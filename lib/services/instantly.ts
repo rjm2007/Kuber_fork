@@ -184,7 +184,13 @@ export function mergeInstantlySchedule(
  *  below — see the comment there for why a plain PATCH is not enough. */
 export async function getInstantlyCampaign(
   instantlyCampaignId: string,
-): Promise<{ campaign_schedule?: { schedules?: InstantlySchedule[] } }> {
+): Promise<{
+  campaign_schedule?: { schedules?: InstantlySchedule[] };
+  /** Instantly's own copy of the sequence. Read by the drift check — Instantly
+   *  holds this independently of our campaign_steps, and the two silently
+   *  disagreed for weeks (see lib/services/sequence-drift.ts). */
+  sequences?: { steps?: { delay?: number }[] }[];
+}> {
   const res = await fetch(`${BASE}/campaigns/${instantlyCampaignId}`, { headers: await authOnly() });
   return iJson(res);
 }

@@ -44,6 +44,23 @@ export async function GET(req: NextRequest) {
   for (const row of rows ?? []) {
     const err = (row.error ?? "").toLowerCase();
 
+    // Instantly's copy of a sequence no longer matches ours. Not a credit or
+    // auth problem, but it belongs here for the same reason the others do: it
+    // is an upstream disagreement nobody would otherwise notice, and the last
+    // one ran for weeks and stopped every follow-up 2 from being sent.
+    // "warning" rather than "critical" — mail is still going out, just on the
+    // wrong schedule.
+    if (row.event === "SEQUENCE_DRIFT") {
+      add({
+        service: "Follow-up schedule",
+        kind: "auth",
+        message: row.error
+          ?? "A campaign's follow-up timing in Instantly no longer matches this app.",
+        severity: "warning",
+      });
+      continue;
+    }
+
     // Severity is derived from which event actually fired, not re-guessed
     // from env vars — with 6 possible LLM tiers (Settings > Keys), a fixed
     // "is OPENAI_API_KEY set" check can no longer tell whether a fallback is
