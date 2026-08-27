@@ -14,6 +14,7 @@ import { extractFollowupWaitsFromSteps, rebuildStepsWithFollowupWaits } from "@/
 import { fetchCampaignSteps, patchCampaignConfig, saveCampaignSteps } from "@/lib/api-client";
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
+import { cumulativeDays, dayLabel } from "@/lib/followup-schedule-preview";
 
 const DAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"] as const;
 
@@ -112,6 +113,7 @@ export function EditCampaignForm({
     campaign.sendDays ?? { monday: true, tuesday: true, wednesday: true, thursday: true, friday: true, saturday: false, sunday: false },
   );
   const [followupSteps, setFollowupSteps] = useState<FollowupStep[]>([]);
+  const followupDays = cumulativeDays(followupSteps);
   const [saving, setSaving] = useState(false);
   const [stepsLoading, setStepsLoading] = useState(true);
 
@@ -259,6 +261,10 @@ export function EditCampaignForm({
                 <SelectItem value="days">days</SelectItem>
               </SelectContent>
             </Select>
+            {/* Resulting day — see create-campaign-modal. The delays stack. */}
+            <span className="font-mono text-[10px] tabular-nums text-muted-foreground shrink-0">
+              {dayLabel(followupDays[idx] ?? 0)}
+            </span>
             {!isPage && <div className="flex-1" />}
             {!readOnly && followupSteps.length > 1 && (
               <Button
@@ -283,7 +289,12 @@ export function EditCampaignForm({
           onClick={() =>
             setFollowupSteps((prev) => {
               const last = prev[prev.length - 1];
-              return [...prev, { delay: (last?.delay ?? 0) + 30, delay_unit: last?.delay_unit ?? "days" }];
+              // Repeat the previous GAP rather than adding to it. The old version
+              // pre-filled previous+30, which walks 30/60/90 and reads like a
+              // running total — teaching exactly the mistake that stretched the
+              // client's 35-day sequence to 104 days. A repeated gap is the
+              // common case ("every 7 days") and cannot be misread.
+              return [...prev, { delay: last?.delay ?? 7, delay_unit: last?.delay_unit ?? "days" }];
             })
           }
           className={cn(

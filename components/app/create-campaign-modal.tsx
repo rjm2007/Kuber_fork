@@ -21,6 +21,7 @@ import { COUNTRY_TO_TIMEZONE } from "@/lib/constants";
 import { createCampaign, addLeadsToCampaign, triggerDraftGeneration, mapDbCampaign, fetchMySettings, uploadCampaignAttachment, assignCampaign, fetchUsers, type Profile } from "@/lib/api-client";
 import { supabase } from "@/lib/supabase";
 import { useApp } from "@/lib/app-context";
+import { cumulativeDays, dayLabel } from "@/lib/followup-schedule-preview";
 
 export type Campaign = {
   id: string;
@@ -136,6 +137,7 @@ export function CreateCampaignModal({
     { delay: 30, delay_unit: "days" },
     { delay: 90, delay_unit: "days" },
   ]);
+  const followupDays = cumulativeDays(followupSteps);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState("");
 
@@ -521,6 +523,13 @@ export function CreateCampaignModal({
                         <SelectItem value="days">days</SelectItem>
                       </SelectContent>
                     </Select>
+                    {/* The day this one actually lands on. Each number above is a
+                        GAP from the previous email, so they stack — 7/14/21 is
+                        days 7, 21 and 42, not 7, 14 and 21. Showing the total
+                        here is what stops that being discovered months later. */}
+                    <span className="font-mono text-[10px] tabular-nums text-muted-foreground shrink-0">
+                      {dayLabel(followupDays[idx] ?? 0)}
+                    </span>
                     <div className="flex-1" />
                     {followupSteps.length > 1 && (
                       <Button
@@ -543,7 +552,12 @@ export function CreateCampaignModal({
                     onClick={() =>
                       setFollowupSteps((prev) => {
                         const last = prev[prev.length - 1];
-                        return [...prev, { delay: (last?.delay ?? 0) + 30, delay_unit: last?.delay_unit ?? "days" }];
+                        // Repeat the previous GAP rather than adding to it. The old version
+                        // pre-filled previous+30, which walks 30/60/90 and reads like a
+                        // running total — teaching exactly the mistake that stretched the
+                        // client's 35-day sequence to 104 days. A repeated gap is the
+                        // common case ("every 7 days") and cannot be misread.
+                        return [...prev, { delay: last?.delay ?? 7, delay_unit: last?.delay_unit ?? "days" }];
                       })
                     }
                     className="h-auto p-0 text-xs font-medium"
