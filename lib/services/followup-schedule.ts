@@ -102,6 +102,34 @@ export function isDueForWriting(dueAt: Date | null, now = new Date()): boolean {
   return dueAt <= horizon;
 }
 
+/**
+ * Row cap for the two "what is already done" lookups below.
+ *
+ * PostgREST returns at most 1000 rows when no limit is given, and Supabase does
+ * not raise that default. Both lookups exist to STOP work being redone, so a
+ * silent truncation does not lose data — it spends money and sends wrong email.
+ * That is exactly what happened: on 27 Aug 2026 the delivered-steps lookup had
+ * 1788 rows to read, silently got 1000, and the sweep rewrote 202 follow-ups
+ * Instantly had already sent (about 680 across three days).
+ *
+ * Paired with a hard failure when a lookup comes back full — see assertComplete.
+ * Guessing which 1000 rows PostgREST chose is not a thing worth doing.
+ */
+const LOOKUP_LIMIT = 50_000;
+
+/** Refuses to continue when a "what is already done" lookup came back exactly
+ *  full, because past that point we cannot tell done from not-done. Throwing
+ *  costs a skipped sweep, which the next run repeats; guessing costs real
+ *  emails to real customers. */
+function assertComplete(rows: unknown[] | null, what: string) {
+  if ((rows?.length ?? 0) >= LOOKUP_LIMIT) {
+    throw new Error(
+      `findFollowupsToWrite: the ${what} lookup returned ${LOOKUP_LIMIT} rows, so it is probably `
+      + `truncated. Refusing to write follow-ups from an incomplete picture — raise LOOKUP_LIMIT.`,
+    );
+  }
+}
+
 export type FollowupTarget = {
   campaignId: string;
   campaignLeadId: string;
@@ -198,7 +226,9 @@ export async function findFollowupsToWrite(
     .select("lead_id, campaign_id, step_number")
     .in("campaign_id", [...stepsByCampaign.keys()])
     .gt("step_number", 1)
-    .neq("status", "rejected");
+    .neq("status", "rejected")
+    .limit(LOOKUP_LIMIT);
+  assertComplete(existing, "written-drafts");
 
   const written = new Set(
     (existing ?? []).map((d) => `${d.campaign_id}:${d.lead_id}:${d.step_number}`),
@@ -220,7 +250,9 @@ export async function findFollowupsToWrite(
     .select("instantly_lead_id, step")
     .eq("direction", "sent_campaign")
     .in("campaign_id", [...stepsByCampaign.keys()])
-    .not("instantly_lead_id", "is", null);
+    .not("instantly_lead_id", "is", null)
+    .limit(LOOKUP_LIMIT);
+  assertComplete(delivered, "delivered-steps");
 
   const sentSteps = new Set<string>();
   for (const row of delivered ?? []) {
