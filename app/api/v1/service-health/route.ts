@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/auth/api-auth";
 import { ok } from "@/lib/api-response";
 import { dbForUser } from "@/lib/supabase/scoped";
+import { classifyFallback } from "@/lib/services/fallback-reason";
 
 // Surfaces recent upstream credit/auth failures so the UI can show a clear
 // "top up / fix your API key" banner instead of leaving managers to decode raw
@@ -92,11 +93,20 @@ export async function GET(req: NextRequest) {
       // (dashboard, leads, campaigns list and campaign detail all render it),
       // and an employee cannot open Settings > Keys — telling them to go there
       // would be the only instruction they are unable to follow.
+      // The reason matters. This branch used to say "Out of credits" whatever
+      // had actually gone wrong, so a key returning 401 Missing Authentication
+      // sent someone to top up an account that had money in it. Seen live
+      // 28 Aug 2026 on a freshly added OpenRouter key.
+      const why = classifyFallback(row.error);
       add({
         service: "LLM API key",
-        kind: "credits",
+        kind: why.code === "bad_key" ? "auth" : "credits",
         severity: "critical",
-        message: "Out of credits — email drafts are paused and no new ones will be generated. A manager needs to top up or replace the key in Settings > Keys.",
+        message: why.code === "bad_key"
+          ? "The AI provider is rejecting the API key, so email drafts are paused. A manager needs to check or replace it in Settings > Keys — this is not a billing problem."
+          : why.code === "service_busy"
+            ? "The AI provider is temporarily unavailable, so email drafts are paused. This usually clears on its own; drafting resumes automatically."
+            : "Out of credits — email drafts are paused and no new ones will be generated. A manager needs to top up or replace the key in Settings > Keys.",
       });
     } else if (row.source === "llm" && err.includes("openai") && (err.includes("401") || err.includes("403") || err.includes("insufficient_quota") || err.includes("429"))) {
       add({ service: "OpenAI", kind: "credits", severity: "critical", message: "OpenAI is rejecting requests — check its API key / billing." });
