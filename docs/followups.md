@@ -127,8 +127,8 @@ Apollo credits**.
 ## 5. Instantly keeps its own copy — remember this one
 
 Instantly stores each lead's follow-up text in a **custom variable**
-(`customBody2`, `customBody3`, …) and **reads it only once, when the lead is
-added to the campaign.**
+(`customBody2`, `customBody3`, …). It never reads our database — it renders
+whatever is stored on the lead at the time it sends.
 
 So writing or editing a draft in our database changes nothing about what the
 customer receives unless we **push** it. Every path that touches a follow-up
@@ -233,6 +233,77 @@ right.
 
 ## 10. Open questions and pending work
 
+### The review window problem, and what was decided
+
+Emails are written one day before they send. For a Monday send that means they
+are written **Sunday** — when the office is closed. The team arrives Monday at
+10:15 and the 10:00 sending window has already started. **This happens every
+week**, and worse over holidays.
+
+Three levers were considered. **Kuber Polyplast works IST, Mon-Fri**, which is
+what makes the weekend case the normal case rather than an edge one.
+
+| | Lever | Decision |
+|---|---|---|
+| 1 | **Move the sending window start** from 10:00 to 11:00 or 12:00 IST | **Agreed.** Zero code — a campaign setting. Buys a review hour every morning, not just Mondays. Costs a couple of sending hours a day, which only matters near the daily cap, and we are not near it. Note it can be changed back by anyone, so it is a convention rather than a guarantee |
+| 2 | **Write on the last WORKING day**, not simply one day before | **Agreed — the important one.** A Monday send is written Friday, giving Friday afternoon plus Monday morning. Emails are then up to 3 days old at send, which does not matter: company research does not change in three days. Must respect IST working days |
+| 3 | **A "hold this step" stop button** | **On hold.** Wanted, not yet scheduled |
+
+### What Instantly can and cannot do about stopping
+
+Verified against a dev campaign on 29 Aug 2026:
+
+```
+POST /api/v2/campaigns/{id}/pause      -> 200, status becomes 2 (paused)
+POST /api/v2/campaigns/{id}/activate   -> 200, status becomes 1 (active)
+```
+
+**Pause works, but only for a WHOLE campaign.** There is no per-step pause, so
+pausing to stop follow-up 2 also stops opening emails to brand-new leads in that
+campaign.
+
+Two things soften that:
+
+- Campaigns are already fanned out into one Instantly sub-campaign per country
+  per sender, so a pause can be aimed at a slice rather than everything.
+- To delay one step without stopping anything, its `delay` can be pushed out —
+  every unsent instance of that step moves later, and nothing else changes.
+
+A per-step hold in our own UI would be built on one of those two.
+
+### Knowing whether an email has actually gone out
+
+The question this answers: **how do we avoid spending an AI call regenerating a
+follow-up that Instantly has already sent?**
+
+Two sources, and they are not equal:
+
+| Source | Speed | Measured |
+|---|---|---|
+| `email_sent` webhook | Real time | **86.7%** of sends known within 60 seconds |
+| `unibox-sync` cron | Every 15 min | Catches the rest |
+
+Across 820 step-2 sends: 711 known within a minute, 85 within fifteen, 24 later
+than that. So the synced copy is **usually** right and **occasionally** stale by
+up to fifteen minutes — which is exactly the window in which someone regenerates
+an email that has already left.
+
+**The fix is not more syncing.** Instantly will answer the question directly:
+
+```
+GET /api/v2/leads/{id}
+  -> status                              1 active, 2 paused, 3 completed
+  -> status_summary.lastStep.stepID      "0_0_0" = opening email only
+```
+
+One call, real-time truth, no guessing. Verified live.
+
+**Proposed rule:** a single-lead regenerate or edit checks Instantly first — one
+cheap call to avoid wasting an AI call and to tell the user the truth. A bulk
+regenerate keeps using the synced copy plus the existing already-sent guard,
+because 25 live calls would hit Instantly's rate limit, which bites within a few
+dozen requests.
+
 ### Pending, agreed, not yet built
 
 **1. Show all three groups when saving an instruction.**
@@ -259,6 +330,12 @@ batch instead of 25.
 Residual case: a "run" is one server invocation writing about 6 emails, so a
 change made during a run lands at a run boundary. Worst case a day's batch
 splits roughly in half rather than anywhere.
+
+**3. Write on the last working day (IST).** See the table above. Currently the
+lead time is a flat one day, which lands the review window on a Sunday every
+time a Monday send comes round.
+
+**4. Live send-status check before a single-lead regenerate.** See above.
 
 ### Open — needs a decision
 
@@ -312,7 +389,23 @@ to diagnose.
 
 ---
 
-## 12. How to test this safely
+## 12. An experiment still worth running
+
+**Does Instantly lock the email text when it QUEUES the send, or when it
+actually SENDS it?**
+
+This decides the real deadline for editing. If it renders at queue time, the
+true cut-off is earlier than the send time and everything above understates the
+risk.
+
+It cannot be answered by reading: it needs a live send. Set up a campaign with a
+one-day follow-up delay to a mailbox we control, change `customBody2` an hour
+before it fires, and read what actually arrives. Half a day of elapsed time,
+almost all of it waiting.
+
+Until that is done, **do not promise the client a specific cut-off time.**
+
+## 13. How to test this safely
 
 **Never run an unscoped sweep from a developer machine.** Local dev points at
 the same Supabase *and* the same Instantly workspace as production. On 25 Aug
