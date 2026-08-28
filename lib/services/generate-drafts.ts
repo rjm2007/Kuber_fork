@@ -136,6 +136,25 @@ export async function logLlmUnavailable(
 }
 
 /**
+ * Whether a freshly written draft waits for a human.
+ *
+ * Only an OPENING email can. Follow-ups are not certified by anyone — agreed
+ * with the client on 21 Aug 2026 — and the follow-up writer already passes
+ * humanInLoop=false for that reason. Regeneration did not: it passed the
+ * campaign's real setting, so regenerating a follow-up on a human-in-the-loop
+ * campaign quietly demoted it from 'approved' to 'draft'. That takes it out of
+ * the set syncApprovedDraftToInstantly rebuilds from, so Instantly falls back to
+ * its own generic string and the customer receives boilerplate — with the
+ * personalised text sitting right there in the UI looking correct.
+ *
+ * Decided here rather than at each caller so there is one answer to the
+ * question, and a third caller cannot get it wrong again.
+ */
+function statusForStep(humanInLoop: boolean, stepNumber: number): "draft" | "approved" {
+  return humanInLoop && stepNumber === 1 ? "draft" : "approved";
+}
+
+/**
  * Clear the "no LLM credits" banner once drafting works again.
  *
  * /api/v1/service-health takes the NEWEST source='llm' row per company and
@@ -581,6 +600,15 @@ export async function generateOneDraft(
   const previousPlainBody = previousDraft?.body
     ? stripTrailingSignature(htmlToPlainText(previousDraft.body), signatureBlock)
     : "";
+  /** Rewriting an existing draft with nothing said about what to change.
+   *
+   *  Keyed on previousDraft rather than on the instruction text: a campaign's
+   *  STANDING guidance ("mention the Dubai warehouse") also arrives as a
+   *  customInstruction, and that is not someone asking to edit this particular
+   *  email. The previous body is handed over only for a genuine one-off edit,
+   *  so its absence is the honest signal for "just write another one". */
+  const isPlainRegeneration = !!existingDraftId && !previousDraft?.body?.trim();
+
   const isRevision =
     !!revisionInstruction &&
     !!(previousDraft?.body?.trim() || previousDraft?.subject?.trim()) &&
@@ -619,7 +647,7 @@ export async function generateOneDraft(
       }
       const finalSubject = stepNumber > 1 ? "" : fillTemplate(template.subject, vars);
 
-      const finalStatus = humanInLoop ? "draft" : "approved";
+      const finalStatus = statusForStep(humanInLoop, stepNumber);
       const now = new Date().toISOString();
 
       await db.from("email_drafts").update({
@@ -695,6 +723,14 @@ export async function generateOneDraft(
     const { json } = await complete<DraftLLMOutput | RevisionDraftLLMOutput>({
       system: systemPrompt,
       user: userPrompt,
+      // Drafting runs at 0.2 so it follows the rules and does not invent facts.
+      // That determinism makes a plain "write it again" pointless: same prompt,
+      // same lead, same email — byte for byte, which is exactly what pressing
+      // Regenerate returned. When someone asks for another version with no
+      // instruction, variety IS the request, so this one case gets room to
+      // differ. An instruction-led revision stays at the low default: "remove
+      // the last paragraph" wants precision, not imagination.
+      ...(isPlainRegeneration ? { temperature: 0.8 } : {}),
     });
 
     const validated = isRevision
@@ -799,7 +835,7 @@ export async function generateOneDraft(
     // the LLM's judgment (it will invent one anyway if not forced here).
     const finalSubject = stepNumber > 1 ? "" : validated.data.subject;
 
-    const finalStatus = humanInLoop ? "draft" : "approved";
+    const finalStatus = statusForStep(humanInLoop, stepNumber);
     const now = new Date().toISOString();
 
     await db.from("email_drafts").update({
