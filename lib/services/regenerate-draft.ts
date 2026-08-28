@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { generateOneDraft } from "@/lib/services/generate-drafts";
 import { syncApprovedDraftToInstantly } from "@/lib/services/draft-sync";
+import { resolveStandingFollowupInstruction, mergeInstructions } from "@/lib/services/followup-instruction";
 
 /** Draft statuses a regeneration may start from. Anything else (sent, generating) is refused. */
 export const REGENERATABLE_STATUSES = ["draft", "failed", "rejected", "approved"] as const;
@@ -154,6 +155,13 @@ export async function regenerateOneDraft(
     return { ok: false, code: "INTERNAL", reason: insertErr?.message ?? "Failed to create draft row" };
   }
 
+  // The campaign's and this step's standing guidance. Regenerating without it
+  // would rewrite a follow-up while IGNORING the instruction the user typed —
+  // which is exactly what "save and regenerate everyone" is for.
+  const standing = await resolveStandingFollowupInstruction(
+    db, oldDraft.campaign_id, oldDraft.step_number ?? 1,
+  );
+
   const result = await generateOneDraft(
     db,
     cl,
@@ -161,7 +169,7 @@ export async function regenerateOneDraft(
     campaign.human_in_loop,
     campaign.name,
     opts.userId,
-    opts.customInstruction,
+    mergeInstructions(standing, opts.customInstruction),
     campaign.ai_prompt_context ?? undefined,
     newDraftRow.id,
     oldDraft.step_number ?? 1,

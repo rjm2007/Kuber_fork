@@ -6,6 +6,7 @@ import { generateOneDraft } from "@/lib/services/generate-drafts";
 import { syncApprovedDraftToInstantly } from "@/lib/services/draft-sync";
 import { getFollowupFallbackTemplate, renderFollowupFallback } from "@/lib/services/settings";
 import { classifyFallback } from "@/lib/services/fallback-reason";
+import { resolveStandingFollowupInstruction } from "@/lib/services/followup-instruction";
 import { hasUsableLlmKey } from "@/lib/services/provider-keys";
 
 /**
@@ -150,7 +151,7 @@ async function writeOne(
   // on customInstruction, which the prompt builder already appends AFTER the
   // length and tone contract — so an instruction can add a fact but cannot talk
   // the model out of writing a short, personalised email.
-  const instruction = await resolveFollowupInstruction(db, target, campaign.followup_instruction);
+  const instruction = await resolveStandingFollowupInstruction(db, target.campaignId, target.stepOrder);
 
   const result = await generateOneDraft(
     db,
@@ -393,30 +394,4 @@ export async function upgradeTemplateFollowups(
   }
 
   return result;
-}
-
-/**
- * The extra guidance for one follow-up: the campaign's, plus this step's.
- *
- * Additive rather than either/or — "mention the Dubai warehouse" applies to
- * every follow-up while "ask directly for a call" applies only to the last one,
- * and a campaign usually wants both at once on that final step.
- */
-async function resolveFollowupInstruction(
-  db: SupabaseClient,
-  target: FollowupTarget,
-  campaignInstruction: string | null | undefined,
-): Promise<string | undefined> {
-  const { data: step } = await db
-    .from("campaign_steps")
-    .select("ai_instruction")
-    .eq("campaign_id", target.campaignId)
-    .eq("step_order", target.stepOrder)
-    .maybeSingle();
-
-  const parts = [campaignInstruction, step?.ai_instruction as string | null]
-    .map((p) => p?.trim())
-    .filter((p): p is string => !!p);
-
-  return parts.length ? parts.join(" ") : undefined;
 }
