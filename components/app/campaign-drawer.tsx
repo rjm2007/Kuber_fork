@@ -861,6 +861,12 @@ export function CampaignDetail({
   const [seqEditingDraftId, setSeqEditingDraftId] = useState<string | null>(null);
   const [seqEditBody, setSeqEditBody] = useState("");
   const [seqEditSaving, setSeqEditSaving] = useState(false);
+  /** Which follow-up has its regenerate box open, and what was typed into it.
+   *  The opening email has always asked before regenerating; this one fired
+   *  immediately, which spends a credit and replaces the email with no chance
+   *  to say what was wrong with it. */
+  const [seqRegenOpenFor, setSeqRegenOpenFor] = useState<string | null>(null);
+  const [seqRegenQuery, setSeqRegenQuery] = useState("");
   /** Per-lead follow-up version history.
    *
    *  Loaded ON DEMAND rather than in an effect keyed on the open lead, unlike
@@ -1837,16 +1843,21 @@ export function CampaignDetail({
     }
   }
 
-  async function handleRegenerateLeadFollowup(campaignLeadId: string, draftId: string) {
+  async function handleRegenerateLeadFollowup(campaignLeadId: string, draftId: string, instruction?: string) {
     if (!canEditSettings) return;
     setSeqLeadRegenerating(campaignLeadId);
+    setSeqRegenOpenFor(null);
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) return;
-      await regenerateDraft(session.access_token, draftId);
+      // Blank means "write it again from scratch"; text means "change this
+      // specific thing", which the generator treats as an edit of the current
+      // email rather than a fresh one.
+      await regenerateDraft(session.access_token, draftId, instruction?.trim() || undefined);
       // The list gained an entry and the previewed one is no longer current.
       setSeqPreviewVersion(null);
       setSeqHistoryOpen(null);
+      setSeqRegenQuery("");
       await loadData();
       toast.success("Follow-up regenerated");
     } catch (e) {
@@ -4603,13 +4614,20 @@ export function CampaignDetail({
                               size="sm"
                               variant="outline"
                               disabled={seqLeadRegenerating === seqActiveLeadRow.cl.id}
-                              onClick={() => void handleRegenerateLeadFollowup(seqActiveLeadRow.cl.id, row.draft!.id)}
-                              className="h-7 gap-1.5 px-3 text-xs [&_svg]:size-3"
+                              onClick={() => {
+                                setSeqRegenOpenFor((cur) => (cur === row.draft!.id ? null : row.draft!.id));
+                                setSeqRegenQuery("");
+                              }}
+                              className={cn(
+                                "h-7 gap-1.5 px-3 text-xs [&_svg]:size-3",
+                                seqRegenOpenFor === row.draft?.id && "border-primary text-primary bg-primary/5",
+                              )}
                             >
                               {seqLeadRegenerating === seqActiveLeadRow.cl.id
                                 ? <Loader2 className="animate-spin" />
                                 : <RotateCcw />}
                               Regenerate
+                              <ChevronDown className={cn("transition-transform", seqRegenOpenFor === row.draft?.id && "rotate-180")} />
                             </Button>
                             <Button
                               type="button"
@@ -4626,6 +4644,42 @@ export function CampaignDetail({
                               <ChevronDown className={cn("transition-transform", seqHistoryOpen === row.draft!.id && "rotate-180")} />
                             </Button>
                             <span className="text-[11px] text-muted-foreground">Saved automatically</span>
+                          </div>
+                        )}
+
+                        {/* Ask before spending the credit. Firing straight away
+                            replaced the email with no chance to say what was
+                            wrong with it — and a blind reroll is rarely what
+                            someone means when they press Regenerate. */}
+                        {seqRegenOpenFor === row.draft?.id && (
+                          <div className="enter rounded-lg border border-primary/30 bg-primary/5 p-3 space-y-2">
+                            <Textarea
+                              value={seqRegenQuery}
+                              onChange={(e) => setSeqRegenQuery(e.target.value)}
+                              rows={3}
+                              className="text-sm resize-y bg-field"
+                              placeholder="What should change? Leave empty to simply write it again."
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                                  void handleRegenerateLeadFollowup(seqActiveLeadRow.cl.id, row.draft!.id, seqRegenQuery);
+                                }
+                              }}
+                            />
+                            <div className="flex items-center gap-2">
+                              <Button
+                                type="button" size="sm"
+                                disabled={seqLeadRegenerating === seqActiveLeadRow.cl.id}
+                                onClick={() => void handleRegenerateLeadFollowup(seqActiveLeadRow.cl.id, row.draft!.id, seqRegenQuery)}
+                                className="h-7 gap-1.5 px-3 text-xs [&_svg]:size-3"
+                              >
+                                {seqLeadRegenerating === seqActiveLeadRow.cl.id ? <Loader2 className="animate-spin" /> : <RotateCcw />}
+                                {seqRegenQuery.trim() ? "Apply this change" : "Write it again"}
+                              </Button>
+                              <Button type="button" size="sm" variant="ghost"
+                                onClick={() => setSeqRegenOpenFor(null)} className="h-7 px-3 text-xs">
+                                Cancel
+                              </Button>
+                            </div>
                           </div>
                         )}
 
@@ -4768,14 +4822,47 @@ export function CampaignDetail({
                       {/* Adds to the campaign-wide box above rather than
                           replacing it: "mention the warehouse" belongs on every
                           follow-up while "ask for a call" belongs only on the
-                          last, and that last step usually wants both. */}
-                      <Textarea
-                        value={st.ai_instruction ?? ""}
-                        disabled={!canEditSettings}
-                        onChange={(e) => setSeqStepEdits((prev) => prev.map((x, i) => (i === idx ? { ...x, ai_instruction: e.target.value } : x)))}
-                        placeholder={`Extra instruction for follow-up ${idx + 1} only (optional)`}
-                        className="text-xs min-h-12"
-                      />
+                          last, and that last step usually wants both.
+                          
+                          Closed once nobody is left to receive it. An
+                          instruction only reaches a follow-up that has not been
+                          written yet, so on a step every lead has already had,
+                          the box is a promise the system cannot keep — and
+                          typing into it and pressing Save changes nothing, with
+                          nothing on screen to say why. */}
+                      {(() => {
+                        const stepOrder = idx + 2;
+                        const stillToWrite = seqLive.filter((cl) =>
+                          !hasReceivedFollowupStep(cl, stepOrder)
+                          && !(cl.all_drafts ?? []).some((d) => d.step_number === stepOrder && d.body),
+                        ).length;
+                        const alreadySent = campaignLeads.filter((cl) => hasReceivedFollowupStep(cl, stepOrder)).length;
+
+                        if (stillToWrite === 0) {
+                          return (
+                            <p className="text-[11px] text-muted-foreground">
+                              {alreadySent > 0
+                                ? <>Already written for everyone{alreadySent > 0 ? ` (${alreadySent} sent)` : ""} — an instruction here would not change any of them. Use Regenerate on the step or on a lead instead.</>
+                                : "Already written for every lead. Use Regenerate to change them."}
+                            </p>
+                          );
+                        }
+                        return (
+                          <>
+                            <Textarea
+                              value={st.ai_instruction ?? ""}
+                              disabled={!canEditSettings}
+                              onChange={(e) => setSeqStepEdits((prev) => prev.map((x, i) => (i === idx ? { ...x, ai_instruction: e.target.value } : x)))}
+                              placeholder={`Extra instruction for follow-up ${idx + 1} only (optional)`}
+                              className="text-xs min-h-12"
+                            />
+                            <p className="text-[10px] text-muted-foreground">
+                              Will be used for {stillToWrite} lead{stillToWrite === 1 ? "" : "s"} not yet written
+                              {alreadySent > 0 ? ` · ${alreadySent} already sent and unaffected` : ""}.
+                            </p>
+                          </>
+                        );
+                      })()}
                     </div>
                   ))}
                   {canEditSettings && (
