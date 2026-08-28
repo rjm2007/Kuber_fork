@@ -105,6 +105,7 @@ export async function POST(req: NextRequest) {
   }
 
   let succeeded = 0;
+  let skipped = 0;
   let failed = 0;
   const startedAt = Date.now();
   let ranOutOfTime = false;
@@ -130,6 +131,10 @@ export async function POST(req: NextRequest) {
       stepNumber,
     ));
     if (result.ok) { succeeded++; continue; }
+    // Another worker got there first — the lead has its draft, so this is not a
+    // failure and must not be counted as one. The self-chain overlapping the
+    // 10-minute watchdog makes this an ordinary event, not an edge case.
+    if (result.skipped) { skipped++; continue; }
     failed++;
 
     // The pre-flight above runs once per batch, so a key that dies on the
@@ -155,7 +160,7 @@ export async function POST(req: NextRequest) {
     // back to 'draft') and stop. Leads keep their retries; the banner is up;
     // the watchdog owns resuming this.
     return Response.json({
-      processed: succeeded + failed, succeeded, failed, remaining, status: "llm_unavailable",
+      processed: succeeded + failed + skipped, succeeded, failed, skipped, remaining, status: "llm_unavailable",
     });
   }
 
@@ -192,7 +197,8 @@ export async function POST(req: NextRequest) {
   }
 
   return Response.json({
-    processed: succeeded + failed,
+    processed: succeeded + failed + skipped,
+    skipped,
     succeeded,
     failed,
     remaining,
