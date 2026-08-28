@@ -109,6 +109,8 @@ import {
   type DeliveryBucket,
   type DeliveryLeadLike,
 } from "@/lib/campaign-status";
+import { cumulativeDays, dayLabel } from "@/lib/followup-schedule-preview";
+import { extractFollowupWaitsFromSteps, rebuildStepsWithFollowupWaits } from "@/lib/constants";
 
 /**
  * Strips quoted-reply lines from a stored email plain-text body for display.
@@ -360,39 +362,6 @@ function getLeadDraftForStep(cl: CampaignLead, stepNumber: number): EmailDraftRo
   return getLeadDrafts(cl).find((d) => (d.step_number ?? 1) === stepNumber) ?? null;
 }
 
-function findSampleDraftForStep(leads: CampaignLead[], stepNumber: number): EmailDraftRow | null {
-  for (const cl of leads) {
-    const d = getLeadDraftForStep(cl, stepNumber);
-    if (d?.body) return d;
-  }
-  return null;
-}
-
-/** Old sequences-tab default that looked like a second initial email — never treat as real content. */
-const LEGACY_MISLEADING_FOLLOWUP_SUBJECT =
-  "Introduction: Kuber Polyplast | Masterbatch Solutions for Packaging Manufacturers";
-
-// Preview-only fallback for the Sequences tab when no lead has a sample draft
-// for this step yet — display text, not what actually sends. The real
-// fallback lives in lib/services/settings.ts (DEFAULT_FOLLOWUP_FALLBACK_BODY),
-// editable at Settings > AI & Outreach > Follow-up fallback; this constant is
-// not wired to that setting and can drift from it.
-const GENERIC_FOLLOWUP_BODY =
-  "Hi {{firstName}},\n\nJust following up on my previous note — would love your thoughts.\n\nBest regards";
-
-function sequenceStepSubtitle(
-  step: { step_order: number; subject: string; body: string },
-  leads: CampaignLead[],
-): string | null {
-  const displayStep = step.step_order - 1;
-  const draft = findSampleDraftForStep(leads, step.step_order);
-  const subject = (draft?.subject ?? step.subject)?.trim();
-  if (subject && !isInstantlyPlaceholder(subject) && subject !== LEGACY_MISLEADING_FOLLOWUP_SUBJECT) {
-    return subject;
-  }
-  if (draft?.body) return `Step ${displayStep}`;
-  return `Step ${displayStep} (threaded reply)`;
-}
 
 /** Campaign steps shown in the Sequences tab (initial email is edited under Drafts). */
 function sequenceFollowUpSteps(
@@ -866,10 +835,7 @@ export function CampaignDetail({
   const SYNC_RATE_WINDOW_MS = 60_000;
   const [leadsSearch, setLeadsSearch] = useState("");
   const [selectedSequenceStep, setSelectedSequenceStep] = useState<number>(2);
-  const [sequencesLoading, setSequencesLoading] = useState(false);
   // seq edit state — initialized when selectedSequenceStep changes
-  const [seqSubjectEdit, setSeqSubjectEdit] = useState("");
-  const [seqBodyEdit, setSeqBodyEdit] = useState("");
   /** Sequences tab, middle column: which lead's own follow-up is open. */
   const [seqLeadId, setSeqLeadId] = useState<string | null>(null);
   /** Right panel shows either that lead's own email, or the shared template.
@@ -879,6 +845,9 @@ export function CampaignDetail({
   const [seqLeadFilter, setSeqLeadFilter] = useState<"due" | "sent" | "unwritten" | "all">("due");
   const [seqLeadSearch, setSeqLeadSearch] = useState("");
   const [seqLeadRegenerating, setSeqLeadRegenerating] = useState<string | null>(null);
+  /** Editable follow-up waits, for the Steps pane. Held separately from
+   *  campaignSteps so typing does not repeatedly re-save. */
+  const [seqStepEdits, setSeqStepEdits] = useState<{ delay: number; delay_unit: "minutes" | "hours" | "days" }[]>([]);
   /** Per-lead follow-up version history.
    *
    *  Loaded ON DEMAND rather than in an effect keyed on the open lead, unlike
@@ -888,18 +857,15 @@ export function CampaignDetail({
    *  button cannot know in advance whether there is anything to show, so it says
    *  so after opening instead of hiding itself. */
   const [seqVersions, setSeqVersions] = useState<DraftVersion[]>([]);
-  const [seqHistoryOpen, setSeqHistoryOpen] = useState(false);
+  /** Which draft's history panel is open. Keyed by draft id because the pane
+   *  now shows every step at once, so "open" is no longer a single boolean. */
+  const [seqHistoryOpen, setSeqHistoryOpen] = useState<string | null>(null);
   const [seqHistoryLoading, setSeqHistoryLoading] = useState(false);
   /** The historical version being read, or null for the current one. */
   const [seqPreviewVersion, setSeqPreviewVersion] = useState<DraftVersion | null>(null);
   const [seqRestoring, setSeqRestoring] = useState(false);
   /** True when the STORED body is the {{customBodyN}} placeholder and the editor is
    *  only showing sample text in its place. */
-  const [seqBodyWasPlaceholder, setSeqBodyWasPlaceholder] = useState(false);
-  const [seqHasContent, setSeqHasContent] = useState(false);
-  const [seqRegenOpen, setSeqRegenOpen] = useState(false);
-  const [seqRegenQuery, setSeqRegenQuery] = useState("");
-  const [seqRegenerating, setSeqRegenerating] = useState(false);
   const [seqStepSaving, setSeqStepSaving] = useState(false);
   const [comments, setComments] = useState<CampaignComment[]>([]);
   const [commentBody, setCommentBody] = useState("");
@@ -1212,7 +1178,6 @@ export function CampaignDetail({
   // filters silently empty until the user happened to open Sequences first.
   useEffect(() => {
     let cancelled = false;
-    setSequencesLoading(true);
     (async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session || cancelled) return;
@@ -1230,40 +1195,10 @@ export function CampaignDetail({
         }
       } catch {
         if (!cancelled) setCampaignSteps([]);
-      } finally {
-        if (!cancelled) setSequencesLoading(false);
       }
     })();
     return () => { cancelled = true; };
   }, [campaign.id]);
-
-  // Initialize sequence step edit state (follow-up steps only — initial email lives under Drafts).
-  useEffect(() => {
-    if (viewTab !== "sequences") return;
-    const followUps = sequenceFollowUpSteps(campaignSteps);
-    const step = followUps.find((s) => s.step_order === selectedSequenceStep) ?? followUps[0];
-    if (!step) return;
-
-    const rawBody = step.body ?? "";
-    const rawSubject = step.subject ?? "";
-    const isPlaceholder = isInstantlyPlaceholder(rawBody);
-    const subject = rawSubject && rawSubject !== LEGACY_MISLEADING_FOLLOWUP_SUBJECT ? rawSubject : "";
-    const body = isPlaceholder || !rawBody ? GENERIC_FOLLOWUP_BODY : rawBody;
-    setSeqSubjectEdit(subject);
-    setSeqBodyEdit(body);
-    // What is SHOWN here is not what is STORED. A step whose body is the bare
-    // {{customBody2}} placeholder is displayed as friendly sample text, because
-    // a raw variable is meaningless to a salesperson. Remember that, so Save can
-    // put the placeholder back instead of writing the sample over it — see
-    // handleSaveSeqDraft. Doing that had already destroyed the placeholder on 40
-    // of the client's follow-up steps, which silently disabled per-lead
-    // personalisation for every lead in those campaigns.
-    setSeqBodyWasPlaceholder(isPlaceholder || !rawBody);
-    setSeqHasContent(true);
-    setSeqStepSaving(false);
-    setSeqRegenOpen(false);
-    setSeqRegenQuery("");
-  }, [viewTab, selectedSequenceStep, campaignSteps]);
 
   useEffect(() => {
     if (!progress) return;
@@ -1771,46 +1706,6 @@ export function CampaignDetail({
     }
   }
 
-  async function handleSaveSeqDraft() {
-    if (!activeSeqStep || !canEditSettings) return;
-    setSeqStepSaving(true);
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return;
-      const stepNum = activeSeqStep.step_order;
-      const subject =
-        seqSubjectEdit.trim() === LEGACY_MISLEADING_FOLLOWUP_SUBJECT ? "" : seqSubjectEdit;
-      // If the editor was showing sample text for a placeholder body and the user
-      // did not actually change it, keep the placeholder. Writing the sample text
-      // here replaces "use this lead's own follow-up" with one fixed sentence for
-      // everyone, and nothing in the UI would show that it had happened.
-      const bodyToStore =
-        seqBodyWasPlaceholder && seqBodyEdit.trim() === GENERIC_FOLLOWUP_BODY.trim()
-          ? `{{customBody${stepNum}}}`
-          : seqBodyEdit;
-
-      const updatedSteps = campaignSteps.map((s) =>
-        s.step_order === stepNum
-          ? { ...s, subject, body: bodyToStore }
-          : s,
-      );
-      const res = await saveCampaignSteps(session.access_token, campaign.id, updatedSteps);
-      setCampaignSteps(updatedSteps);
-      // Say plainly that Instantly has NOT been told yet. Silence here is what
-      // made the old behaviour dangerous: the user believed the new timing was
-      // live and it was, but with boilerplate attached.
-      toast.success(
-        res.published === false
-          ? `Saved. Writing ${res.preparing} follow-up${res.preparing === 1 ? "" : "s"} before this goes live — Instantly keeps the current schedule until then.`
-          : "Saved",
-      );
-    } catch (e) {
-      toast.error("Failed to save: " + (e as Error).message);
-    } finally {
-      setSeqStepSaving(false);
-    }
-  }
-
   /**
    * Regenerate ONE lead's follow-up.
    *
@@ -1833,8 +1728,8 @@ export function CampaignDetail({
    * looked at.
    */
   async function toggleSeqHistory(draftId: string) {
-    if (seqHistoryOpen) { setSeqHistoryOpen(false); return; }
-    setSeqHistoryOpen(true);
+    if (seqHistoryOpen === draftId) { setSeqHistoryOpen(null); return; }
+    setSeqHistoryOpen(draftId);
     setSeqHistoryLoading(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -1857,13 +1752,43 @@ export function CampaignDetail({
       if (!session) return;
       await restoreDraftVersion(session.access_token, versionId);
       setSeqPreviewVersion(null);
-      setSeqHistoryOpen(false);
+      setSeqHistoryOpen(null);
       toast.success("Version restored");
       await loadData();
     } catch (e) {
       toast.error((e as Error).message);
     } finally {
       setSeqRestoring(false);
+    }
+  }
+
+  /**
+   * Save the follow-up waits from the Steps pane.
+   *
+   * Goes through the same route the Options tab uses, so it inherits
+   * prepare-then-publish: if the new timing makes follow-ups due that have no
+   * text yet, Instantly is left on the OLD schedule until they are written,
+   * rather than firing boilerplate into the gap.
+   */
+  async function handleSaveSeqSteps() {
+    if (!canEditSettings) return;
+    setSeqStepSaving(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+      const rebuilt = rebuildStepsWithFollowupWaits(campaignSteps, seqStepEdits);
+      const res = await saveCampaignSteps(session.access_token, campaign.id, rebuilt);
+      const { steps } = await fetchCampaignSteps(session.access_token, campaign.id);
+      setCampaignSteps(steps);
+      toast.success(
+        res.published === false
+          ? `Saved. Writing ${res.preparing} follow-up${res.preparing === 1 ? "" : "s"} before this goes live — Instantly keeps the current schedule until then.`
+          : "Steps saved",
+      );
+    } catch (e) {
+      toast.error("Failed to save: " + (e as Error).message);
+    } finally {
+      setSeqStepSaving(false);
     }
   }
 
@@ -1876,37 +1801,13 @@ export function CampaignDetail({
       await regenerateDraft(session.access_token, draftId);
       // The list gained an entry and the previewed one is no longer current.
       setSeqPreviewVersion(null);
-      setSeqHistoryOpen(false);
+      setSeqHistoryOpen(null);
       await loadData();
       toast.success("Follow-up regenerated");
     } catch (e) {
       toast.error((e as Error).message);
     } finally {
       setSeqLeadRegenerating(null);
-    }
-  }
-
-  async function handleRegenerateSeqDraft() {
-    if (!activeSeqStep || !canEditSettings) return;
-    setSeqRegenerating(true);
-    setSeqRegenOpen(false);
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return;
-      const { body } = await regenerateFollowUpStepTemplate(
-        session.access_token,
-        campaign.id,
-        activeSeqStep.step_order,
-        seqBodyEdit,
-        seqRegenQuery || undefined,
-      );
-      setSeqBodyEdit(body);
-      setSeqRegenQuery("");
-      toast.success("Follow-up regenerated");
-    } catch (e) {
-      toast.error((e as Error).message);
-    } finally {
-      setSeqRegenerating(false);
     }
   }
 
@@ -2701,6 +2602,20 @@ export function CampaignDetail({
    * have is "what is this lead getting?" — so the lead is the subject and the
    * steps are the list, matching how Outbox already works.
    */
+  /** The day each edited step lands on. Delays stack, so the number typed in is
+   *  not the day it sends — showing the running total is what keeps the two
+   *  from being confused (it is what put the client's follow-up 2 on day 21). */
+  const seqStepEditDays = cumulativeDays(seqStepEdits);
+
+  // Seed the editor from the campaign's real steps. Keyed on the delays
+  // themselves rather than a load flag, so a save elsewhere (Options) shows up
+  // here too, while typing in this pane does not re-seed and wipe the edit.
+  const seqStepSignature = campaignSteps.map((s) => `${s.step_order}:${s.delay}`).join(",");
+  useEffect(() => {
+    setSeqStepEdits(extractFollowupWaitsFromSteps(campaignSteps));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- signature stands in for the array
+  }, [seqStepSignature]);
+
   const seqLeadTimeline = (() => {
     const cl = seqActiveLeadRow?.cl;
     if (!cl) return [];
@@ -2725,12 +2640,6 @@ export function CampaignDetail({
       });
   })();
 
-  /** How many of this step's follow-ups a bulk regeneration would rewrite.
-   *  Written-but-not-yet-sent only: an already-delivered follow-up is history.
-   *  A hint for the button label — the server re-resolves the real list under
-   *  the caller's scope, so this can never widen what actually runs. */
-  const seqRegenerableCount = seqLeadRows.filter((r) => r.written && !r.sent).length;
-
   /** Same reasoning as versionsSpanOneDay: a row of identical date chips is
    *  useless, so show the clock time while history sits inside one day. */
   const seqVersionsSpanOneDay =
@@ -2743,7 +2652,7 @@ export function CampaignDetail({
   // pieces of state a user can change rather than on the derived row, so it
   // fires once per switch instead of on every recompute.
   useEffect(() => {
-    setSeqHistoryOpen(false);
+    setSeqHistoryOpen(null);
     setSeqVersions([]);
     setSeqPreviewVersion(null);
   }, [seqLeadId, seqStepOrder]);
@@ -4367,536 +4276,426 @@ export function CampaignDetail({
       {/* ── Sequences ─────────────────────────────────────────────────────── */}
       {viewTab === "sequences" && (
         <div className="flex flex-1 min-h-0">
-          {/* Left panel: step list */}
-          <div className="w-72 shrink-0 border-r border-border flex flex-col overflow-y-auto p-4 gap-2">
-            {sequencesLoading ? (
-              <div className="space-y-2 animate-pulse">
-                {Array.from({ length: 4 }).map((_, i) => (
-                  <div key={i} className="border border-border rounded-lg p-4 space-y-2">
-                    <div className="h-3 w-16 bg-secondary rounded" />
-                    <div className="h-3 w-32 bg-secondary/60 rounded" />
-                  </div>
-                ))}
+          {/* Left: the leads, laid out exactly like Outbox.
+              This tab used to lead with the STEPS, so answering "what is this
+              lead getting?" meant visiting every step in turn. The lead is the
+              subject people actually have in mind, so it is the subject here —
+              and matching Outbox leaves one layout to learn instead of two. */}
+          <div className="w-[266px] h-full shrink-0 border-r border-border flex flex-col">
+            <div className="border-b border-border shrink-0">
+              <div className="px-3 pt-2 pb-2 space-y-2">
+                <SearchInput
+                  value={seqLeadSearch}
+                  onChange={setSeqLeadSearch}
+                  placeholder="Search name or company"
+                  className="h-7 text-[11px]"
+                />
+                <Select value={seqLeadFilter} onValueChange={(v) => { setSeqLeadFilter(v as typeof seqLeadFilter); setSeqLeadId(null); }}>
+                  <SelectTrigger className="h-7 w-full gap-1.5 rounded-md border-border px-2 py-0 text-[11px] font-medium text-foreground [&>svg]:size-3 [&>svg]:opacity-70">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="due" className="text-[11px]">To be sent ({seqCounts.due})</SelectItem>
+                    <SelectItem value="sent" className="text-[11px]">Already sent ({seqCounts.sent})</SelectItem>
+                    <SelectItem value="unwritten" className="text-[11px]">Not written ({seqCounts.unwritten})</SelectItem>
+                    <SelectItem value="all" className="text-[11px]">All ({seqCounts.all})</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
-            ) : seqFollowUpSteps.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-8">No follow-up steps configured. Add them in Options.</p>
-            ) : (
-              seqFollowUpSteps.map((s) => {
-                const isActive = selectedSequenceStep === s.step_order;
-                const prevStep = campaignSteps.find((p) => p.step_order === s.step_order - 1);
-                const subtitle = sequenceStepSubtitle(s, campaignLeads);
-                const displayStep = sequenceDisplayStep(s.step_order);
-                return (
-                  <Button
-                    key={s.step_order}
-                    type="button"
-                    variant="ghost"
-                    onClick={() => setSelectedSequenceStep(s.step_order)}
-                    className={cn(
-                      "h-auto w-full block border rounded-lg p-4 text-left font-normal",
-                      isActive
-                        ? "swatch-bar border-primary bg-primary/10 hover:bg-primary/10"
-                        : "border-border bg-field hover:bg-field hover:border-primary/40",
-                    )}
-                  >
-                    <p className={cn("font-display text-sm font-semibold mb-0.5", isActive ? "text-primary" : "text-foreground")}>
-                      Step {displayStep}
-                    </p>
-                    {subtitle && (
-                      <p className={cn("text-xs truncate mb-1", isActive ? "text-primary/80" : "text-muted-foreground")}>{subtitle}</p>
-                    )}
-                    {prevStep && prevStep.delay > 0 && (
-                      <p className={cn("font-mono text-[11px] tabular-nums", isActive ? "text-primary/60" : "text-muted-foreground/70")}>
-                        Send {prevStep.delay} {prevStep.delay_unit} after previous
-                      </p>
-                    )}
-                  </Button>
-                );
-              })
-            )}
-          </div>
 
-          {/* Middle column: the leads in this follow-up step.
-              A step used to show only its shared template, which said nothing
-              about the 100 people actually receiving it. Now that every lead has
-              their own follow-up text, this is where you pick whose to read. */}
-          <div className="w-80 shrink-0 border-r border-border flex flex-col min-h-0">
-            <div className="p-3 space-y-2 border-b border-border">
-              <SearchInput
-                value={seqLeadSearch}
-                onChange={setSeqLeadSearch}
-                placeholder="Search name or company"
-                className="h-8"
-              />
-              <Select value={seqLeadFilter} onValueChange={(v) => { setSeqLeadFilter(v as typeof seqLeadFilter); setSeqLeadId(null); }}>
-                <SelectTrigger className="h-8 w-full gap-2 rounded-md px-3 text-xs shadow-sm">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent align="start">
-                  <SelectItem value="due">To be sent ({seqCounts.due})</SelectItem>
-                  <SelectItem value="sent">Already sent ({seqCounts.sent})</SelectItem>
-                  <SelectItem value="unwritten">Not written ({seqCounts.unwritten})</SelectItem>
-                  <SelectItem value="all">All ({seqCounts.all})</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* How this step was written. The client bought a personalised email
-                per company — without this number a template is indistinguishable
-                from the real thing, and nobody can tell what they actually got. */}
-            {(seqQuality.ai > 0 || seqQuality.template > 0) && (
-              <div className="px-3 py-2 border-b border-border space-y-1">
-                <div className="flex items-center gap-2 text-[11px]">
-                  <span className="font-mono tabular-nums font-semibold text-foreground">{seqQuality.ai}</span>
-                  <span className="text-muted-foreground">personalised</span>
-                  {seqQuality.template > 0 && (
-                    <>
-                      <span className="text-muted-foreground">·</span>
-                      <span className="font-mono tabular-nums font-semibold text-amber-600">{seqQuality.template}</span>
-                      <span className="text-muted-foreground">template</span>
-                    </>
-                  )}
-                </div>
-                {/* Grouped by cause, so "5 template" becomes a task ("top up")
-                    or an accepted fact ("thin company data") rather than a
-                    mystery the client cannot act on. */}
-                {seqQuality.reasons.map(([why, n]) => (
-                  <p key={why} className="text-[10px] text-muted-foreground leading-snug">
-                    <span className="font-mono tabular-nums">{n}</span> · {why}
-                  </p>
-                ))}
-              </div>
-            )}
-            {seqCounts.finished > 0 && (
-              <div className="px-3 py-1.5 border-b border-border">
-                <p className="text-[10px] text-muted-foreground">
-                  <span className="font-mono tabular-nums">{seqCounts.finished}</span> out of sequence
-                  {seqCounts.replied > 0 ? ` · ${seqCounts.replied} replied` : ""}
-                  {seqCounts.bounced > 0 ? ` · ${seqCounts.bounced} bounced` : ""}
-                </p>
-              </div>
-            )}
-
-            <div className="flex-1 overflow-y-auto p-2 space-y-1.5">
-              {seqLeadRows.length === 0 ? (
-                <p className="text-xs text-muted-foreground text-center py-8 px-3">
-                  {seqLeadFilter === "due"
-                    ? "No follow-ups waiting to go out for this step."
-                    : "Nothing here yet."}
-                </p>
-              ) : (
-                seqLeadRows.map(({ cl, draft, sent, written, finished, isTemplate }) => {
-                  const isActive = seqActiveLeadRow?.cl.id === cl.id;
-                  const name = [cl.leads?.first_name, cl.leads?.last_name].filter(Boolean).join(" ") || cl.leads?.email || "Lead";
-                  return (
-                    <button
-                      key={cl.id}
-                      type="button"
-                      onClick={() => { setSeqLeadId(cl.id); setSeqPane("lead"); }}
-                      className={cn(
-                        "w-full text-left rounded-lg border p-2.5 transition-colors",
-                        isActive
-                          ? "border-primary bg-primary/10"
-                          : "border-border bg-field hover:border-primary/40",
-                      )}
-                    >
-                      <div className="flex items-center gap-2 min-w-0">
-                        <div className="min-w-0 flex-1">
-                          <p className={cn("text-xs font-semibold truncate", isActive && "text-primary")}>{name}</p>
-                          <p className="text-[11px] text-muted-foreground truncate">{cl.leads?.company_name ?? ""}</p>
-                        </div>
-                        {finished ? (
-                          // Out of the sequence entirely — shown so the list still
-                          // adds up to the full campaign, but never counted as work.
-                          <Pill shape="sm" className="bg-transparent text-muted-foreground border-border capitalize">
-                            {finished}
-                          </Pill>
-                        ) : sent ? (
-                          <Pill shape="sm" className={cn(
-                            "border-transparent",
-                            isTemplate
-                              ? "bg-amber-500/15 text-amber-600"
-                              : "bg-emerald-500/15 text-emerald-600",
-                          )}>
-                            {isTemplate ? "Sent · template" : "Sent"}
-                          </Pill>
-                        ) : !written ? (
-                          <Pill shape="sm" className="bg-transparent text-muted-foreground border-border">Draft</Pill>
-                        ) : isTemplate ? (
-                          <Pill shape="sm" className="bg-amber-500/15 text-amber-600 border-transparent">Template</Pill>
-                        ) : (
-                          <Pill shape="sm" className="bg-primary/15 text-primary border-transparent">AI</Pill>
-                        )}
-                      </div>
-                    </button>
-                  );
-                })
-              )}
-            </div>
-          </div>
-
-          {/* Right panel: editable step email */}
-          <div className="flex-1 overflow-y-auto p-6">
-            {!activeSeqStep ? (
-              <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
-                Select a step to preview
-              </div>
-            ) : seqPane === "lead" ? (
-              /* ── One lead's own follow-up ───────────────────────────────
-                 Read-only once sent: rewriting a delivered email would only
-                 change our record, never what the customer received. The
-                 server refuses it too — this is not the only guard. */
-              <div className="max-w-2xl mx-auto space-y-4">
-                <div className="flex items-center justify-between gap-3 flex-wrap">
-                  <div className="min-w-0">
-                    <p className="font-display text-sm font-semibold truncate">
-                      {seqActiveLeadRow
-                        ? [seqActiveLeadRow.cl.leads?.first_name, seqActiveLeadRow.cl.leads?.last_name].filter(Boolean).join(" ") || "Lead"
-                        : "No lead selected"}
-                    </p>
-                    <p className="text-xs text-muted-foreground truncate">
-                      {seqActiveLeadRow?.cl.leads?.title ? `${seqActiveLeadRow.cl.leads.title} · ` : ""}
-                      {seqActiveLeadRow?.cl.leads?.company_name ?? ""}
-                    </p>
-                  </div>
-                  <SegmentedTabs
-                    size="sm"
-                    value={seqPane}
-                    onValueChange={(v) => setSeqPane(v as "lead" | "template")}
-                    options={[
-                      { value: "lead", label: "This lead" },
-                      { value: "template", label: "Template" },
-                    ]}
-                  />
-                </div>
-
-                {!seqActiveLeadRow ? (
-                  <p className="text-sm text-muted-foreground py-10 text-center">
-                    Pick a lead on the left to read the follow-up written for them.
-                  </p>
-                ) : !seqActiveLeadRow.draft?.body ? (
-                  <div className="rounded-lg border border-border bg-field p-6 text-center space-y-2">
-                    <p className="text-sm font-medium">No follow-up written yet</p>
-                    <p className="text-xs text-muted-foreground max-w-sm mx-auto">
-                      It is written automatically the day before it is due, once the
-                      opening email has actually gone out.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="rounded-lg border border-border bg-field p-4 space-y-3">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-mono text-[10px] uppercase tracking-wide text-muted-foreground">
-                        Follow-up {sequenceDisplayStep(activeSeqStep.step_order)}
-                      </span>
-                      {seqActiveLeadRow.sent && (
-                        <Pill shape="sm" className="bg-emerald-500/15 text-emerald-600 border-transparent">Sent</Pill>
-                      )}
-                      {seqActiveLeadRow.isTemplate ? (
-                        <Pill shape="sm" className="bg-amber-500/15 text-amber-600 border-transparent">Template</Pill>
-                      ) : (
-                        <Pill shape="sm" className="bg-primary/15 text-primary border-transparent">AI written</Pill>
-                      )}
-                    </div>
-
-                    {/* Why this one is not personalised, in the client's words.
-                        Sits above the body because it changes how the text
-                        should be read — and because for a fixable cause it is
-                        an instruction, not a footnote. */}
-                    {seqActiveLeadRow.isTemplate && seqActiveLeadRow.draft?.fallback_reason && (
-                      <p className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
-                        {seqActiveLeadRow.draft.fallback_reason}
-                      </p>
-                    )}
-                    <div
-                      className="text-sm leading-relaxed [&_p]:mb-2"
-                      dangerouslySetInnerHTML={{
-                        __html: (seqPreviewVersion ?? seqActiveLeadRow.draft).body ?? "",
-                      }}
-                    />
-                    {!seqActiveLeadRow.sent && canEditSettings && (
-                      <div className="pt-3 border-t border-border flex items-center gap-2">
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          disabled={seqLeadRegenerating === seqActiveLeadRow.cl.id}
-                          onClick={() => void handleRegenerateLeadFollowup(seqActiveLeadRow.cl.id, seqActiveLeadRow.draft!.id)}
-                          className="h-7 gap-1.5 px-3 text-xs [&_svg]:size-3"
-                        >
-                          {seqLeadRegenerating === seqActiveLeadRow.cl.id
-                            ? <Loader2 className="animate-spin" />
-                            : <RotateCcw />}
-                          Regenerate
-                        </Button>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          onClick={() => void toggleSeqHistory(seqActiveLeadRow.draft!.id)}
-                          className={cn(
-                            "h-7 gap-1.5 px-3 text-xs [&_svg]:size-3",
-                            seqHistoryOpen && "border-primary text-primary bg-primary/5 hover:bg-primary/10 hover:text-primary",
-                          )}
-                        >
-                          <History />
-                          Version history
-                          <ChevronDown className={cn("transition-transform", seqHistoryOpen && "rotate-180")} />
-                        </Button>
-                        <span className="text-[11px] text-muted-foreground">Saved automatically</span>
-                      </div>
-                    )}
-
-                    {/* Version history. Regenerating is cheap enough that people
-                        do it a few times and then decide the second attempt was
-                        the good one; without this the only way back was another
-                        roll of the dice. */}
-                    {seqHistoryOpen && (
-                      <div className="enter space-y-2 rounded-lg border border-border bg-secondary/30 p-3">
-                        {seqHistoryLoading ? (
-                          <p className="text-xs text-muted-foreground flex items-center gap-2">
-                            <Loader2 className="size-3 animate-spin" /> Loading versions…
-                          </p>
-                        ) : seqVersions.length < 2 ? (
-                          <p className="text-xs text-muted-foreground">
-                            Only one version so far. Regenerate and the earlier text shows up here.
-                          </p>
-                        ) : (
-                          <>
-                            <div className="flex flex-wrap gap-2">
-                              {seqVersions.map((v) => {
-                                const isCurrent = v.id === seqActiveLeadRow.draft!.id;
-                                const isShown = seqPreviewVersion ? seqPreviewVersion.id === v.id : isCurrent;
-                                return (
-                                  <Button
-                                    key={v.id}
-                                    type="button"
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => setSeqPreviewVersion(isCurrent ? null : v)}
-                                    className={cn(
-                                      "font-mono text-xs h-auto px-2.5 py-1.5",
-                                      isShown
-                                        ? "border-primary bg-primary/10 text-primary hover:bg-primary/10"
-                                        : "border-border bg-secondary/30 text-muted-foreground hover:border-muted-foreground",
-                                    )}
-                                  >
-                                    v{v.version} · {format(new Date(v.created_at), seqVersionsSpanOneDay ? "HH:mm" : "MMM d, HH:mm")}
-                                  </Button>
-                                );
-                              })}
-                            </div>
-                            {seqPreviewVersion && (
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <p className="text-xs text-amber-400">Viewing an older version (read-only)</p>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  disabled={seqRestoring}
-                                  onClick={() => void handleRestoreSeqVersion(seqPreviewVersion.id)}
-                                >
-                                  {seqRestoring ? <Loader2 className="size-3 animate-spin" /> : "Restore this version"}
-                                </Button>
-                                <Button size="sm" variant="ghost" onClick={() => setSeqPreviewVersion(null)}>
-                                  Back to current
-                                </Button>
-                              </div>
-                            )}
-                          </>
-                        )}
-                      </div>
-                    )}
-                    {seqActiveLeadRow.sent && (
-                      <p className="pt-3 border-t border-border text-[11px] text-muted-foreground">
-                        Already sent, so it can no longer be changed.
-                      </p>
-                    )}
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="max-w-2xl mx-auto space-y-4">
-                {/* Header */}
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <SegmentedTabs
-                      size="sm"
-                      value={seqPane}
-                      onValueChange={(v) => setSeqPane(v as "lead" | "template")}
-                      options={[
-                        { value: "lead", label: "This lead" },
-                        { value: "template", label: "Template" },
-                      ]}
-                    />
-                    <span className="font-display text-sm font-semibold text-foreground">
-                      Step {sequenceDisplayStep(activeSeqStep.step_order)}
-                    </span>
-                    {(() => {
-                      const prev = campaignSteps.find((p) => p.step_order === activeSeqStep.step_order - 1);
-                      return prev && prev.delay > 0 ? (
-                        <span className="font-mono text-[10px] tabular-nums px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
-                          Sends {prev.delay} {prev.delay_unit} after previous
-                        </span>
-                      ) : null;
-                    })()}
-                  </div>
-                  {seqHasContent && canEditSettings && (
-                    <div className="flex items-center gap-2">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setSeqRegenOpen((o) => !o)}
-                        disabled={seqRegenerating}
-                        className="h-7 gap-1.5 px-3 text-xs text-muted-foreground hover:text-foreground [&_svg]:size-3"
-                      >
-                        <RotateCcw />
-                        Regenerate
-                      </Button>
-                      {/* Rewrites every LEAD's follow-up for this step, which is
-                          a different thing from the button beside it: that one
-                          rewrites this shared template. The wording has to carry
-                          the distinction because the two sit together — after
-                          changing the instructions here, redoing everyone's is
-                          the natural next step. */}
-                      {seqRegenerableCount > 0 && (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          disabled={bulkRegenOpening || seqRegenerating}
-                          title="Rewrite every lead's personalised follow-up for this step. Already-sent ones are left alone."
-                          onClick={() => void openBulkRegenerate(undefined, activeSeqStep.step_order)}
-                          className="h-7 gap-1.5 px-3 text-xs text-muted-foreground hover:text-foreground [&_svg]:size-3"
-                        >
-                          {bulkRegenOpening ? <Loader2 className="animate-spin" /> : <Users />}
-                          Regenerate all ({seqRegenerableCount})
-                        </Button>
-                      )}
-                      <Button
-                        type="button"
-                        size="sm"
-                        disabled={seqStepSaving || seqRegenerating}
-                        onClick={() => void handleSaveSeqDraft()}
-                        className="h-7 gap-1.5 px-3 text-xs [&_svg]:size-3"
-                      >
-                        {seqStepSaving ? <Loader2 className="animate-spin" /> : <Save />}
-                        Save
-                      </Button>
-                    </div>
-                  )}
-                </div>
-
-                {seqHasContent ? (
-                  <div className="rounded-xl border border-border bg-card p-6 space-y-4">
-                    {seqRegenerating ? (
-                      <div className="p-4 space-y-4 animate-pulse">
-                        <div className="flex items-center gap-2">
-                          <Loader2 className="size-4 text-muted-foreground animate-spin" />
-                          <p className="text-xs text-muted-foreground">Regenerating follow-up…</p>
-                        </div>
-                        <div className="h-4 w-40 bg-secondary rounded" />
-                        <div className="space-y-2">
-                          <div className="h-3 w-full bg-secondary rounded" />
-                          <div className="h-3 w-full bg-secondary rounded" />
-                          <div className="h-3 w-2/3 bg-secondary rounded" />
-                        </div>
-                      </div>
-                    ) : (
+              {/* How this step was written. The client bought a personalised
+                  email per company; without this number a template is
+                  indistinguishable from the real thing. */}
+              {(seqQuality.ai > 0 || seqQuality.template > 0) && (
+                <div className="px-3 pb-2 space-y-1">
+                  <div className="flex items-center gap-1.5 text-[11px]">
+                    <span className="font-mono tabular-nums font-semibold">{seqQuality.ai}</span>
+                    <span className="text-muted-foreground">personalised</span>
+                    {seqQuality.template > 0 && (
                       <>
-                    <div className="space-y-1.5">
-                      <Label className="eyebrow">Subject</Label>
-                      <Input
-                        value={seqSubjectEdit}
-                        disabled={!canEditSettings}
-                        onChange={(e) => setSeqSubjectEdit(e.target.value)}
-                        placeholder="No subject (threaded reply)"
-                        className="text-sm"
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label className="eyebrow">Body</Label>
-                      <RichTextEditor
-                        value={seqBodyEdit}
-                        onChange={setSeqBodyEdit}
-                        disabled={!canEditSettings}
-                        minHeight={280}
-                        showTemplateVars
-                      />
-                    </div>
-                    {seqRegenOpen && canEditSettings && (
-                      <div className="rounded-lg border border-border bg-secondary/30 p-4 space-y-2">
-                        <Input
-                          value={seqRegenQuery}
-                          onChange={(e) => setSeqRegenQuery(e.target.value)}
-                          placeholder="Optional instruction, e.g. Make it shorter…"
-                          className="text-sm"
-                          onKeyDown={(e) => { if (e.key === "Enter") void handleRegenerateSeqDraft(); }}
-                        />
-                        <Button size="sm" disabled={seqRegenerating} onClick={() => void handleRegenerateSeqDraft()} className="gap-1.5">
-                          <RotateCcw className="size-3.5" /> Regenerate
-                        </Button>
-                      </div>
-                    )}
+                        <span className="text-muted-foreground">·</span>
+                        <span className="font-mono tabular-nums font-semibold text-amber-600">{seqQuality.template}</span>
+                        <span className="text-muted-foreground">template</span>
                       </>
                     )}
                   </div>
-                ) : (
-                  <div className="rounded-xl border border-border bg-card p-8 text-center">
-                    <p className="text-sm text-muted-foreground">
-                      {`No template set for step ${sequenceDisplayStep(activeSeqStep.step_order)}.`}
+                  {seqQuality.reasons.map(([why, n]) => (
+                    <p key={why} className="text-[10px] leading-snug text-muted-foreground">
+                      <span className="font-mono tabular-nums">{n}</span> · {why}
                     </p>
-                  </div>
-                )}
-
-                <div className="border-t border-border pt-4">
-                  <SharedSettingsNotice readOnly={!canEditSettings} />
+                  ))}
                 </div>
-              </div>
-            )}
+              )}
+              {seqCounts.finished > 0 && (
+                <div className="px-3 pb-2">
+                  <p className="text-[10px] text-muted-foreground">
+                    <span className="font-mono tabular-nums">{seqCounts.finished}</span> out of sequence
+                    {seqCounts.replied > 0 ? ` · ${seqCounts.replied} replied` : ""}
+                    {seqCounts.bounced > 0 ? ` · ${seqCounts.bounced} bounced` : ""}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div className="flex-1 overflow-y-auto space-y-1.5 p-2">
+              {seqLeadRows.length === 0 ? (
+                <p className="p-6 text-sm text-muted-foreground text-center">
+                  {seqLeadFilter === "due" ? "No follow-ups waiting to go out." : "No leads match this filter."}
+                </p>
+              ) : seqLeadRows.map(({ cl, sent, written, finished, isTemplate }) => {
+                const lead = cl.leads;
+                const name = [lead?.first_name, lead?.last_name].filter(Boolean).join(" ") || "Unknown";
+                const isActive = seqActiveLeadRow?.cl.id === cl.id;
+                return (
+                  <Button
+                    key={cl.id}
+                    type="button"
+                    variant="ghost"
+                    onClick={() => setSeqLeadId(cl.id)}
+                    className={cn(
+                      "h-auto w-full block justify-start text-left font-normal rounded-lg border px-3 py-2.5",
+                      isActive
+                        ? "border-primary bg-primary/8 hover:bg-primary/8"
+                        : "border-border bg-field hover:bg-field hover:border-muted-foreground/40",
+                    )}
+                  >
+                    <div className="flex items-center gap-2">
+                      <Avatar name={name} size="sm" />
+                      <div className="flex-1 min-w-0">
+                        <p className={cn("text-xs font-medium truncate", isActive ? "text-primary" : "text-foreground")}>{name}</p>
+                        <p className="text-[10px] text-muted-foreground truncate">{lead?.company_name ?? ""}</p>
+                        <div className="mt-0.5 flex items-center gap-1 flex-wrap">
+                          {finished ? (
+                            <span className="inline-flex px-1.5 py-0.5 rounded border text-[10px] font-semibold bg-muted text-muted-foreground border-border capitalize">
+                              {finished}
+                            </span>
+                          ) : sent ? (
+                            <span className={cn(
+                              "inline-flex px-1.5 py-0.5 rounded border text-[10px] font-semibold",
+                              isTemplate
+                                ? "bg-amber-500/15 text-amber-600 border-amber-500/25"
+                                : "bg-green-500/15 text-green-500 border-green-500/25",
+                            )}>
+                              {isTemplate ? "Sent · template" : "Sent"}
+                            </span>
+                          ) : !written ? (
+                            <span className="inline-flex px-1.5 py-0.5 rounded border text-[10px] font-semibold bg-muted text-muted-foreground border-border">
+                              Not written
+                            </span>
+                          ) : isTemplate ? (
+                            <span className="inline-flex px-1.5 py-0.5 rounded border text-[10px] font-semibold bg-amber-500/15 text-amber-600 border-amber-500/25">
+                              Template
+                            </span>
+                          ) : (
+                            <span className="inline-flex px-1.5 py-0.5 rounded border text-[10px] font-semibold bg-primary/15 text-primary border-primary/25">
+                              AI
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </Button>
+                );
+              })}
+            </div>
           </div>
 
-          {/* Right rail: leads who have actually received this step */}
-          {activeSeqStep && (() => {
-            const receivedLeads = campaignLeads.filter((cl) => effectiveLastStep(cl) >= activeSeqStep.step_order);
-            return (
-              <div className="w-72 shrink-0 border-l border-border flex flex-col overflow-y-auto p-4 gap-2">
-                <p className="eyebrow shrink-0">
-                  Step {sequenceDisplayStep(activeSeqStep.step_order)} delivered ({receivedLeads.length}/{campaignLeads.length})
-                </p>
-                {receivedLeads.length === 0 ? (
-                  <p className="text-xs text-muted-foreground py-4">No leads have received this step yet.</p>
-                ) : (
-                  receivedLeads.map((cl) => {
-                    const name = [cl.leads?.first_name, cl.leads?.last_name].filter(Boolean).join(" ") || "Unknown";
-                    const delivery = deliveryBucket(cl);
-                    return (
-                      <button
-                        key={cl.id}
-                        type="button"
-                        onClick={() => { setSelectedId(cl.id); setViewTab("outbox"); }}
-                        title="Open this lead's mail thread in Outbox"
-                        className="flex items-center gap-2 rounded-lg border border-border bg-field hover:border-primary/40 px-3 py-2 text-left transition-colors"
-                      >
-                        <Avatar name={name} size="sm" />
-                        <div className="min-w-0 flex-1">
-                          <p className="text-xs font-medium truncate">{name}</p>
-                          <p className="text-[11px] text-muted-foreground truncate">{cl.leads?.title || cl.leads?.email}</p>
-                        </div>
-                        {(delivery === "replied" || delivery === "bounced") && (
-                          <span className={cn(
-                            "shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase",
-                            delivery === "replied" ? "bg-blue-500/15 text-blue-600" : "bg-destructive/15 text-destructive",
-                          )}>
-                            {delivery === "replied" ? "Replied" : "Bounced"}
-                          </span>
-                        )}
-                      </button>
-                    );
-                  })
-                )}
+          {/* Right: everything this ONE lead is getting, step by step. */}
+          <div className="flex-1 min-w-0 overflow-y-auto p-6">
+            <div className="max-w-2xl mx-auto space-y-4">
+              <div className="flex items-start justify-between gap-3 flex-wrap">
+                <div className="min-w-0">
+                  <p className="font-display text-sm font-semibold truncate">
+                    {seqActiveLeadRow
+                      ? [seqActiveLeadRow.cl.leads?.first_name, seqActiveLeadRow.cl.leads?.last_name].filter(Boolean).join(" ") || "Lead"
+                      : "No lead selected"}
+                  </p>
+                  <p className="text-xs text-muted-foreground truncate">
+                    {seqActiveLeadRow?.cl.leads?.title ? `${seqActiveLeadRow.cl.leads.title} · ` : ""}
+                    {seqActiveLeadRow?.cl.leads?.company_name ?? ""}
+                  </p>
+                </div>
+                <SegmentedTabs
+                  size="sm"
+                  value={seqPane}
+                  onValueChange={(v) => setSeqPane(v as "lead" | "template")}
+                  options={[
+                    { value: "lead", label: "This lead" },
+                    { value: "template", label: "Steps" },
+                  ]}
+                />
               </div>
-            );
-          })()}
+
+              {seqPane === "lead" ? (
+                !seqActiveLeadRow ? (
+                  <p className="text-sm text-muted-foreground py-10 text-center">
+                    Pick a lead to read every follow-up written for them.
+                  </p>
+                ) : seqActiveLeadRow.finished ? (
+                  <div className="rounded-lg border border-border bg-field p-6 text-center space-y-2">
+                    <p className="text-sm font-medium capitalize">{seqActiveLeadRow.finished}</p>
+                    <p className="text-xs text-muted-foreground max-w-sm mx-auto">
+                      {seqActiveLeadRow.finished === "replied"
+                        ? "They answered, so Instantly stopped the sequence here. No further follow-up will be sent."
+                        : "Their address rejected our email, so the sequence stopped here."}
+                    </p>
+                  </div>
+                ) : seqLeadTimeline.length === 0 ? (
+                  <EmptyState message="This campaign has no follow-up steps yet." />
+                ) : (
+                  <div className="space-y-3">
+                    {seqLeadTimeline.map((row) => (
+                      <div key={row.step.step_order} className="rounded-lg border border-border bg-field p-4 space-y-3">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-mono text-[10px] uppercase tracking-wide text-muted-foreground">
+                            Follow-up {sequenceDisplayStep(row.step.step_order)}
+                          </span>
+                          {/* The landing day, not the raw delay. Delays stack, so
+                              the number typed into the step is not the day it
+                              goes out — showing the total is what stops that
+                              being misread. */}
+                          <span className="font-mono text-[10px] tabular-nums text-muted-foreground">
+                            day {row.daysFromOpening}
+                          </span>
+                          {row.dueAt && (
+                            <span className="font-mono text-[10px] tabular-nums text-muted-foreground">
+                              {row.sent ? "sent" : "due"} {format(row.dueAt, "MMM d")}
+                            </span>
+                          )}
+                          {row.sent && (
+                            <Pill shape="sm" className="bg-emerald-500/15 text-emerald-600 border-transparent">Sent</Pill>
+                          )}
+                          {row.written && (
+                            row.isTemplate
+                              ? <Pill shape="sm" className="bg-amber-500/15 text-amber-600 border-transparent">Template</Pill>
+                              : <Pill shape="sm" className="bg-primary/15 text-primary border-transparent">AI written</Pill>
+                          )}
+                        </div>
+
+                        {row.isTemplate && row.draft?.fallback_reason && (
+                          <p className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+                            {row.draft.fallback_reason}
+                          </p>
+                        )}
+
+                        {row.written ? (
+                          <div
+                            className="text-sm leading-relaxed [&_p]:mb-2"
+                            dangerouslySetInnerHTML={{ __html: row.draft?.body ?? "" }}
+                          />
+                        ) : (
+                          <p className="text-xs text-muted-foreground">
+                            Written automatically the day before it is due.
+                          </p>
+                        )}
+
+                        {!row.sent && row.written && canEditSettings && (
+                          <div className="pt-3 border-t border-border flex items-center gap-2">
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              disabled={seqLeadRegenerating === seqActiveLeadRow.cl.id}
+                              onClick={() => void handleRegenerateLeadFollowup(seqActiveLeadRow.cl.id, row.draft!.id)}
+                              className="h-7 gap-1.5 px-3 text-xs [&_svg]:size-3"
+                            >
+                              {seqLeadRegenerating === seqActiveLeadRow.cl.id
+                                ? <Loader2 className="animate-spin" />
+                                : <RotateCcw />}
+                              Regenerate
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              onClick={() => void toggleSeqHistory(row.draft!.id)}
+                              className={cn(
+                                "h-7 gap-1.5 px-3 text-xs [&_svg]:size-3",
+                                seqHistoryOpen === row.draft!.id && "border-primary text-primary bg-primary/5",
+                              )}
+                            >
+                              <History />
+                              Version history
+                              <ChevronDown className={cn("transition-transform", seqHistoryOpen === row.draft!.id && "rotate-180")} />
+                            </Button>
+                            <span className="text-[11px] text-muted-foreground">Saved automatically</span>
+                          </div>
+                        )}
+
+                        {/* Regenerating is cheap enough that people do it a few
+                            times and then decide the second attempt was best. */}
+                        {seqHistoryOpen === row.draft?.id && (
+                          <div className="enter space-y-2 rounded-lg border border-border bg-secondary/30 p-3">
+                            {seqHistoryLoading ? (
+                              <p className="text-xs text-muted-foreground flex items-center gap-2">
+                                <Loader2 className="size-3 animate-spin" /> Loading versions…
+                              </p>
+                            ) : seqVersions.length < 2 ? (
+                              <p className="text-xs text-muted-foreground">
+                                Only one version so far. Regenerate and the earlier text shows up here.
+                              </p>
+                            ) : (
+                              <>
+                                <div className="flex flex-wrap gap-2">
+                                  {seqVersions.map((v) => {
+                                    const isCurrent = v.id === row.draft!.id;
+                                    const isShown = seqPreviewVersion ? seqPreviewVersion.id === v.id : isCurrent;
+                                    return (
+                                      <Button
+                                        key={v.id}
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => setSeqPreviewVersion(isCurrent ? null : v)}
+                                        className={cn(
+                                          "font-mono text-xs h-auto px-2.5 py-1.5",
+                                          isShown
+                                            ? "border-primary bg-primary/10 text-primary hover:bg-primary/10"
+                                            : "border-border bg-secondary/30 text-muted-foreground hover:border-muted-foreground",
+                                        )}
+                                      >
+                                        v{v.version} · {format(new Date(v.created_at), seqVersionsSpanOneDay ? "HH:mm" : "MMM d, HH:mm")}
+                                      </Button>
+                                    );
+                                  })}
+                                </div>
+                                {seqPreviewVersion && (
+                                  <>
+                                    <div
+                                      className="rounded-md border border-border bg-field p-3 text-sm leading-relaxed [&_p]:mb-2"
+                                      dangerouslySetInnerHTML={{ __html: seqPreviewVersion.body ?? "" }}
+                                    />
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <p className="text-xs text-amber-400">Viewing an older version (read-only)</p>
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        disabled={seqRestoring}
+                                        onClick={() => void handleRestoreSeqVersion(seqPreviewVersion.id)}
+                                      >
+                                        {seqRestoring ? <Loader2 className="size-3 animate-spin" /> : "Restore this version"}
+                                      </Button>
+                                      <Button size="sm" variant="ghost" onClick={() => setSeqPreviewVersion(null)}>
+                                        Back to current
+                                      </Button>
+                                    </div>
+                                  </>
+                                )}
+                              </>
+                            )}
+                          </div>
+                        )}
+                        {row.sent && (
+                          <p className="pt-3 border-t border-border text-[11px] text-muted-foreground">
+                            Already sent, so it can no longer be changed.
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )
+              ) : (
+                /* Steps pane: the timing of every step, and adding one. This
+                   lived in Options, two tabs from where you are standing when
+                   you decide another step is needed. */
+                <div className="space-y-3">
+                  <p className="text-xs text-muted-foreground">
+                    Each wait is counted from the previous email, so they add up — the day
+                    shown is when that follow-up actually goes out.
+                  </p>
+                  {seqStepEdits.map((st, idx) => (
+                    <div key={idx} className="flex items-center gap-2 rounded-lg border border-border bg-field px-3 py-2">
+                      <span className="text-xs text-muted-foreground w-24 shrink-0">
+                        Follow-up {idx + 1} after
+                      </span>
+                      <Input
+                        type="number"
+                        min={1}
+                        max={365}
+                        value={st.delay}
+                        disabled={!canEditSettings}
+                        onChange={(e) => {
+                          const v = Math.max(1, Math.min(365, Number(e.target.value) || 1));
+                          setSeqStepEdits((prev) => prev.map((x, i) => (i === idx ? { ...x, delay: v } : x)));
+                        }}
+                        className="h-7 w-14 px-1 py-0 text-center text-sm font-mono tabular-nums"
+                      />
+                      <span className="text-xs text-muted-foreground">days</span>
+                      <span className="font-mono text-[10px] tabular-nums text-muted-foreground ml-auto shrink-0">
+                        {dayLabel(seqStepEditDays[idx] ?? 0)}
+                      </span>
+                      {canEditSettings && seqStepEdits.length > 1 && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setSeqStepEdits((prev) => prev.filter((_, i) => i !== idx))}
+                          className="h-auto p-0 text-xs text-muted-foreground hover:text-destructive hover:bg-transparent shrink-0"
+                        >
+                          Remove
+                        </Button>
+                      )}
+                    </div>
+                  ))}
+                  {canEditSettings && (
+                    <div className="flex items-center gap-3">
+                      {seqStepEdits.length < 8 && (
+                        <Button
+                          type="button"
+                          variant="link"
+                          size="sm"
+                          onClick={() => setSeqStepEdits((prev) => [
+                            ...prev,
+                            // Repeat the previous gap rather than adding to it —
+                            // adding is what made a 35-day sequence run 104 days.
+                            { delay: prev[prev.length - 1]?.delay ?? 7, delay_unit: "days" as const },
+                          ])}
+                          className="h-auto p-0 text-xs font-medium"
+                        >
+                          + Add follow-up step
+                        </Button>
+                      )}
+                      {/* Rewrites every LEAD's follow-up for a step — a
+                          different thing from editing the timing above it, and
+                          the natural next move after changing the instructions. */}
+                      {campaignSteps.filter((st) => st.step_order > 1).map((st) => {
+                        const n = seqLeadRows.filter((r) => {
+                          const d = (r.cl.all_drafts ?? []).find((x) => x.step_number === st.step_order);
+                          return !!d?.body && !hasReceivedFollowupStep(r.cl, st.step_order) && !r.finished;
+                        }).length;
+                        if (n === 0) return null;
+                        return (
+                          <Button
+                            key={st.step_order}
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            disabled={bulkRegenOpening}
+                            title="Rewrite every lead's follow-up for this step. Already-sent ones are left alone."
+                            onClick={() => void openBulkRegenerate(undefined, st.step_order)}
+                            className="h-7 gap-1.5 px-3 text-xs text-muted-foreground hover:text-foreground [&_svg]:size-3"
+                          >
+                            {bulkRegenOpening ? <Loader2 className="animate-spin" /> : <Users />}
+                            Regenerate all · FU{sequenceDisplayStep(st.step_order)} ({n})
+                          </Button>
+                        );
+                      })}
+                      <Button
+                        type="button"
+                        size="sm"
+                        disabled={seqStepSaving}
+                        onClick={() => void handleSaveSeqSteps()}
+                        className="h-7 gap-1.5 px-3 text-xs [&_svg]:size-3 ml-auto"
+                      >
+                        {seqStepSaving ? <Loader2 className="animate-spin" /> : <Save />}
+                        Save steps
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       )}
 
