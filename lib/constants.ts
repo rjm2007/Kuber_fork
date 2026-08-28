@@ -436,6 +436,10 @@ export type CampaignStepInput = {
   delay_unit: "minutes" | "hours" | "days";
   subject: string;
   body: string;
+  /** Extra guidance for this step's follow-up, on top of the campaign-wide one.
+   *  Optional so callers that only care about timing (the Options tab) can keep
+   *  passing steps without it — and must not blank what someone typed. */
+  ai_instruction?: string | null;
 };
 
 export type FollowupStepInput = {

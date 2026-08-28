@@ -78,10 +78,16 @@ export const CampaignStepInput = z.object({
   delay_unit: z.enum(["minutes", "hours", "days"]).default("days"),
   subject: z.string().default(""),
   body: z.string().default(""),
+  /** Extra guidance for this step only, on top of the campaign-wide one.
+   *  Capped because it rides into the prompt — a long instruction crowds out
+   *  the company research the follow-up is supposed to be built from. */
+  ai_instruction: z.string().trim().max(1000).nullable().optional(),
 });
 
 export const CampaignStepsSchema = z.object({
   steps: z.array(CampaignStepInput).min(1).max(10),
+  /** Applied to every follow-up in the campaign. */
+  followup_instruction: z.string().trim().max(1000).nullable().optional(),
 });
 
 export const SendCampaignSchema = z.object({

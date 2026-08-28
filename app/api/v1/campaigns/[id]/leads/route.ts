@@ -72,6 +72,37 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     activityByLead.set(d.lead_id as string, isRegen ? "regenerating" : "generating");
   }
 
+  // FOLLOW-UP DRAFTS.
+  //
+  // The embed above cannot reach them. `email_drafts(...)` on campaign_leads
+  // resolves through campaign_leads.draft_id, which is a one-to-one foreign key
+  // pointing at the OPENING email and nothing else — so however many follow-ups
+  // a lead has, the embed hands back exactly one draft. The Sequences tab
+  // therefore showed "not written yet" for every follow-up that existed,
+  // including ones already sent, with no body, no badge and no buttons.
+  //
+  // Fetched by (campaign, lead) instead, which is how follow-ups are actually
+  // keyed. Only steps past 1 — step 1 is what the embed already covers.
+  const { data: followupDrafts } = await db
+    .from("email_drafts")
+    .select("id, lead_id, subject, body, status, created_at, step_number, source, fallback_reason")
+    .eq("campaign_id", id)
+    .gt("step_number", 1)
+    .in("status", ["approved", "sent", "draft"])
+    .order("created_at", { ascending: true });
+
+  // One draft per (lead, step): the LIVE one. A lead accumulates rows per step —
+  // superseded versions from regenerating, failed attempts — and picking
+  // whichever came back first is how a card ends up rendering an empty body from
+  // a failed row. Rejected and failed are excluded above; the last write wins
+  // among what remains, which is the newest live version.
+  const followupsByLead = new Map<string, Map<number, Record<string, unknown>>>();
+  for (const d of followupDrafts ?? []) {
+    const leadId = d.lead_id as string;
+    if (!followupsByLead.has(leadId)) followupsByLead.set(leadId, new Map());
+    followupsByLead.get(leadId)!.set(d.step_number as number, d);
+  }
+
   function mapLeadRow(
     raw: Record<string, unknown> | null,
   ): {
@@ -207,6 +238,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     // first_sent_at is written unconditionally on the opening send.
     last_step_sent_at: lastStepAtByLead.get(cl.id as string)?.at ?? (cl.first_sent_at as string | null) ?? null,
     sequence_messages: sequenceByLead.get(cl.id as string) ?? [],
+    // Every follow-up this lead has, keyed by step. The Sequences tab reads
+    // `source` off each one individually — a lead can have follow-up 1 written
+    // by the model and follow-up 3 fall back to the template, so the badge
+    // belongs on the step and never on the lead.
+    followup_drafts: [...(followupsByLead.get(cl.lead_id as string)?.values() ?? [])],
     bounced_at: bouncedAtByLead.get(cl.id as string) ?? null,
     bounced_step: bouncedStepByLead.get(cl.id as string) ?? null,
     // PostgREST hands a to-one embed back as an object, but types it loosely —

@@ -69,7 +69,7 @@ export async function writeDueFollowups(
   const campaignIds = [...new Set(targets.map((t) => t.campaignId))];
   const { data: campaigns } = await db
     .from("campaigns")
-    .select("id, name, human_in_loop, ai_prompt_context, company_id")
+    .select("id, name, human_in_loop, ai_prompt_context, company_id, followup_instruction")
     .in("id", campaignIds);
   const campaignById = new Map((campaigns ?? []).map((c) => [c.id as string, c]));
 
@@ -100,7 +100,11 @@ export async function writeDueFollowups(
 async function writeOne(
   db: SupabaseClient,
   target: FollowupTarget,
-  campaign: { id: string; name: string; human_in_loop: boolean; ai_prompt_context: string | null; company_id: string },
+  campaign: {
+    id: string; name: string; human_in_loop: boolean;
+    ai_prompt_context: string | null; company_id: string;
+    followup_instruction?: string | null;
+  },
 ): Promise<{ pushed: boolean; templated: boolean } | null> {
   // The same shape fetchDraftTargets returns, so generateOneDraft needs no
   // special case for scheduled follow-ups versus the ones a user triggers.
@@ -142,6 +146,12 @@ async function writeOne(
     return templated ? { pushed: templated.pushed, templated: true } : null;
   }
 
+  // Extra guidance the user typed, campaign-wide plus this step's own. Rides in
+  // on customInstruction, which the prompt builder already appends AFTER the
+  // length and tone contract — so an instruction can add a fact but cannot talk
+  // the model out of writing a short, personalised email.
+  const instruction = await resolveFollowupInstruction(db, target, campaign.followup_instruction);
+
   const result = await generateOneDraft(
     db,
     cl as Parameters<typeof generateOneDraft>[1],
@@ -154,7 +164,7 @@ async function writeOne(
     false,
     campaign.name,
     undefined,
-    undefined,
+    instruction,
     campaign.ai_prompt_context ?? undefined,
     undefined,
     target.stepOrder,
@@ -276,7 +286,7 @@ export async function upgradeTemplateFollowups(
 
   let campaignQuery = db
     .from("campaigns")
-    .select("id, name, human_in_loop, ai_prompt_context, company_id")
+    .select("id, name, human_in_loop, ai_prompt_context, company_id, followup_instruction")
     .eq("is_deleted", false)
     .in("status", ["active", "processing"]);
   if (opts.companyId) campaignQuery = campaignQuery.eq("company_id", opts.companyId);
@@ -383,4 +393,30 @@ export async function upgradeTemplateFollowups(
   }
 
   return result;
+}
+
+/**
+ * The extra guidance for one follow-up: the campaign's, plus this step's.
+ *
+ * Additive rather than either/or — "mention the Dubai warehouse" applies to
+ * every follow-up while "ask directly for a call" applies only to the last one,
+ * and a campaign usually wants both at once on that final step.
+ */
+async function resolveFollowupInstruction(
+  db: SupabaseClient,
+  target: FollowupTarget,
+  campaignInstruction: string | null | undefined,
+): Promise<string | undefined> {
+  const { data: step } = await db
+    .from("campaign_steps")
+    .select("ai_instruction")
+    .eq("campaign_id", target.campaignId)
+    .eq("step_order", target.stepOrder)
+    .maybeSingle();
+
+  const parts = [campaignInstruction, step?.ai_instruction as string | null]
+    .map((p) => p?.trim())
+    .filter((p): p is string => !!p);
+
+  return parts.length ? parts.join(" ") : undefined;
 }

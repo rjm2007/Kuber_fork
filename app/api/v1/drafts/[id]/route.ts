@@ -81,11 +81,38 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 
   if (parsed.data.action === "edit") {
-    if (draft.status === "approved") return fail(409, "CONFLICT", "Cannot edit an approved draft — reopen it first");
+    // A FOLLOW-UP is editable while it is approved, and an opening email is not.
+    // The statuses look the same but mean different things: on an opening email
+    // 'approved' is a human's certification and demoting it silently would undo
+    // their decision, whereas follow-ups are auto-approved by design (agreed with
+    // the client 21 Aug 2026 — they are not certified) so 'approved' there only
+    // means "ready to send". Refusing to edit one would have left the window
+    // between writing and sending useless, which is the whole point of writing a
+    // day early.
+    if (draft.status === "approved" && !isFollowUp) {
+      return fail(409, "CONFLICT", "Cannot edit an approved draft — reopen it first");
+    }
+    if (draft.status === "sent") {
+      return fail(409, "CONFLICT", "This email has already been sent and cannot be changed");
+    }
 
-    await db.from("email_drafts").update({ subject: parsed.data.subject, body: parsed.data.body, status: "draft", updated_at: now }).eq("id", id);
+    // Stays approved for a follow-up: dropping it to 'draft' would take it out of
+    // the set syncApprovedDraftToInstantly rebuilds from, and Instantly would go
+    // back to sending its own fallback.
+    const nextStatus = isFollowUp ? draft.status : "draft";
+    await db.from("email_drafts")
+      .update({ subject: parsed.data.subject, body: parsed.data.body, status: nextStatus, updated_at: now })
+      .eq("id", id);
+
+    // Instantly holds its own copy in the lead's customBodyN variable and reads
+    // it only once. Without this push the edit is visible here and nowhere else,
+    // and the customer receives the text the user just replaced.
+    if (isFollowUp) {
+      await syncApprovedDraftToInstantly(db, draft.lead_id, draft.campaign_id);
+    }
+
     await logLeadEvent(db, draft.lead_id, "draft_edited", `Email draft edited${which}`, { actorId: user.id, metadata: draftMeta });
-    return ok({ id, status: "draft" });
+    return ok({ id, status: nextStatus });
   }
 
   if (parsed.data.action === "reopen") {

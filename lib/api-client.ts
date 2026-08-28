@@ -1226,6 +1226,7 @@ export async function fetchCampaigns(token: string): Promise<Campaign[]> {
 
 export async function fetchCampaignSteps(token: string, campaignId: string): Promise<{
   steps: Array<CampaignStepInput & { id: string }>;
+  followup_instruction?: string | null;
 }> {
   return apiFetch(`/api/v1/campaigns/${campaignId}/steps`, {}, token);
 }
@@ -1234,6 +1235,9 @@ export async function saveCampaignSteps(
   token: string,
   campaignId: string,
   steps: CampaignStepInput[],
+  /** Campaign-wide follow-up guidance. Omit to leave whatever is stored
+   *  untouched — the Options tab has no such box and must not blank it. */
+  followupInstruction?: string | null,
 ): Promise<{
   updated: boolean;
   /** False when the change is held back until the follow-ups it makes due have
@@ -1243,7 +1247,13 @@ export async function saveCampaignSteps(
   /** How many follow-ups are being written before the change goes live. */
   preparing?: number;
 }> {
-  return apiFetch(`/api/v1/campaigns/${campaignId}/steps`, { method: "PUT", body: JSON.stringify({ steps }) }, token);
+  return apiFetch(`/api/v1/campaigns/${campaignId}/steps`, {
+    method: "PUT",
+    body: JSON.stringify({
+      steps,
+      ...(followupInstruction !== undefined ? { followup_instruction: followupInstruction } : {}),
+    }),
+  }, token);
 }
 
 export async function patchCampaignConfig(
