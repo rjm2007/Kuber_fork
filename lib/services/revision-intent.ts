@@ -96,7 +96,16 @@ export function revisionRulesFor(intent: RevisionIntent): string {
     "OUTPUT",
     "Reply with a single JSON object and nothing else:",
     '  { "subject": string, "body": string, "product_match": string, "signature"?: string }',
-    "- body is HTML using <p> for paragraphs, exactly as [OLD EMAIL] is.",
+    // PLAIN TEXT, not HTML. The pipeline runs plainToHtml() over this and
+    // escapes anything that looks like markup, so a body containing <p> tags
+    // comes out with &lt;p&gt; visible to the customer — and because the escaped
+    // text no longer starts with "Dear", the greeting fixer prepends a second
+    // one on top. Both happened on the first run of this: 16 of 16 emails had a
+    // duplicated greeting and visible tags.
+    "- body is PLAIN TEXT. Separate paragraphs with a blank line.",
+    "  Do NOT use HTML tags — they are added afterwards and will be shown literally.",
+    "- Open the body with the greeting line, as [OLD EMAIL] does.",
+    "- Do NOT include the sign-off block; it is appended afterwards.",
     "- product_match is the ONE product from the library that fits best, by exact name.",
     '- signature: omit it, or send "unchanged", to keep the current sign-off.',
   ];
@@ -126,8 +135,7 @@ export function revisionRulesFor(intent: RevisionIntent): string {
     "- The greeting, with the recipient's name.",
     "- At least one concrete, correct reference to what the prospect does.",
     "- Every rule in the FACTS section above.",
-    "- The sign-off block exactly as it appears in [OLD EMAIL], unless the",
-    "  instruction is specifically about the sign-off.",
+    "- Every rule in the OUTPUT section below.",
     ...output,
   ].join("\n");
 }
