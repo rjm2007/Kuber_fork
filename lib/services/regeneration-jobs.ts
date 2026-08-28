@@ -92,12 +92,29 @@ export async function resolveRegenerationTargets(
   const { data: rows } = await db
     .from("campaign_leads")
     .select(`
-      id,
+      id, lead_id,
       leads!lead_id!inner(id, assigned_to),
       email_drafts(id, status, step_number)
     `)
     .eq("campaign_id", campaignId)
     .eq("leads.is_deleted", false);
+
+  // FOLLOW-UPS CANNOT COME FROM THE EMBED ABOVE. `email_drafts(...)` on
+  // campaign_leads resolves through campaign_leads.draft_id — a one-to-one key
+  // pointing at the OPENING email — so a step-2 run found no draft for anybody
+  // and reported "no drafts are eligible", which reads as "everything is
+  // already done". Fetched by (campaign, lead) instead, which is how follow-ups
+  // are actually keyed.
+  const followupDrafts = stepNumber > 1
+    ? (await db
+        .from("email_drafts")
+        .select("id, lead_id, status, step_number")
+        .eq("campaign_id", campaignId)
+        .eq("step_number", stepNumber)
+        .not("status", "in", "(rejected,failed)")
+      ).data ?? []
+    : [];
+  const followupByLead = new Map(followupDrafts.map((d) => [d.lead_id as string, d]));
 
   const requested = opts.campaignLeadIds?.length ? new Set(opts.campaignLeadIds) : null;
 
@@ -119,7 +136,9 @@ export async function resolveRegenerationTargets(
     // follow-up has several rows here, and taking [0] meant a step-2 run kept
     // finding the step-1 draft and counting it as "other" — the follow-up
     // Regenerate all found nothing at all.
-    const draft = draftsForStep(row.email_drafts as DraftRef, stepNumber);
+    const draft = stepNumber > 1
+      ? followupByLead.get(row.lead_id as string) ?? null
+      : draftsForStep(row.email_drafts as DraftRef, stepNumber);
     if (!draft) {
       skipped.no_draft++;
       continue;
