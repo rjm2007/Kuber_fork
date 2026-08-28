@@ -584,6 +584,48 @@ export async function listInstantlyCampaignReplies(
   return (data.items ?? []).filter((e) => e.ue_type === 2 && !e.is_auto_reply);
 }
 
+/**
+ * Which sequence step Instantly has ALREADY sent to this lead, as a 0-based
+ * index — or null when it has sent none, or we could not ask.
+ *
+ * This is the only way to get the truth about a send without waiting for a
+ * webhook. Our own record of "sent" comes from Instantly telling us, and
+ * measured across 820 real step-2 sends only 86.7% arrived within a minute —
+ * the rest took up to 15. During that gap our screen says "not sent yet" for an
+ * email the customer is already reading, so a user regenerates it, sees a green
+ * tick, and the change reaches nobody.
+ *
+ * One call, one lead, asked only when someone actually tries to change a
+ * follow-up. Asking for a whole campaign would be a hundred calls; the bulk
+ * path holds sending instead, which removes the race rather than polling it.
+ *
+ * `status_summary.lastStep.stepID` is Instantly's "{sequence}_{stepIndex}_{variant}"
+ * string, the same shape as unibox_emails.step. Only the middle segment matters:
+ * step_order N corresponds to stepIndex N-1, and matching on the index keeps
+ * every A/B variant of that step counted as sent.
+ *
+ * Returns null rather than throwing on any failure. A regeneration must not be
+ * blocked because Instantly was briefly unreachable — the caller treats null as
+ * "unknown" and falls back to our own record.
+ */
+export async function getInstantlyLeadSentStepIndex(
+  instantlyLeadId: string,
+): Promise<number | null> {
+  try {
+    const res = await fetch(`${BASE}/leads/${instantlyLeadId}`, { headers: await authOnly() });
+    if (!res.ok) return null;
+    const data = await res.json().catch(() => null) as {
+      status_summary?: { lastStep?: { stepID?: string | null } | null } | null;
+    } | null;
+    const stepId = data?.status_summary?.lastStep?.stepID;
+    if (!stepId) return null;
+    const index = Number(String(stepId).split("_")[1]);
+    return Number.isFinite(index) ? index : null;
+  } catch {
+    return null;
+  }
+}
+
 // Fetch a lead's interest/status from Instantly by campaign + email.
 // Uses POST /api/v2/leads/list (the GET /leads endpoint does not support filtering).
 export async function getInstantlyLeadStatus(

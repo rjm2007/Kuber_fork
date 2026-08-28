@@ -5,7 +5,7 @@ import {
   Megaphone, Users, Send, MessageSquare, Clock, Gauge, ArrowUp,
   Globe, Calendar, ExternalLink, Loader2, CheckCircle2, RotateCcw, RefreshCw, Check, Save, History, ChevronDown, ArrowLeft,
   List, LayoutGrid, BarChart2, Flame, Snowflake, ThumbsDown, Layers, Paperclip, X, Sparkles, Pencil, Reply, AlertTriangle,
-  Building2, MapPin, ReplyAll, CornerDownRight, UserPlus, ArrowRight,
+  Building2, MapPin, ReplyAll, CornerDownRight, UserPlus, ArrowRight, PauseCircle, PlayCircle,
 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
@@ -48,6 +48,8 @@ import {
   sendReplyDraft,
   generateReplyDraftForThread,
   regenerateFollowUpStepTemplate,
+  holdCampaignSending,
+  resumeCampaign,
   saveCampaignSteps,
   uploadCampaignLeadAttachment,
   removeCampaignLeadAttachment,
@@ -68,6 +70,7 @@ import {
   addThreadParticipantAsLead,
 } from "@/lib/api-client";
 import { RegenerateDraftsModal } from "@/components/app/regenerate-drafts-modal";
+import { HoldSendingModal } from "@/components/app/hold-sending-modal";
 import { ReplaceLeadModal, type ReplaceLeadTarget } from "@/components/app/replace-lead-modal";
 import { DiscussionComment } from "@/components/app/discussion-comment";
 import { CampaignKanban } from "@/components/app/campaign-kanban";
@@ -858,6 +861,24 @@ export function CampaignDetail({
   const [seqLeadFilter, setSeqLeadFilter] = useState<"all" | "active" | "replied" | "bounced" | "template">("all");
   const [seqLeadSearch, setSeqLeadSearch] = useState("");
   const [seqLeadRegenerating, setSeqLeadRegenerating] = useState<string | null>(null);
+  /** Hold sending: campaign-wide, not per lead.
+   *
+   *  Instantly has no per-step pause, so holding stops the whole campaign. That
+   *  is why this lives in the top bar rather than inside the Sequences panes —
+   *  sitting beside a lead list it read as "hold this one lead", which it can
+   *  never be. Verified live: a held campaign kept a queued follow-up 14 minutes
+   *  past its due time, then released it 57s after resuming. Held mail is
+   *  delayed, never lost. */
+  const [holdBusy, setHoldBusy] = useState(false);
+  const [holdConfirmOpen, setHoldConfirmOpen] = useState(false);
+  /** Set when a bulk follow-up regeneration was refused because sending is live
+   *  — drives the "Hold sending, then regenerate" prompt. */
+  const [holdRequiredFor, setHoldRequiredFor] = useState<string | null>(null);
+  /** Mirrors campaign.sendingHeldAt but is updated the moment hold/resume
+   *  returns, so the banner appears without waiting for the parent to refetch
+   *  the campaign list. Re-seeded whenever the prop changes. */
+  const [heldAt, setHeldAt] = useState<string | null>(campaign.sendingHeldAt ?? null);
+  const sendingHeld = !!heldAt;
   /** Editable follow-up waits, for the Steps pane. Held separately from
    *  campaignSteps so typing does not repeatedly re-save. */
   const [seqStepEdits, setSeqStepEdits] = useState<{ delay: number; delay_unit: "minutes" | "hours" | "days"; ai_instruction?: string | null }[]>([]);
@@ -1002,6 +1023,49 @@ export function CampaignDetail({
     setNameDraft(campaign.name);
     setEditingName(false);
   }, [campaign.id, campaign.name]);
+
+  useEffect(() => {
+    setHeldAt(campaign.sendingHeldAt ?? null);
+  }, [campaign.id, campaign.sendingHeldAt]);
+
+  /**
+   * Hold sending on this campaign, or let it go again.
+   *
+   * There is no per-step version of this and there cannot be — Instantly pauses
+   * whole campaigns only. Other steps are days apart, so holding them costs a
+   * delay and nothing else.
+   *
+   * onRefresh() rather than loadData(): the held flag lives on the campaign row
+   * the parent owns, so only a parent refetch makes the banner appear or clear.
+   */
+  async function handleToggleHold(hold: boolean) {
+    setHoldBusy(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+      if (hold) {
+        await holdCampaignSending(session.access_token, campaign.id);
+        toast.success("Sending held — nothing further will go out until you resume");
+      } else {
+        await resumeCampaign(session.access_token, campaign.id);
+        toast.success("Sending resumed");
+      }
+      setHeldAt(hold ? new Date().toISOString() : null);
+      setHoldConfirmOpen(false);
+      // Arrived here from a blocked "regenerate every follow-up": now that
+      // sending is stopped, carry on into the run the user actually asked for
+      // rather than making them find the button again.
+      const pendingStep = holdRequiredFor ? Number(holdRequiredFor.replace("step-", "")) : null;
+      setHoldRequiredFor(null);
+      if (hold && pendingStep && Number.isFinite(pendingStep)) {
+        void openBulkRegenerate(undefined, pendingStep);
+      }
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setHoldBusy(false);
+    }
+  }
 
   async function handleSaveName() {
     const trimmed = nameDraft.trim();
@@ -1514,6 +1578,17 @@ export function CampaignDetail({
    * only their own assigned leads, and that boundary is resolved server-side.
    */
   async function openBulkRegenerate(campaignLeadIds?: string[], stepNumber?: number) {
+    // Rewriting every follow-up takes minutes, and Instantly keeps sending
+    // throughout — each mail that leaves mid-run carries the old text while the
+    // screen reports success. The server refuses this too (HOLD_REQUIRED); this
+    // is the same rule caught early, so the user gets one button that holds and
+    // regenerates instead of an error they have to act on and retry.
+    if ((stepNumber ?? 1) > 1 && !sendingHeld
+        && (campaign.status === "Live" || campaign.status === "Scheduled")) {
+      setHoldRequiredFor(`step-${stepNumber}`);
+      setHoldConfirmOpen(true);
+      return;
+    }
     setBulkRegenOpening(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -1871,7 +1946,13 @@ export function CampaignDetail({
       await loadData();
       toast.success("Follow-up regenerated");
     } catch (e) {
-      toast.error((e as Error).message);
+      const err = e as Error & { code?: string };
+      toast.error(err.message);
+      // Instantly told us this one had already gone out — something our own
+      // record did not know yet, because the webhook that carries it is up to
+      // 15 minutes late 13% of the time. Reload so the row stops offering an
+      // edit that can no longer reach anybody.
+      if (err.code === "ALREADY_SENT") await loadData();
     } finally {
       setSeqLeadRegenerating(null);
     }
@@ -2649,6 +2730,34 @@ export function CampaignDetail({
     ).length,
   };
 
+  /**
+   * What holding sending right now would actually save, counted over every
+   * follow-up step for every lead still in sequence.
+   *
+   * Shown before the hold is confirmed, because "88 still to go" is the number
+   * that decides whether holding is worth it — and after it, because "12 already
+   * went out" is the part nobody can undo and everybody needs told.
+   *
+   * `sent` is our own record, which arrives by webhook and can lag by up to 15
+   * minutes, so it is a floor rather than an exact figure. The modal says so
+   * instead of showing a confident number that quietly grows.
+   */
+  const holdImpact = (() => {
+    let sent = 0, waiting = 0, unwritten = 0;
+    const followUps = campaignSteps.filter((st) => st.step_order > 1);
+    for (const cl of seqLive) {
+      for (const st of followUps) {
+        if (hasReceivedFollowupStep(cl, st.step_order)) { sent++; continue; }
+        const draft = (cl.all_drafts ?? []).find(
+          (d) => d.step_number === st.step_order && d.status !== "rejected" && d.status !== "failed",
+        );
+        if (draft) waiting++;
+        else unwritten++;
+      }
+    }
+    return { sent, waiting, unwritten };
+  })();
+
   /** How this step's follow-ups were written — the accountability number. The
    *  client bought "a personalised email per company"; without this they cannot
    *  tell how many they actually got, and a silent template looks identical to
@@ -2758,6 +2867,34 @@ export function CampaignDetail({
 
   return (
     <div className="flex flex-col h-full bg-background">
+      {/* ── Held banner ──────────────────────────────────────────────────────
+          Above the tabs and outside every tab's body, because a held campaign
+          is otherwise invisible: silence looks exactly like working normally.
+          Someone who holds sending and gets distracted must trip over this. */}
+      {sendingHeld && (
+        <div className="shrink-0 flex items-center gap-2.5 flex-wrap border-b border-amber-500/50 bg-amber-500/10 px-6 py-2">
+          <PauseCircle className="size-4 shrink-0 text-amber-600 dark:text-amber-400" />
+          <p className="text-xs font-medium text-amber-700 dark:text-amber-300">
+            Sending is held
+            {heldAt && (
+              <span className="font-normal">
+                {" "}· since {format(new Date(heldAt), "d MMM, HH:mm")}
+              </span>
+            )}
+            <span className="font-normal"> · nothing goes out until someone resumes</span>
+          </p>
+          <Button
+            size="sm"
+            className="ml-auto gap-1.5"
+            disabled={holdBusy}
+            onClick={() => void handleToggleHold(false)}
+          >
+            {holdBusy ? <Loader2 className="size-3.5 animate-spin" /> : <PlayCircle className="size-3.5" />}
+            Resume sending
+          </Button>
+        </div>
+      )}
+
       {/* ── Top bar ──────────────────────────────────────────────────────── */}
       <div className="shrink-0 bg-background border-b border-border flex items-center justify-between gap-4 px-6 h-14">
         <div className="flex items-center gap-3 min-w-0">
@@ -2819,6 +2956,25 @@ export function CampaignDetail({
                 <Pencil className="size-3.5" />
               </Button>
             </div>
+          )}
+
+          {/* Hold sits with the campaign name, not inside a tab and not beside
+              the lead rail: it stops the whole campaign, so anywhere lead-scoped
+              would read as "hold this one lead", which Instantly cannot do.
+              Hidden once held — the banner above owns Resume from then on. */}
+          {!sendingHeld && (campaign.status === "Live" || campaign.status === "Scheduled") && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={holdBusy}
+              title="Stop Instantly sending anything further on this campaign, including queued follow-ups"
+              onClick={() => setHoldConfirmOpen(true)}
+              className="ml-1 shrink-0 gap-1.5 border-amber-500/60 text-amber-700 hover:bg-amber-500/10 hover:text-amber-800 dark:text-amber-400 dark:hover:text-amber-300"
+            >
+              {holdBusy ? <Loader2 className="size-3.5 animate-spin" /> : <PauseCircle className="size-3.5" />}
+              Hold sending
+            </Button>
           )}
         </div>
 
@@ -5057,6 +5213,18 @@ export function CampaignDetail({
       </div>
 
       {/* ── Shared modals ─────────────────────────────────────────────────── */}
+
+      {holdConfirmOpen && (
+        <HoldSendingModal
+          sent={holdImpact.sent}
+          waiting={holdImpact.waiting}
+          unwritten={holdImpact.unwritten}
+          thenRegenerate={!!holdRequiredFor}
+          submitting={holdBusy}
+          onConfirm={() => void handleToggleHold(true)}
+          onCancel={() => { setHoldConfirmOpen(false); setHoldRequiredFor(null); }}
+        />
+      )}
 
       {bulkRegenPreview && (
         <RegenerateDraftsModal

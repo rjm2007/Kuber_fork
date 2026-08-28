@@ -162,6 +162,8 @@ export interface DbCampaign {
   followup_day_2: number | null;
   followup_day_3: number | null;
   created_by: string;
+  /** Non-null while sending is held. See campaigns.sending_held_at. */
+  sending_held_at?: string | null;
 }
 
 export function mapDbLead(l: DbLead): Lead {
@@ -232,6 +234,7 @@ export function mapDbCampaign(c: DbCampaign): Campaign {
     hot: c.hot_count ?? 0,
     cold: c.cold_count ?? 0,
     createdBy: c.created_by,
+    sendingHeldAt: c.sending_held_at ?? null,
     // Absent (an older payload) means "not allowed" — never assume edit rights
     // the server did not grant.
     canEditSettings: c.can_edit_settings === true,
@@ -755,6 +758,18 @@ export async function pauseCampaign(token: string, id: string): Promise<{ paused
 
 export async function resumeCampaign(token: string, id: string): Promise<{ resumed: number; errors: string[] }> {
   return apiFetch(`/api/v1/campaigns/${id}/resume`, { method: "POST" }, token);
+}
+
+/**
+ * Hold sending — stops Instantly sending anything further on this campaign,
+ * including follow-ups already queued, until someone resumes it.
+ *
+ * Mechanically a pause (Instantly has no per-step pause), but it also records
+ * who held it and when, which is what drives the banner. Releasing goes through
+ * resumeCampaign, which clears the same stamp.
+ */
+export async function holdCampaignSending(token: string, id: string): Promise<{ paused: number; errors: string[] }> {
+  return apiFetch(`/api/v1/campaigns/${id}/hold`, { method: "POST" }, token);
 }
 
 /** Assign a whole campaign to one employee (null returns it to the pool). */

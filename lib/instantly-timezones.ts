@@ -31,13 +31,20 @@ export const INSTANTLY_ALLOWED_TIMEZONES = new Set([
 
 /** Common IANA zones we use that Instantly does not accept verbatim. */
 const INSTANTLY_TIMEZONE_ALIASES: Record<string, string> = {
-  "UTC": "Europe/Belgrade",
-  "Etc/UTC": "Europe/Belgrade",
+  // UTC+0. Belgrade is UTC+1 — an hour out, and it observes DST while UTC does
+  // not, so the error was one hour in winter and two in summer.
+  "UTC": "Africa/Abidjan",
+  "Etc/UTC": "Africa/Abidjan",
   "Africa/Nairobi": "Africa/Addis_Ababa",
   "Africa/Lagos": "Africa/Algiers",
   "Africa/Johannesburg": "Africa/Blantyre",
-  "Europe/London": "Europe/Belgrade",
-  "Europe/Berlin": "Europe/Bucharest",
+  // Isle of Man is a link to Europe/London — same offset, same DST rules, exact.
+  // This was Europe/Belgrade (CET), putting every UK send an hour late: a 10:00
+  // window opened at 09:00 London time. 132 UK leads on the client's campaigns.
+  "Europe/London": "Europe/Isle_of_Man",
+  // Berlin is CET; Bucharest is EET, an hour ahead. Belgrade is the CET member
+  // of Instantly's enum. Affects the German and Dutch buckets (~84 leads).
+  "Europe/Berlin": "Europe/Belgrade",
   "America/New_York": "America/Detroit",
   "America/Los_Angeles": "America/Boise",
   "America/Mexico_City": "America/Bahia_Banderas",

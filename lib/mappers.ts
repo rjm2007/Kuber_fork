@@ -81,6 +81,8 @@ export interface DbCampaign {
   cold_count: number;
   created_by: string;
   assigned_to?: string | null;
+  /** Non-null while sending is held. See campaigns.sending_held_at. */
+  sending_held_at?: string | null;
   /** Server's verdict on whether the caller may edit Options/Sequences (EDGE_CASES.md §2.10). */
   can_edit_settings?: boolean;
 }
@@ -152,6 +154,7 @@ export function mapDbCampaign(c: DbCampaign): Campaign {
     hot: c.hot_count ?? 0,
     cold: c.cold_count ?? 0,
     createdBy: c.created_by,
+    sendingHeldAt: c.sending_held_at ?? null,
     assignedTo: c.assigned_to ?? null,
     // Absent (an older payload) means "not allowed" — never assume edit rights
     // the server did not grant.
