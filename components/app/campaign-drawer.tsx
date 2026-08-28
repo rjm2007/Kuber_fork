@@ -2693,6 +2693,38 @@ export function CampaignDetail({
   const seqActiveLeadRow =
     seqLeadRows.find((r) => r.cl.id === seqLeadId) ?? seqLeadRows[0] ?? null;
 
+  /**
+   * Every follow-up for the selected lead, one row per step.
+   *
+   * The tab used to answer "who is getting step 3?", which meant checking on one
+   * person took a visit to every step in turn. The question people actually
+   * have is "what is this lead getting?" — so the lead is the subject and the
+   * steps are the list, matching how Outbox already works.
+   */
+  const seqLeadTimeline = (() => {
+    const cl = seqActiveLeadRow?.cl;
+    if (!cl) return [];
+    return campaignSteps
+      .filter((st) => st.step_order > 1)
+      .map((st) => {
+        const draft = (cl.all_drafts ?? []).find((d) => d.step_number === st.step_order) ?? null;
+        const sent = hasReceivedFollowupStep(cl, st.step_order);
+        // Cumulative, because a step's delay is the wait AFTER it — the same
+        // arithmetic the writer and Instantly both use.
+        const daysFromOpening = campaignSteps
+          .filter((p) => p.step_order < st.step_order)
+          .reduce((sum, p) => sum + (p.delay ?? 0), 0);
+        const dueAt = cl.first_sent_at
+          ? new Date(new Date(cl.first_sent_at).getTime() + daysFromOpening * 864e5)
+          : null;
+        return {
+          step: st, draft, sent, dueAt, daysFromOpening,
+          written: !!draft?.body && !isInstantlyPlaceholder(draft.body),
+          isTemplate: draft?.source === "template",
+        };
+      });
+  })();
+
   /** How many of this step's follow-ups a bulk regeneration would rewrite.
    *  Written-but-not-yet-sent only: an already-delivered follow-up is history.
    *  A hint for the button label — the server re-resolves the real list under
