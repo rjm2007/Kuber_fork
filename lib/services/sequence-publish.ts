@@ -18,6 +18,18 @@ import { findFollowupsToWrite } from "@/lib/services/followup-schedule";
  * three hundred customers is not.
  */
 
+/** Stop starting new campaigns once this much of the invocation is gone.
+ *
+ *  A campaign fans out to one Instantly sub-campaign per country per sender, so
+ *  publishing nine campaigns meant about a hundred sequential PATCH calls — and
+ *  the whole request died on the 55s function ceiling before a single flag was
+ *  cleared. Measured 28 Aug 2026: 504 FUNCTION_INVOCATION_TIMEOUT. Unbudgeted,
+ *  this would simply never have published in production.
+ *
+ *  Publishing is resumable by design: the flag stays set until a campaign is
+ *  fully patched, so stopping early costs a wait, not correctness. */
+const PUBLISH_BUDGET_MS = 30_000;
+
 export type PublishResult = {
   published: string[];
   waiting: { campaignId: string; missing: number }[];
@@ -63,7 +75,12 @@ export async function publishReadySequences(
     missingByCampaign.set(t.campaignId, (missingByCampaign.get(t.campaignId) ?? 0) + 1);
   }
 
+  const startedAt = Date.now();
   for (const c of pending) {
+    // Out of runway. The remaining campaigns keep their flag and are picked up
+    // by the next pass — a campaign is never left half-patched, because
+    // publishSequenceNow only clears the flag once every sub-campaign took it.
+    if (Date.now() - startedAt > PUBLISH_BUDGET_MS) break;
     const campaignId = c.id as string;
     const missing = missingByCampaign.get(campaignId) ?? 0;
     if (missing > 0) {
