@@ -85,6 +85,22 @@ export function revisionRulesFor(intent: RevisionIntent): string {
     "- No leftover placeholders such as \"(client name)\" or \"[Company]\".",
   ];
 
+  // OpenAI's JSON response_format refuses any request whose messages do not
+  // contain the word "json" — a hard 400, not a warning. The client's base
+  // prompt happened to satisfy that, so dropping it for a whole-email change
+  // silently broke every one of those calls: 11 of 20 failed on the first run.
+  // The output contract belongs here anyway, now that these rules stand on
+  // their own instead of prefixing something else that carried it.
+  const output = [
+    "",
+    "OUTPUT",
+    "Reply with a single JSON object and nothing else:",
+    '  { "subject": string, "body": string, "product_match": string, "signature"?: string }',
+    "- body is HTML using <p> for paragraphs, exactly as [OLD EMAIL] is.",
+    "- product_match is the ONE product from the library that fits best, by exact name.",
+    '- signature: omit it, or send "unchanged", to keep the current sign-off.',
+  ];
+
   if (intent === "local") {
     return [
       ...shared,
@@ -93,6 +109,7 @@ export function revisionRulesFor(intent: RevisionIntent): string {
       "Make the change asked for and nothing else. Every other sentence keeps its",
       "wording, order, length and tone. Asked to remove one paragraph, remove it",
       "and leave the rest identical.",
+    ...output,
     ].join("\n");
   }
 
@@ -111,5 +128,6 @@ export function revisionRulesFor(intent: RevisionIntent): string {
     "- Every rule in the FACTS section above.",
     "- The sign-off block exactly as it appears in [OLD EMAIL], unless the",
     "  instruction is specifically about the sign-off.",
+    ...output,
   ].join("\n");
 }
