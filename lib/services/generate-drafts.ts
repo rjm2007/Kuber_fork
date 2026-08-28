@@ -384,6 +384,26 @@ function ensureProductEmphasis(body: string, productMatch: string | undefined): 
   return body.replace(re, `**${found[0]}**`);
 }
 
+/**
+ * Turn model output back into plain text if it arrived as HTML.
+ *
+ * Everything downstream assumes plain text: plainToHtml escapes what it is
+ * handed, and the greeting fixer looks for a body that starts with "Dear". A
+ * body of "<p>Dear Said,</p>" fails both — the tags are shown literally, and
+ * because the escaped text no longer begins with a greeting a second one is
+ * prepended on top.
+ *
+ * Only converts when real tags are present. A body that merely contains "<"
+ * — "processing under <200 C" — is left exactly as written, since treating
+ * that as markup would silently eat the rest of the sentence.
+ */
+function unescapeModelHtml(body: string): string {
+  // The word boundary matters: without it "<production>" matches the "p"
+  // branch and a perfectly good body gets run through the HTML stripper.
+  const looksLikeHtml = /<\/?(p|br|div|span|strong|em|b|i|u|ul|ol|li|a|h[1-6])\b[^>]*>/i.test(body);
+  return looksLikeHtml ? htmlToPlainText(body) : body;
+}
+
 function buildAuthoritativeInstruction(instruction: string): string {
   if (!instruction.trim()) return "";
   return [
@@ -800,7 +820,13 @@ export async function generateOneDraft(
     // well-known AI-writing tell and compliance with the prompt rule is not
     // guaranteed. In revision mode we keep intentional closings (the footer
     // lives in `signature`, not in these strips).
-    let aiBody = validated.data.body
+    // THE MODEL WAS ASKED FOR PLAIN TEXT. Once in 45 drafts it sends HTML
+    // anyway, and plainToHtml below escapes what it is given — correct for
+    // text, wrong for markup, so the customer receives a literal
+    // "&lt;p&gt;Dear Said,&lt;/p&gt;" in their inbox. Converting markup back to
+    // text first makes the pipeline tolerant of the one case in forty-five
+    // instead of trusting an instruction that is followed 97.8% of the time.
+    let aiBody = unescapeModelHtml(validated.data.body)
       .trim()
       .replace(/\[Your Name\]/gi, "")
       .replace(/\[Your (Title|Position)\]/gi, "")
