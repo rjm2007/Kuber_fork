@@ -12,6 +12,7 @@ import {
 import { logLeadEvent } from "@/lib/services/lead-events";
 import { splitInstruction, customerProducts } from "@/lib/services/revision-input";
 import { PROVIDER_UNAVAILABLE, isProviderOutage } from "@/lib/services/provider-errors";
+import { classifyRevisionIntent, revisionRulesFor } from "@/lib/services/revision-intent";
 
 /** Activity-timeline wording for a finished draft. */
 function draftCreatedDetail(stepNumber: number, status: string): string {
@@ -252,68 +253,6 @@ export type PreviousDraftContent = {
   body: string | null;
 };
 
-// When the user regenerates with an instruction ("remove the last paragraph"),
-// the CURRENT email is the base — not a fresh write from lead data.
-//
-// The blocks are named because the user's one textarea carries two different
-// things (a change and, often, a whole example email) and the model could not
-// tell them apart. It resolved the ambiguity by copying the example's prospect:
-// "Astral Ltd" reached 97 of 100 emails in one campaign. Naming the blocks and
-// stating which one is authoritative for facts is the fix; see splitInstruction.
-const REVISION_SYSTEM_PREFIX = [
-  "REVISION MODE — you are rewriting one existing cold email for one named prospect.",
-  "",
-  "═══ HOW TO READ THE USER MESSAGE ═══",
-  "It contains labelled blocks:",
-  "  [THEIR COMPANY]  who we are writing to. The ONLY source of facts about them.",
-  "  [OLD EMAIL]      the current draft. Your starting point.",
-  "  [EXAMPLE EMAIL]  optional. A FORMAT SAMPLE, not a source of facts.",
-  "  [THE CHANGE]     what the user wants done. Highest priority.",
-  "Two more blocks are below this line: [OUR COMPANY] is the \"ABOUT KUBER POLYPLAST\"",
-  "section, and [OUR PRODUCTS] is the \"PRODUCT REFERENCE LIBRARY\" section.",
-  "",
-  "═══ HARD RULES ═══",
-  "1. The recipient's company is the name in [THEIR COMPANY]. Nothing else is.",
-  "2. [EXAMPLE EMAIL] is formatting only. Any company name, contact name, product or",
-  "   detail inside it belongs to a DIFFERENT prospect. Never copy those. Replace",
-  "   every one with the matching value from [THEIR COMPANY].",
-  "3. Never take a company name from a campaign title, a customer/reference list, a",
-  "   subject line, or your own knowledge.",
-  "4. Placeholders — \"(write about the customer's company)\", \"(client name)\",",
-  "   \"[Company]\", \"Dear Chris\" — must never appear in the output. Replace each with",
-  "   the real value.",
-  "5. If a fact is missing from [THEIR COMPANY], omit the claim. Never guess what they",
-  "   make. Never write \"your website\" as a substitute for their name.",
-  "6. If [THEIR COMPANY] says \"Not available\", write a correct generic email that still",
-  "   addresses them by company name, and pick the closest fit from [OUR PRODUCTS].",
-  "",
-  "═══ WHAT [THE CHANGE] MEANS ═══",
-  "EDIT (\"remove the last paragraph\", \"shorter\", \"add a line about X\"): apply only",
-  "that; preserve all other wording, structure, tone, facts and length. If the",
-  "Instruction is \"remove the last paragraph\", delete it and leave every other",
-  "sentence identical.",
-  "FORMAT ([EXAMPLE EMAIL] is present): reproduce its structure, wording and",
-  "formatting exactly, filling every customer-specific slot from [THEIR COMPANY].",
-  "",
-  "═══ EVERY EMAIL MUST ═══",
-  "- Name the prospect's company at least once, spelled as in [THEIR COMPANY].",
-  "- State what they actually make, grounded in [THEIR COMPANY].",
-  "- Tie it to ONE item from [OUR PRODUCTS]; set product_match to its exact name",
-  "  (or \"unchanged\" if [THE CHANGE] does not ask to change the product).",
-  "- Open with the greeting as the first line of body.",
-  "- Contain no em dashes.",
-  "",
-  "═══ BODY vs SIGNATURE ═══",
-  "\"body\" is the greeting plus the message. It must NOT contain a sign-off, sender",
-  "name, job title, phone, WhatsApp, email address or postal address — those are",
-  "appended separately and would otherwise appear twice. If [EXAMPLE EMAIL] ends",
-  "with such a block, it belongs in \"signature\", not \"body\".",
-  "The signature IS editable: when [THE CHANGE] asks to alter the footer, put the",
-  "result in \"signature\" (empty string to remove it). Otherwise return \"unchanged\".",
-  "",
-  "Return STRICT JSON: {\"subject\": string, \"body\": string, \"signature\": string, \"product_match\": string}.",
-  "",
-].join("\n");
 
 function attachmentNote(name?: string | null): string {
   return name
@@ -410,6 +349,29 @@ function resolveRevisedSignature(returned: string | undefined, original: string)
 // What code still contributes is DATA, not style: who the sender is
 // (ABOUT KUBER POLYPLAST), the product library, the campaign context, and the
 // lead's own details. Everything below is that data plus mechanical assembly.
+
+/**
+ * The user's instruction, restated at the very end of the system prompt.
+ *
+ * It is ALSO in the user message as [THE CHANGE] — deliberately, because the
+ * user block is where the old email sits and the two need to be read together.
+ * Repeating it here is what gives it authority: system text outranks user text,
+ * and text at the end of a long prompt outranks text buried in the middle of
+ * it. Before this, the instruction appeared once, in the weaker position, and
+ * lost to the structural rules every time.
+ */
+function buildAuthoritativeInstruction(instruction: string): string {
+  if (!instruction.trim()) return "";
+  return [
+    "",
+    "",
+    "=== THE USER'S INSTRUCTION ===",
+    "This is what you have been asked to do. It outranks every structural or",
+    "stylistic rule above it. Only the FACTS rules survive it.",
+    "",
+    instruction.trim(),
+  ].join("\n");
+}
 
 function buildCompanyBlock(companyContext: string): string {
   if (!companyContext.trim()) return "";
@@ -691,11 +653,29 @@ export async function generateOneDraft(
     // only supplies the data it is written against (sender, products) and the
     // per-campaign context. Revision mode prefixes hard edit rules so an
     // instruction like "remove the last paragraph" cannot trigger a full rewrite.
+    // REVISION PROMPTS ARE ASSEMBLED DIFFERENTLY FROM WRITING PROMPTS.
+    //
+    // A revision used to be REVISION_PREFIX + the whole base prompt, and the
+    // base prompt is the client's 15,434-character specification of what every
+    // email must contain. So an instruction sitting in the USER message argued
+    // with a SYSTEM prompt demanding six mandatory sections — and system text
+    // outranks user text by design in every current model. "Make it shorter"
+    // trimmed 5%; "make it more formal" changed nothing, because tone was on
+    // the preserve list.
+    //
+    // Now: the rules are written for the kind of change requested, the base
+    // prompt's structural mandates are dropped for a whole-email change (the
+    // old email already carries the house voice, and departing from it IS the
+    // request), and the instruction goes LAST in the system prompt with nothing
+    // after it — highest authority, and past the point where a long context
+    // dilutes what came earlier.
+    const revisionIntent = classifyRevisionIntent(revisionInstruction);
     const systemPrompt = isRevision
-      ? REVISION_SYSTEM_PREFIX
-        + baseSystemPrompt
+      ? revisionRulesFor(revisionIntent)
+        + (revisionIntent === "local" ? baseSystemPrompt : "")
         + buildCompanyBlock(companyContext)
         + buildProductReferenceBlock(products)
+        + buildAuthoritativeInstruction(revisionInstruction)
       : baseSystemPrompt
         + buildCompanyBlock(companyContext)
         + buildProductReferenceBlock(products);
