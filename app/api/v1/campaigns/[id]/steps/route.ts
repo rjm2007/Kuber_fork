@@ -18,10 +18,17 @@ export async function GET(
   try { await assertCampaignAccess(db, user, id); } catch (r) { return r as Response; }
   const { data } = await db
     .from("campaign_steps")
-    .select("id,step_order,delay,delay_unit,subject,body")
+    .select("id,step_order,delay,delay_unit,subject,body,ai_instruction")
     .eq("campaign_id", id)
     .order("step_order");
-  return ok({ steps: data ?? [] });
+
+  const { data: campaign } = await db
+    .from("campaigns").select("followup_instruction").eq("id", id).maybeSingle();
+
+  return ok({
+    steps: data ?? [],
+    followup_instruction: (campaign?.followup_instruction as string | null) ?? null,
+  });
 }
 
 // Sequence steps are campaign-wide templates that propagate live to every
@@ -42,6 +49,15 @@ export async function PUT(
 
   const db = dbForUser(user);
   try { await assertCampaignSettingsAccess(db, user, id); } catch (r) { return r as Response; }
+
+  // Campaign-wide follow-up guidance. Optional: a caller that omits it (the
+  // Options tab, which has no such box) must not blank what someone typed in
+  // the Sequences tab.
+  if (parsed.data.followup_instruction !== undefined) {
+    await db.from("campaigns")
+      .update({ followup_instruction: parsed.data.followup_instruction || null, updated_at: new Date().toISOString() })
+      .eq("id", id);
+  }
 
   // Replace all steps for this campaign
   await db.from("campaign_steps").delete().eq("campaign_id", id);
