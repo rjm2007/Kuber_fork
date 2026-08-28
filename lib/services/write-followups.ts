@@ -8,6 +8,7 @@ import { getFollowupFallbackTemplate, renderFollowupFallback } from "@/lib/servi
 import { classifyFallback } from "@/lib/services/fallback-reason";
 import { resolveStandingFollowupInstruction } from "@/lib/services/followup-instruction";
 import { hasUsableLlmKey } from "@/lib/services/provider-keys";
+import { BatchBudget } from "@/lib/services/batch-budget";
 
 /**
  * Writes the personalised follow-ups that are due, then pushes each one to
@@ -74,8 +75,11 @@ export async function writeDueFollowups(
     .in("id", campaignIds);
   const campaignById = new Map((campaigns ?? []).map((c) => [c.id as string, c]));
 
+  const budget = new BatchBudget();
   for (const target of targets) {
-    if (Date.now() - startedAt > TIME_BUDGET_MS) { result.ranOutOfTime = true; break; }
+    // Same measured budget the draft generator uses: a flat 40s was tuned to
+    // the average call and stranded the slow ones mid-flight.
+    if (!budget.hasRoomForAnother()) { result.ranOutOfTime = true; break; }
 
     const campaign = campaignById.get(target.campaignId);
     if (!campaign) { result.failed++; continue; }
@@ -86,7 +90,7 @@ export async function writeDueFollowups(
     const cdb = createScopedClient(campaign.company_id as string);
 
     try {
-      const written = await writeOne(cdb, target, campaign);
+      const written = await budget.run(() => writeOne(cdb, target, campaign));
       if (!written) { result.failed++; continue; }
       if (written.templated) result.templated++; else result.written++;
       if (written.pushed) result.pushed++;
