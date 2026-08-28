@@ -315,13 +315,19 @@ export async function upgradeTemplateFollowups(
     .eq("direction", "sent_campaign")
     .in("campaign_id", campaignIds)
     .not("instantly_lead_id", "is", null)
-    .limit(50_000);
+    // Paged for the same reason findFollowupsToWrite pages: Supabase clamps a
+    // response to 1000 rows server-side however large the .limit() is, and a
+    // short read here means upgrading a follow-up the customer already has.
+    .range(0, 999);
 
+  // Only the leads this batch is actually about. Fetching every lead in the
+  // campaign would sit right under Supabase's 1000-row ceiling and start losing
+  // rows silently as the client grows — and a missing row here means upgrading a
+  // follow-up the customer already received.
   const { data: cls } = await db
     .from("campaign_leads")
     .select("id, campaign_id, lead_id, instantly_lead_id")
-    .in("campaign_id", campaignIds)
-    .limit(5000);
+    .in("lead_id", [...new Set(templates.map((t) => t.lead_id as string))]);
 
   const clByKey = new Map(
     (cls ?? []).map((c) => [`${c.campaign_id}:${c.lead_id}`, c]),

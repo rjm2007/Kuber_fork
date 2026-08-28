@@ -113,32 +113,36 @@ export function isDueForWriting(dueAt: Date | null, now = new Date()): boolean {
   return dueAt <= horizon;
 }
 
-/**
- * Row cap for the two "what is already done" lookups below.
- *
- * PostgREST returns at most 1000 rows when no limit is given, and Supabase does
- * not raise that default. Both lookups exist to STOP work being redone, so a
- * silent truncation does not lose data — it spends money and sends wrong email.
- * That is exactly what happened: on 27 Aug 2026 the delivered-steps lookup had
- * 1788 rows to read, silently got 1000, and the sweep rewrote 202 follow-ups
- * Instantly had already sent (about 680 across three days).
- *
- * Paired with a hard failure when a lookup comes back full — see assertComplete.
- * Guessing which 1000 rows PostgREST chose is not a thing worth doing.
- */
-const LOOKUP_LIMIT = 50_000;
+/** PostgREST page size. Supabase caps a response at 1000 rows SERVER-side and a
+ *  bigger `.limit()` does not raise it — it is silently clamped. Paging is the
+ *  only way to read past it. */
+const PAGE_SIZE = 1000;
 
-/** Refuses to continue when a "what is already done" lookup came back exactly
- *  full, because past that point we cannot tell done from not-done. Throwing
- *  costs a skipped sweep, which the next run repeats; guessing costs real
- *  emails to real customers. */
-function assertComplete(rows: unknown[] | null, what: string) {
-  if ((rows?.length ?? 0) >= LOOKUP_LIMIT) {
-    throw new Error(
-      `findFollowupsToWrite: the ${what} lookup returned ${LOOKUP_LIMIT} rows, so it is probably `
-      + `truncated. Refusing to write follow-ups from an incomplete picture — raise LOOKUP_LIMIT.`,
-    );
+/**
+ * Read every row of a query, a page at a time.
+ *
+ * The two lookups below exist to STOP work being redone, so a short read does
+ * not lose data — it spends money and sends wrong email. This has now bitten
+ * twice. First with no limit at all: 1788 delivered-step rows came back as
+ * 1000 and the sweep rewrote 202 follow-ups Instantly had already sent. Then
+ * again with `.limit(50_000)`, which looked like a fix and was not, because the
+ * server clamps it back to 1000 — the guard was still blind to the same rows,
+ * and 73 leads were retried against drafts they already had.
+ *
+ * Pagination rather than a bigger number, because there is no number that
+ * works: the ceiling belongs to the server, not the caller.
+ */
+async function readAll<T>(
+  build: (from: number, to: number) => PromiseLike<{ data: T[] | null }>,
+): Promise<T[]> {
+  const out: T[] = [];
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data } = await build(from, from + PAGE_SIZE - 1);
+    if (!data?.length) break;
+    out.push(...data);
+    if (data.length < PAGE_SIZE) break;
   }
+  return out;
 }
 
 export type FollowupTarget = {
@@ -214,15 +218,18 @@ export async function findFollowupsToWrite(
 
   // Only leads whose opening email has actually left. `first_sent_at` is written
   // by the email_sent webhook, so its presence IS the proof that step 1 landed.
-  const { data: leads } = await db
+  const leads = await readAll<{
+    id: string; campaign_id: string; lead_id: string;
+    crm_status: string; first_sent_at: string | null; instantly_lead_id: string | null;
+  }>((from, to) => db
     .from("campaign_leads")
     .select("id, campaign_id, lead_id, crm_status, first_sent_at, instantly_lead_id")
     .in("campaign_id", [...stepsByCampaign.keys()])
     .not("first_sent_at", "is", null)
     .not("crm_status", "in", `(${DEAD_STATUSES.join(",")})`)
-    .limit(5000);
+    .range(from, to));
 
-  if (!leads?.length) return [];
+  if (leads.length === 0) return [];
 
   // Which (lead, step) pairs already have a LIVE draft. One query rather than
   // one per lead: this sweep runs across every campaign and would otherwise be
@@ -235,7 +242,8 @@ export async function findFollowupsToWrite(
   // the person who bounced by name — see the replace route). In the second case
   // nothing live is left, and the lead must become writable again rather than
   // keeping a follow-up addressed to someone else.
-  const { data: existing } = await db
+  const existing = await readAll<{ lead_id: string; campaign_id: string; step_number: number; status: string }>(
+    (from, to) => db
     .from("email_drafts")
     .select("lead_id, campaign_id, step_number, status")
     .in("campaign_id", [...stepsByCampaign.keys()])
@@ -245,12 +253,11 @@ export async function findFollowupsToWrite(
     // that count is what stops a hopeless lead being retried forever.
     // 'rejected' is a superseded version and is neither.
     .neq("status", "rejected")
-    .limit(LOOKUP_LIMIT);
-  assertComplete(existing, "written-drafts");
+    .range(from, to));
 
   const written = new Set<string>();
   const attemptsByKey = new Map<string, number>();
-  for (const d of existing ?? []) {
+  for (const d of existing) {
     const key = `${d.campaign_id}:${d.lead_id}:${d.step_number}`;
     // A 'failed' row is not a written follow-up — it is evidence of an attempt.
     // Counting them here is what lets the writer stop after a fixed number
@@ -270,17 +277,17 @@ export async function findFollowupsToWrite(
   // `step` is Instantly's "{sequence}_{stepIndex}_{variant}" and stepIndex is
   // 0-based, so step_order N is stepIndex N-1. Matching on the index alone
   // keeps every A/B variant of that step counted as sent.
-  const { data: delivered } = await db
+  const delivered = await readAll<{ instantly_lead_id: string; step: string | null }>(
+    (from, to) => db
     .from("unibox_emails")
     .select("instantly_lead_id, step")
     .eq("direction", "sent_campaign")
     .in("campaign_id", [...stepsByCampaign.keys()])
     .not("instantly_lead_id", "is", null)
-    .limit(LOOKUP_LIMIT);
-  assertComplete(delivered, "delivered-steps");
+    .range(from, to));
 
   const sentSteps = new Set<string>();
-  for (const row of delivered ?? []) {
+  for (const row of delivered) {
     const index = Number((row.step as string | null)?.split("_")[1]);
     if (Number.isFinite(index)) sentSteps.add(`${row.instantly_lead_id}:${index + 1}`);
   }
