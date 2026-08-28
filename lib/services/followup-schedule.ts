@@ -25,6 +25,17 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  *  of lead time is the cheap middle. */
 export const FOLLOWUP_LEAD_TIME_DAYS = 1;
 
+/** Generation attempts before the UPGRADE pass gives up on a template draft.
+ *
+ *  Lives here rather than in write-followups.ts because the sweep is what
+ *  enforces it, and write-followups already imports from this module — putting
+ *  it the other way round made the two files import each other, which compiles
+ *  but leaves the constant undefined at runtime depending on load order.
+ *
+ *  Without a ceiling, a lead whose data can never produce an email is retried
+ *  every ten minutes forever. */
+export const MAX_TOTAL_ATTEMPTS = 4;
+
 /** Statuses that mean the conversation is over — no follow-up should be written
  *  or sent. Instantly also stops the sequence itself on reply, so this mostly
  *  saves us the tokens rather than preventing a send.
@@ -137,6 +148,9 @@ export type FollowupTarget = {
   stepOrder: number;
   dueAt: string;
   instantlyLeadId: string | null;
+  /** Failed attempts already on record for this (campaign, lead, step). Drives
+   *  the retry cap — see ATTEMPTS_BEFORE_TEMPLATE in write-followups.ts. */
+  priorAttempts: number;
 };
 
 /**
@@ -223,21 +237,27 @@ export async function findFollowupsToWrite(
   // keeping a follow-up addressed to someone else.
   const { data: existing } = await db
     .from("email_drafts")
-    .select("lead_id, campaign_id, step_number")
+    .select("lead_id, campaign_id, step_number, status")
     .in("campaign_id", [...stepsByCampaign.keys()])
     .gt("step_number", 1)
-    // 'rejected' is a superseded version and 'failed' is an attempt that
-    // produced nothing — neither is a written follow-up, so neither may block a
-    // retry. Excluding only 'rejected' meant one bad LLM call stranded that
-    // lead's follow-up permanently: the row blocked every later sweep, and the
-    // customer received the generic fallback with nothing on screen to show why.
-    .not("status", "in", "(rejected,failed)")
+    // 'failed' rows come back deliberately: they do not block (an attempt that
+    // produced nothing is not a written follow-up) but they ARE counted, and
+    // that count is what stops a hopeless lead being retried forever.
+    // 'rejected' is a superseded version and is neither.
+    .neq("status", "rejected")
     .limit(LOOKUP_LIMIT);
   assertComplete(existing, "written-drafts");
 
-  const written = new Set(
-    (existing ?? []).map((d) => `${d.campaign_id}:${d.lead_id}:${d.step_number}`),
-  );
+  const written = new Set<string>();
+  const attemptsByKey = new Map<string, number>();
+  for (const d of existing ?? []) {
+    const key = `${d.campaign_id}:${d.lead_id}:${d.step_number}`;
+    // A 'failed' row is not a written follow-up — it is evidence of an attempt.
+    // Counting them here is what lets the writer stop after a fixed number
+    // instead of retrying a hopeless lead every ten minutes forever.
+    if (d.status === "failed") attemptsByKey.set(key, (attemptsByKey.get(key) ?? 0) + 1);
+    else written.add(key);
+  }
 
   // Steps Instantly has ALREADY delivered. Writing one of those spends an LLM
   // call on an email the customer received days ago, and then pushes the new
@@ -272,6 +292,15 @@ export async function findFollowupsToWrite(
       if (step.step_order <= 1) continue; // step 1 is the opening email, not a follow-up
       const key = `${cl.campaign_id}:${cl.lead_id}:${step.step_order}`;
       if (written.has(key)) continue;
+
+      // Attempts are carried, not used to skip. A lead that has failed many
+      // times still needs the template safety net put in place — skipping it
+      // here would leave the lead with NO draft at all, which is the worst
+      // outcome: Instantly renders its own unlabelled fallback and nothing in
+      // our database records that the customer got boilerplate. The cap governs
+      // how many times we call the MODEL (see ATTEMPTS_BEFORE_TEMPLATE), not
+      // whether the lead deserves a safety net.
+      const priorAttempts = attemptsByKey.get(key) ?? 0;
       // Already delivered — too late to personalise, and the next step is what
       // matters now, so keep scanning rather than breaking out.
       if (sentSteps.has(`${cl.instantly_lead_id}:${step.step_order}`)) continue;
@@ -286,6 +315,7 @@ export async function findFollowupsToWrite(
         stepOrder: step.step_order,
         dueAt: dueAt!.toISOString(),
         instantlyLeadId: (cl.instantly_lead_id as string | null) ?? null,
+        priorAttempts,
       });
       // Only the earliest unwritten step per lead. Writing step 3 before step 2
       // exists would produce a follow-up referring to a message never sent.

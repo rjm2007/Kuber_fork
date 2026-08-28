@@ -3,7 +3,7 @@ import { internalAppBaseUrl } from "@/lib/internal-url";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { ok, fail } from "@/lib/api-response";
 import { safeSecretEqual } from "@/lib/auth/secret";
-import { writeDueFollowups } from "@/lib/services/write-followups";
+import { writeDueFollowups, upgradeTemplateFollowups } from "@/lib/services/write-followups";
 
 export const maxDuration = 55;
 
@@ -34,13 +34,24 @@ export async function POST(req: NextRequest) {
   const guard = guardUnscoped(body.company_id);
   if (guard) return guard;
 
-  const result = await writeDueFollowups(createAdminClient(), {
+  const db = createAdminClient();
+
+  // Upgrade first, write second. A template placeholder is already safe to
+  // send, so replacing it before the due date is the more urgent job — and
+  // running it first means a credit top-up visibly repairs the backlog rather
+  // than being queued behind brand-new work.
+  const upgraded = await upgradeTemplateFollowups(db, {
+    limit: body.limit,
+    companyId: body.company_id,
+  });
+
+  const result = await writeDueFollowups(db, {
     limit: body.limit,
     companyId: body.company_id,
   });
 
   chainIfMoreWork(req, result, body.company_id, body.limit);
-  return ok(result);
+  return ok({ ...result, upgraded });
 }
 
 /**
@@ -111,9 +122,11 @@ export async function GET(req: NextRequest) {
   const guard = guardUnscoped(companyId);
   if (guard) return guard;
 
-  const result = await writeDueFollowups(createAdminClient(), { companyId });
+  const db = createAdminClient();
+  const upgraded = await upgradeTemplateFollowups(db, { companyId });
+  const result = await writeDueFollowups(db, { companyId });
   chainIfMoreWork(req, result, companyId, undefined);
-  return ok(result);
+  return ok({ ...result, upgraded });
 }
 
 /**
