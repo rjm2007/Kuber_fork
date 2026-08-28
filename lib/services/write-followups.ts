@@ -2,7 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createScopedClient } from "@/lib/supabase/scoped";
 import { findFollowupsToWrite, MAX_TOTAL_ATTEMPTS, type FollowupTarget } from "@/lib/services/followup-schedule";
-import { generateOneDraft } from "@/lib/services/generate-drafts";
+import { generateOneDraft, logLlmRecovered } from "@/lib/services/generate-drafts";
 import { syncApprovedDraftToInstantly } from "@/lib/services/draft-sync";
 import { getFollowupFallbackTemplate, renderFollowupFallback } from "@/lib/services/settings";
 import { classifyFallback } from "@/lib/services/fallback-reason";
@@ -93,6 +93,13 @@ export async function writeDueFollowups(
     } catch {
       result.failed++;
     }
+  }
+
+  // Drafting worked, so clear any stale "no LLM credits" banner. Without this a
+  // topped-up key left the alarm on until the six-hour window aged out.
+  if (result.written > 0) {
+    const companyId = campaigns?.[0]?.company_id as string | undefined;
+    await logLlmRecovered(db, companyId ?? null);
   }
 
   return result;
