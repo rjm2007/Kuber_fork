@@ -174,10 +174,17 @@ export function EditCampaignForm({
       const { steps: currentSteps } = await fetchCampaignSteps(session.access_token, campaign.id);
       const rebuilt = rebuildStepsWithFollowupWaits(currentSteps, followupSteps);
 
-      await saveCampaignSteps(session.access_token, campaign.id, rebuilt);
+      const stepsRes = await saveCampaignSteps(session.access_token, campaign.id, rebuilt);
 
       if (result.sync_errors.length > 0) {
         toast.warning("Saved, but Instantly sync had errors: " + result.sync_errors[0]);
+      } else if (stepsRes.published === false) {
+        // The timing change is held until its follow-ups exist — see
+        // lib/services/sequence-publish.ts. Told explicitly, because otherwise
+        // the user reasonably assumes the new schedule is already running.
+        toast.success(
+          `Saved. Writing ${stepsRes.preparing} follow-up${stepsRes.preparing === 1 ? "" : "s"} before the new timing goes live.`,
+        );
       } else {
         toast.success("Campaign updated");
       }

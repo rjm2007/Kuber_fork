@@ -1234,7 +1234,15 @@ export async function saveCampaignSteps(
   token: string,
   campaignId: string,
   steps: CampaignStepInput[],
-): Promise<{ updated: boolean }> {
+): Promise<{
+  updated: boolean;
+  /** False when the change is held back until the follow-ups it makes due have
+   *  been written — Instantly keeps the OLD schedule until then, so it cannot
+   *  send boilerplate into the gap. */
+  published?: boolean;
+  /** How many follow-ups are being written before the change goes live. */
+  preparing?: number;
+}> {
   return apiFetch(`/api/v1/campaigns/${campaignId}/steps`, { method: "PUT", body: JSON.stringify({ steps }) }, token);
 }
 

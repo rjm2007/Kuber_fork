@@ -1794,9 +1794,16 @@ export function CampaignDetail({
           ? { ...s, subject, body: bodyToStore }
           : s,
       );
-      await saveCampaignSteps(session.access_token, campaign.id, updatedSteps);
+      const res = await saveCampaignSteps(session.access_token, campaign.id, updatedSteps);
       setCampaignSteps(updatedSteps);
-      toast.success("Saved");
+      // Say plainly that Instantly has NOT been told yet. Silence here is what
+      // made the old behaviour dangerous: the user believed the new timing was
+      // live and it was, but with boilerplate attached.
+      toast.success(
+        res.published === false
+          ? `Saved. Writing ${res.preparing} follow-up${res.preparing === 1 ? "" : "s"} before this goes live — Instantly keeps the current schedule until then.`
+          : "Saved",
+      );
     } catch (e) {
       toast.error("Failed to save: " + (e as Error).message);
     } finally {

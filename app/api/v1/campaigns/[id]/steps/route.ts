@@ -1,8 +1,9 @@
-import { NextRequest } from "next/server";
+import { NextRequest, after } from "next/server";
 import { requireAuth } from "@/lib/auth/api-auth";
 import { ok, fail } from "@/lib/api-response";
 import { CampaignStepsSchema } from "@/lib/validators/campaigns";
-import { patchInstantlySequences, type InstantlyStep } from "@/lib/services/instantly";
+import { countMissingText, publishSequenceNow } from "@/lib/services/sequence-publish";
+import { internalAppBaseUrl } from "@/lib/internal-url";
 import { assertCampaignAccess, assertCampaignSettingsAccess } from "@/lib/auth/scope";
 import { dbForUser } from "@/lib/supabase/scoped";
 
@@ -53,28 +54,47 @@ export async function PUT(
   );
   if (error) return fail(500, "INTERNAL", error.message);
 
-  // Propagate to any Instantly sub-campaigns already created
-  const { data: subs } = await db
-    .from("instantly_campaigns")
-    .select("instantly_campaign_id")
-    .eq("campaign_id", id)
-    .not("instantly_campaign_id", "is", null);
+  // PREPARE, THEN PUBLISH.
+  //
+  // Instantly acts on a schedule change within seconds; writing the personalised
+  // follow-ups it makes due takes about an hour for a few hundred leads. Patching
+  // here — which is what this route used to do — meant Instantly found a pile of
+  // newly overdue steps and sent its generic fallback to every one of them before
+  // a single real email existed. The user got the timing they asked for and the
+  // emails they did not.
+  //
+  // So the change is saved locally, Instantly is left on the OLD schedule (it
+  // keeps doing exactly what it was doing, which is the safe place to be), and
+  // the publish happens after the text lands. Late is recoverable; boilerplate to
+  // three hundred customers is not.
+  const missing = await countMissingText(db, id);
 
-  const steps: InstantlyStep[] = parsed.data.steps.map((s) => ({
-    subject: s.subject,
-    body: s.body,
-    delay: s.delay,
-    delayUnit: s.delay_unit,
-  }));
-
-  for (const sub of subs ?? []) {
-    if (sub.instantly_campaign_id) {
-      await patchInstantlySequences(sub.instantly_campaign_id, steps).catch((e) => {
-        console.error("patchInstantlySequences failed:", e);
-        // don't fail the whole request if one sub-campaign patch fails
-      });
-    }
+  if (missing === 0) {
+    // Nothing this change makes due is unwritten, so there is no race to lose:
+    // publish immediately and keep the old instant-feedback behaviour.
+    await publishSequenceNow(db, id);
+    return ok({ updated: true, published: true, preparing: 0 });
   }
 
-  return ok({ updated: true });
+  await db.from("campaigns").update({
+    sequence_publish_pending: true,
+    sequence_publish_requested_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  }).eq("id", id);
+
+  // Start writing now rather than waiting for the next scheduled sweep — the
+  // user is standing there having just asked for this.
+  if (process.env.INTERNAL_SECRET) {
+    const baseUrl = internalAppBaseUrl(req);
+    const secret = process.env.INTERNAL_SECRET;
+    after(() =>
+      fetch(`${baseUrl}/api/internal/write-followups`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-internal-secret": secret },
+        body: JSON.stringify({ limit: 25 }),
+      }).catch(() => {}),
+    );
+  }
+
+  return ok({ updated: true, published: false, preparing: missing });
 }
