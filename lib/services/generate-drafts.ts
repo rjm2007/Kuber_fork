@@ -682,14 +682,23 @@ export async function generateOneDraft(
     // a 235-character follow-up carried a 90-character signature. Step 1 keeps it.
     const signatureForStep = stepNumber > 1 ? "" : signatureBlock;
 
-    const effectiveSignature = isRevision
-      ? resolveRevisedSignature(
-          "signature" in validated.data && typeof validated.data.signature === "string"
-            ? validated.data.signature
-            : undefined,
-          signatureForStep,
-        )
-      : signatureForStep;
+    // A REVISION lets the model hand back its own signature, which is right for
+    // an opening email — the user may have asked to change the sign-off. It is
+    // never right for a follow-up: the original signature is already visible in
+    // the quoted message directly above, and the model happily invents one when
+    // asked to revise. Seen live 28 Aug 2026 — regenerating a 240-character
+    // follow-up returned it unchanged except for a six-line signature bolted on
+    // the end, which is the whole email again in footer.
+    const effectiveSignature = stepNumber > 1
+      ? ""
+      : isRevision
+        ? resolveRevisedSignature(
+            "signature" in validated.data && typeof validated.data.signature === "string"
+              ? validated.data.signature
+              : undefined,
+            signatureForStep,
+          )
+        : signatureForStep;
 
     // Safety nets only — these clean up output, they never impose structure or
     // length, so a custom instruction can still shape the email freely. The

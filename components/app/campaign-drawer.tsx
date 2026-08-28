@@ -31,6 +31,7 @@ import {
   approveDraft,
   bulkApproveDrafts,
   editDraft,
+  saveFollowUpDraft,
   regenerateDraft,
   sendApprovedLeads,
   fetchDraftHistory,
@@ -849,7 +850,12 @@ export function CampaignDetail({
   // Opens on ALL, not on a filtered subset. Defaulting to "due" showed 86 of
   // 100 leads and made the other 14 — the replied and the bounced — look like
   // they had vanished from the campaign. They stay in the list, labelled.
-  const [seqLeadFilter, setSeqLeadFilter] = useState<"due" | "sent" | "unwritten" | "all">("all");
+  // LEAD-level, not step-level. The old filters ("to be sent", "not written")
+  // described one step, which made sense when the tab showed one step at a time.
+  // The pane now shows every follow-up for the selected person, so a filter
+  // about a single step answered a question nobody was asking — and read as
+  // nonsense next to it ("To be sent (0)" beside a lead with three still to go).
+  const [seqLeadFilter, setSeqLeadFilter] = useState<"all" | "active" | "replied" | "bounced" | "template">("all");
   const [seqLeadSearch, setSeqLeadSearch] = useState("");
   const [seqLeadRegenerating, setSeqLeadRegenerating] = useState<string | null>(null);
   /** Editable follow-up waits, for the Steps pane. Held separately from
@@ -1798,12 +1804,16 @@ export function CampaignDetail({
    * edit would be visible here and the customer would still receive the text
    * that was just replaced.
    */
-  async function handleSaveFollowupEdit(draftId: string) {
+  async function handleSaveFollowupEdit(campaignLeadId: string, stepNumber: number) {
     setSeqEditSaving(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) return;
-      await editDraft(session.access_token, draftId, "", seqEditBody);
+      // saveFollowUpDraft, not editDraft. The draft edit action validates
+      // subject as min(1) because an opening email must have one — a follow-up
+      // threads as a reply and has none, so that path rejected every save with
+      // "subject — Invalid input". This route exists for exactly this case.
+      await saveFollowUpDraft(session.access_token, campaign.id, campaignLeadId, stepNumber, "", seqEditBody);
       setSeqEditingDraftId(null);
       await loadData();
       toast.success("Follow-up updated");
@@ -2598,11 +2608,12 @@ export function CampaignDetail({
       };
     })
     .filter((r) => {
-      if (seqLeadFilter === "sent") return r.sent;
-      if (seqLeadFilter === "due") return r.due && !r.sent;
-      // "Not written" means work still to do, so a finished lead is not one:
-      // nobody will ever write a follow-up for someone who already replied.
-      if (seqLeadFilter === "unwritten") return !r.written && !r.sent && !r.finished;
+      if (seqLeadFilter === "active")   return !r.finished;
+      if (seqLeadFilter === "replied")  return r.finished === "replied";
+      if (seqLeadFilter === "bounced")  return r.finished === "bounced";
+      // The one filter worth having that is not just a status: which people
+      // actually received boilerplate. That is the list someone would chase.
+      if (seqLeadFilter === "template") return r.anyTemplateSent;
       return true;
     })
     .filter((r) => {
@@ -2612,12 +2623,9 @@ export function CampaignDetail({
       return `${lead?.first_name ?? ""} ${lead?.last_name ?? ""} ${lead?.company_name ?? ""}`
         .toLowerCase().includes(q);
     })
-    .sort((a, b) => {
-      if (seqLeadFilter === "sent") {
-        return (b.draft?.created_at ?? "").localeCompare(a.draft?.created_at ?? "");
-      }
-      return (a.cl.first_sent_at ?? "￿").localeCompare(b.cl.first_sent_at ?? "￿");
-    });
+    // Oldest send first, so the leads furthest through the sequence — the ones
+    // with something to look at — are at the top. Never-sent leads sort last.
+    .sort((a, b) => (a.cl.first_sent_at ?? "￿").localeCompare(b.cl.first_sent_at ?? "￿"));
 
   // Counts describe WORK, so a lead whose sequence has ended is excluded from
   // every bucket except `all` and its own `finished` tally. Counting them made
@@ -2629,17 +2637,16 @@ export function CampaignDetail({
     (cl) => cl.crm_status !== "replied" && cl.crm_status !== "failed",
   );
   const seqCounts = {
-    due: seqLive.filter((cl) =>
-      hasUpcomingFollowupStep(cl, seqStepOrder, campaignSteps)
-      && !hasReceivedFollowupStep(cl, seqStepOrder)).length,
-    sent: campaignLeads.filter((cl) => hasReceivedFollowupStep(cl, seqStepOrder)).length,
-    unwritten: seqLive.filter((cl) =>
-      !(cl.all_drafts ?? []).find((d) => d.step_number === seqStepOrder)?.body
-      && !hasReceivedFollowupStep(cl, seqStepOrder)).length,
+    all: campaignLeads.length,
+    active: seqLive.length,
     finished: seqFinished.length,
     replied: campaignLeads.filter((cl) => cl.crm_status === "replied").length,
     bounced: campaignLeads.filter((cl) => cl.crm_status === "failed").length,
-    all: campaignLeads.length,
+    template: campaignLeads.filter((cl) =>
+      campaignSteps.some((st) => st.step_order > 1
+        && hasReceivedFollowupStep(cl, st.step_order)
+        && (cl.all_drafts ?? []).find((d) => d.step_number === st.step_order)?.source === "template"),
+    ).length,
   };
 
   /** How this step's follow-ups were written — the accountability number. The
@@ -4376,10 +4383,13 @@ export function CampaignDetail({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="due" className="text-[11px]">To be sent ({seqCounts.due})</SelectItem>
-                    <SelectItem value="sent" className="text-[11px]">Already sent ({seqCounts.sent})</SelectItem>
-                    <SelectItem value="unwritten" className="text-[11px]">Not written ({seqCounts.unwritten})</SelectItem>
-                    <SelectItem value="all" className="text-[11px]">All ({seqCounts.all})</SelectItem>
+                    <SelectItem value="all" className="text-[11px]">All leads ({seqCounts.all})</SelectItem>
+                    <SelectItem value="active" className="text-[11px]">Still in sequence ({seqCounts.active})</SelectItem>
+                    <SelectItem value="replied" className="text-[11px]">Replied ({seqCounts.replied})</SelectItem>
+                    <SelectItem value="bounced" className="text-[11px]">Bounced ({seqCounts.bounced})</SelectItem>
+                    {seqCounts.template > 0 && (
+                      <SelectItem value="template" className="text-[11px]">Got a template ({seqCounts.template})</SelectItem>
+                    )}
                   </SelectContent>
                 </Select>
               </div>
@@ -4421,7 +4431,7 @@ export function CampaignDetail({
             <div className="flex-1 overflow-y-auto space-y-1.5 p-2">
               {seqLeadRows.length === 0 ? (
                 <p className="p-6 text-sm text-muted-foreground text-center">
-                  {seqLeadFilter === "due" ? "No follow-ups waiting to go out." : "No leads match this filter."}
+                  No leads match this filter.
                 </p>
               ) : seqLeadRows.map(({ cl, finished, sentCount, totalSteps, anyTemplateSent }) => {
                 const lead = cl.leads;
@@ -4583,7 +4593,7 @@ export function CampaignDetail({
                                   type="button"
                                   size="sm"
                                   disabled={seqEditSaving}
-                                  onClick={() => void handleSaveFollowupEdit(row.draft!.id)}
+                                  onClick={() => void handleSaveFollowupEdit(seqActiveLeadRow.cl.id, row.step.step_order)}
                                   className="h-7 gap-1.5 px-3 text-xs [&_svg]:size-3"
                                 >
                                   {seqEditSaving ? <Loader2 className="animate-spin" /> : <Save />}
@@ -4887,9 +4897,13 @@ export function CampaignDetail({
                           different thing from editing the timing above it, and
                           the natural next move after changing the instructions. */}
                       {campaignSteps.filter((st) => st.step_order > 1).map((st) => {
-                        const n = seqLeadRows.filter((r) => {
-                          const d = (r.cl.all_drafts ?? []).find((x) => x.step_number === st.step_order);
-                          return !!d?.body && !hasReceivedFollowupStep(r.cl, st.step_order) && !r.finished;
+                        // Counted from EVERY lead in the campaign, not from the
+                        // filtered rail. The button regenerates campaign-wide, so
+                        // a count that moved with the dropdown promised one thing
+                        // and did another.
+                        const n = seqLive.filter((cl) => {
+                          const d = (cl.all_drafts ?? []).find((x) => x.step_number === st.step_order);
+                          return !!d?.body && !hasReceivedFollowupStep(cl, st.step_order);
                         }).length;
                         if (n === 0) return null;
                         return (
@@ -4899,12 +4913,12 @@ export function CampaignDetail({
                             variant="outline"
                             size="sm"
                             disabled={bulkRegenOpening}
-                            title="Rewrite every lead's follow-up for this step. Already-sent ones are left alone."
+                            title={`Rewrites this step for the ${n} lead${n === 1 ? "" : "s"} whose follow-up is written but not yet sent. Sent ones are never touched.`}
                             onClick={() => void openBulkRegenerate(undefined, st.step_order)}
                             className="h-7 gap-1.5 px-3 text-xs text-muted-foreground hover:text-foreground [&_svg]:size-3"
                           >
                             {bulkRegenOpening ? <Loader2 className="animate-spin" /> : <Users />}
-                            Regenerate all · FU{sequenceDisplayStep(st.step_order)} ({n})
+                            Rewrite follow-up {sequenceDisplayStep(st.step_order)} for {n} lead{n === 1 ? "" : "s"}
                           </Button>
                         );
                       })}
