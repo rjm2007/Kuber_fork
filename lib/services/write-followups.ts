@@ -100,7 +100,7 @@ export async function writeDueFollowups(
 async function writeOne(
   db: SupabaseClient,
   target: FollowupTarget,
-  campaign: { id: string; name: string; human_in_loop: boolean; ai_prompt_context: string | null },
+  campaign: { id: string; name: string; human_in_loop: boolean; ai_prompt_context: string | null; company_id: string },
 ): Promise<{ pushed: boolean; templated: boolean } | null> {
   // The same shape fetchDraftTargets returns, so generateOneDraft needs no
   // special case for scheduled follow-ups versus the ones a user triggers.
@@ -118,6 +118,19 @@ async function writeOne(
     .maybeSingle();
 
   if (!cl) return null;
+
+  // No key with credit anywhere: skip the model entirely and lay the safety net
+  // now. Trying anyway would spend two rejected calls per lead to learn what the
+  // key health already says — 800 of them across a backlog this size — and end
+  // in the same place. attempts is left at 0 deliberately: nothing was actually
+  // attempted, so the upgrade pass still owes this lead a real try once credits
+  // return.
+  if (!(await hasUsableLlmKey(db, campaign.company_id))) {
+    const templated = await writeTemplateFallback(
+      db, target, "Every configured LLM key is out of credits", 0,
+    );
+    return templated ? { pushed: templated.pushed, templated: true } : null;
+  }
 
   // Already out of model attempts: go straight to the safety net rather than
   // spending another call that history says will fail. This is what makes a

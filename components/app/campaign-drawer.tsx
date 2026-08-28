@@ -201,7 +201,14 @@ type CampaignLead = {
     /** Set when this contact was added to stand in for a bounced one. */
     replaces_lead_id?: string | null;
   } | null;
-  email_drafts: { id: string; subject: string | null; body: string | null; status: string; step_number?: number | null; created_at?: string } | null;
+  email_drafts: {
+    id: string; subject: string | null; body: string | null; status: string;
+    step_number?: number | null; created_at?: string;
+    /** 'ai' = the model wrote it. 'template' = the safety net went in because
+     *  generation failed; fallback_reason says why, in the client's words. */
+    source?: string | null;
+    fallback_reason?: string | null;
+  } | null;
   /**
    * Set by the leads API when a step-1 draft row is mid-generation. It cannot be
    * read off `email_drafts`: draft_id only points at the new row once generation
@@ -2589,17 +2596,35 @@ export function CampaignDetail({
 
   const seqLeadRows = campaignLeads
     .map((cl) => {
+      // A lead who answered, or whose address bounced, is OUT of the sequence —
+      // Instantly stopped it and will never send them another step. They still
+      // appear (hiding them makes a 100-lead campaign look like 86 and invites
+      // "where did the rest go?"), but they must not be counted as work
+      // outstanding. The client read "86 sent, 14 remaining" and reasonably
+      // concluded 14 emails were stuck, when those 14 were finished.
+      const finished: "replied" | "bounced" | null =
+        cl.crm_status === "replied" ? "replied"
+        : cl.crm_status === "failed" ? "bounced"
+        : null;
       // Read from all_drafts, not email_drafts: the latter has been flattened to
       // the opening email by loadData and would never contain a follow-up.
       const draft = (cl.all_drafts ?? []).find((d) => d.step_number === seqStepOrder) ?? null;
       const sent = hasReceivedFollowupStep(cl, seqStepOrder);
       const due = hasUpcomingFollowupStep(cl, seqStepOrder, campaignSteps);
-      return { cl, draft, sent, due, written: !!draft?.body };
+      return {
+        cl, draft, finished,
+        // Nothing is due or outstanding for a lead whose sequence has ended.
+        sent, due: due && !finished,
+        written: !!draft?.body,
+        isTemplate: draft?.source === "template",
+      };
     })
     .filter((r) => {
       if (seqLeadFilter === "sent") return r.sent;
       if (seqLeadFilter === "due") return r.due && !r.sent;
-      if (seqLeadFilter === "unwritten") return !r.written && !r.sent;
+      // "Not written" means work still to do, so a finished lead is not one:
+      // nobody will ever write a follow-up for someone who already replied.
+      if (seqLeadFilter === "unwritten") return !r.written && !r.sent && !r.finished;
       return true;
     })
     .filter((r) => {
@@ -2616,16 +2641,47 @@ export function CampaignDetail({
       return (a.cl.first_sent_at ?? "￿").localeCompare(b.cl.first_sent_at ?? "￿");
     });
 
+  // Counts describe WORK, so a lead whose sequence has ended is excluded from
+  // every bucket except `all` and its own `finished` tally. Counting them made
+  // the tab report outstanding work that did not exist.
+  const seqFinished = campaignLeads.filter(
+    (cl) => cl.crm_status === "replied" || cl.crm_status === "failed",
+  );
+  const seqLive = campaignLeads.filter(
+    (cl) => cl.crm_status !== "replied" && cl.crm_status !== "failed",
+  );
   const seqCounts = {
-    due: campaignLeads.filter((cl) =>
+    due: seqLive.filter((cl) =>
       hasUpcomingFollowupStep(cl, seqStepOrder, campaignSteps)
       && !hasReceivedFollowupStep(cl, seqStepOrder)).length,
     sent: campaignLeads.filter((cl) => hasReceivedFollowupStep(cl, seqStepOrder)).length,
-    unwritten: campaignLeads.filter((cl) =>
+    unwritten: seqLive.filter((cl) =>
       !(cl.all_drafts ?? []).find((d) => d.step_number === seqStepOrder)?.body
       && !hasReceivedFollowupStep(cl, seqStepOrder)).length,
+    finished: seqFinished.length,
+    replied: campaignLeads.filter((cl) => cl.crm_status === "replied").length,
+    bounced: campaignLeads.filter((cl) => cl.crm_status === "failed").length,
     all: campaignLeads.length,
   };
+
+  /** How this step's follow-ups were written — the accountability number. The
+   *  client bought "a personalised email per company"; without this they cannot
+   *  tell how many they actually got, and a silent template looks identical to
+   *  a real one. */
+  const seqQuality = (() => {
+    let ai = 0, template = 0;
+    const reasons = new Map<string, number>();
+    for (const cl of seqLive) {
+      const d = (cl.all_drafts ?? []).find((x) => x.step_number === seqStepOrder);
+      if (!d?.body) continue;
+      if (d.source === "template") {
+        template++;
+        const why = d.fallback_reason ?? "Reason not recorded";
+        reasons.set(why, (reasons.get(why) ?? 0) + 1);
+      } else ai++;
+    }
+    return { ai, template, reasons: [...reasons.entries()].sort((a, b) => b[1] - a[1]) };
+  })();
 
   const seqActiveLeadRow =
     seqLeadRows.find((r) => r.cl.id === seqLeadId) ?? seqLeadRows[0] ?? null;
@@ -4346,6 +4402,42 @@ export function CampaignDetail({
               </Select>
             </div>
 
+            {/* How this step was written. The client bought a personalised email
+                per company — without this number a template is indistinguishable
+                from the real thing, and nobody can tell what they actually got. */}
+            {(seqQuality.ai > 0 || seqQuality.template > 0) && (
+              <div className="px-3 py-2 border-b border-border space-y-1">
+                <div className="flex items-center gap-2 text-[11px]">
+                  <span className="font-mono tabular-nums font-semibold text-foreground">{seqQuality.ai}</span>
+                  <span className="text-muted-foreground">personalised</span>
+                  {seqQuality.template > 0 && (
+                    <>
+                      <span className="text-muted-foreground">·</span>
+                      <span className="font-mono tabular-nums font-semibold text-amber-600">{seqQuality.template}</span>
+                      <span className="text-muted-foreground">template</span>
+                    </>
+                  )}
+                </div>
+                {/* Grouped by cause, so "5 template" becomes a task ("top up")
+                    or an accepted fact ("thin company data") rather than a
+                    mystery the client cannot act on. */}
+                {seqQuality.reasons.map(([why, n]) => (
+                  <p key={why} className="text-[10px] text-muted-foreground leading-snug">
+                    <span className="font-mono tabular-nums">{n}</span> · {why}
+                  </p>
+                ))}
+              </div>
+            )}
+            {seqCounts.finished > 0 && (
+              <div className="px-3 py-1.5 border-b border-border">
+                <p className="text-[10px] text-muted-foreground">
+                  <span className="font-mono tabular-nums">{seqCounts.finished}</span> out of sequence
+                  {seqCounts.replied > 0 ? ` · ${seqCounts.replied} replied` : ""}
+                  {seqCounts.bounced > 0 ? ` · ${seqCounts.bounced} bounced` : ""}
+                </p>
+              </div>
+            )}
+
             <div className="flex-1 overflow-y-auto p-2 space-y-1.5">
               {seqLeadRows.length === 0 ? (
                 <p className="text-xs text-muted-foreground text-center py-8 px-3">
@@ -4354,7 +4446,7 @@ export function CampaignDetail({
                     : "Nothing here yet."}
                 </p>
               ) : (
-                seqLeadRows.map(({ cl, draft, sent, written }) => {
+                seqLeadRows.map(({ cl, draft, sent, written, finished, isTemplate }) => {
                   const isActive = seqActiveLeadRow?.cl.id === cl.id;
                   const name = [cl.leads?.first_name, cl.leads?.last_name].filter(Boolean).join(" ") || cl.leads?.email || "Lead";
                   return (
@@ -4374,12 +4466,27 @@ export function CampaignDetail({
                           <p className={cn("text-xs font-semibold truncate", isActive && "text-primary")}>{name}</p>
                           <p className="text-[11px] text-muted-foreground truncate">{cl.leads?.company_name ?? ""}</p>
                         </div>
-                        {sent ? (
-                          <Pill shape="sm" className="bg-emerald-500/15 text-emerald-600 border-transparent">Sent</Pill>
+                        {finished ? (
+                          // Out of the sequence entirely — shown so the list still
+                          // adds up to the full campaign, but never counted as work.
+                          <Pill shape="sm" className="bg-transparent text-muted-foreground border-border capitalize">
+                            {finished}
+                          </Pill>
+                        ) : sent ? (
+                          <Pill shape="sm" className={cn(
+                            "border-transparent",
+                            isTemplate
+                              ? "bg-amber-500/15 text-amber-600"
+                              : "bg-emerald-500/15 text-emerald-600",
+                          )}>
+                            {isTemplate ? "Sent · template" : "Sent"}
+                          </Pill>
                         ) : !written ? (
                           <Pill shape="sm" className="bg-transparent text-muted-foreground border-border">Draft</Pill>
+                        ) : isTemplate ? (
+                          <Pill shape="sm" className="bg-amber-500/15 text-amber-600 border-transparent">Template</Pill>
                         ) : (
-                          <Pill shape="sm" className="bg-amber-500/15 text-amber-600 border-transparent">Ready</Pill>
+                          <Pill shape="sm" className="bg-primary/15 text-primary border-transparent">AI</Pill>
                         )}
                       </div>
                     </button>
@@ -4445,7 +4552,22 @@ export function CampaignDetail({
                       {seqActiveLeadRow.sent && (
                         <Pill shape="sm" className="bg-emerald-500/15 text-emerald-600 border-transparent">Sent</Pill>
                       )}
+                      {seqActiveLeadRow.isTemplate ? (
+                        <Pill shape="sm" className="bg-amber-500/15 text-amber-600 border-transparent">Template</Pill>
+                      ) : (
+                        <Pill shape="sm" className="bg-primary/15 text-primary border-transparent">AI written</Pill>
+                      )}
                     </div>
+
+                    {/* Why this one is not personalised, in the client's words.
+                        Sits above the body because it changes how the text
+                        should be read — and because for a fixable cause it is
+                        an instruction, not a footnote. */}
+                    {seqActiveLeadRow.isTemplate && seqActiveLeadRow.draft?.fallback_reason && (
+                      <p className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+                        {seqActiveLeadRow.draft.fallback_reason}
+                      </p>
+                    )}
                     <div
                       className="text-sm leading-relaxed [&_p]:mb-2"
                       dangerouslySetInnerHTML={{
