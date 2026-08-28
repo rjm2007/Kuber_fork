@@ -5,6 +5,7 @@ import { internalAppBaseUrl } from "@/lib/internal-url";
 import { safeSecretEqual } from "@/lib/auth/secret";
 import { regenerateOneDraft } from "@/lib/services/regenerate-draft";
 import { countPendingItems, bulkRegeneratableStatuses } from "@/lib/services/regeneration-jobs";
+import { BatchBudget } from "@/lib/services/batch-budget";
 
 export const maxDuration = 55;
 
@@ -123,7 +124,16 @@ export async function POST(req: NextRequest) {
 
   const stepNumber = (job.step_number as number | null) ?? 1;
 
+  // BATCH_SIZE alone is not a time guard: five calls at the observed 10.5s
+  // worst case is 52s against a 55s ceiling, with nothing left for the
+  // self-chain. Claimed items that go unprocessed are released below.
+  const budget = new BatchBudget();
+  const unprocessed: string[] = [];
   for (const item of items) {
+    // Out of runway. Every item from here on was already claimed as 'running'
+    // above, so it has to go back to 'pending' or the job stalls holding rows
+    // nothing will ever pick up.
+    if (!budget.hasRoomForAnother()) { unprocessed.push(item.id as string); continue; }
     const draftId = await resolveDraftId(cdb, job.campaign_id as string, item, stepNumber);
 
     if (!draftId) {
@@ -131,7 +141,7 @@ export async function POST(req: NextRequest) {
       continue;
     }
 
-    const result = await regenerateOneDraft(cdb, draftId, {
+    const result = await budget.run(() => regenerateOneDraft(cdb, draftId, {
       userId: job.requested_by ?? undefined,
       customInstruction: job.custom_instruction ?? undefined,
       bulkJobId: jobId,
@@ -139,7 +149,7 @@ export async function POST(req: NextRequest) {
       // while the job was queued must not be overwritten by it. Follow-ups
       // widen this to include 'approved' — see bulkRegeneratableStatuses.
       allowedStatuses: bulkRegeneratableStatuses(stepNumber),
-    });
+    }));
 
     if (result.ok) {
       await markItem(cdb, item.id, "done", null);
@@ -150,6 +160,12 @@ export async function POST(req: NextRequest) {
       await markItem(cdb, item.id, "failed", result.reason);
       failed++;
     }
+  }
+
+  if (unprocessed.length > 0) {
+    await cdb.from("draft_regeneration_job_items")
+      .update({ status: "pending", updated_at: new Date().toISOString() })
+      .in("id", unprocessed);
   }
 
   const { data: fresh } = await cdb
