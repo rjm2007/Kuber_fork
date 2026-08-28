@@ -360,6 +360,30 @@ function resolveRevisedSignature(returned: string | undefined, original: string)
  * it. Before this, the instruction appeared once, in the weaker position, and
  * lost to the structural rules every time.
  */
+/**
+ * Bold the first mention of the matched product, if nothing is emphasised yet.
+ *
+ * Deliberately conservative: it does nothing when the body already contains
+ * emphasis, and nothing when the product is not mentioned at all — inserting a
+ * product name that the model chose to leave out would be writing the email,
+ * not formatting it.
+ */
+function ensureProductEmphasis(body: string, productMatch: string | undefined): string {
+  if (!productMatch?.trim()) return body;
+  if (body.includes("**")) return body;
+
+  const name = productMatch.trim();
+  // Case-insensitive, whole-name match. The library stores "COLOR MASTERBATCH"
+  // in caps while the model writes "Colour Masterbatch", so an exact-case
+  // search would miss the very cases this exists for.
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const re = new RegExp(escaped, "i");
+  const found = body.match(re);
+  if (!found) return body;
+
+  return body.replace(re, `**${found[0]}**`);
+}
+
 function buildAuthoritativeInstruction(instruction: string): string {
   if (!instruction.trim()) return "";
   return [
@@ -793,6 +817,25 @@ export async function generateOneDraft(
     if (!/^\s*(dear|hi|hello|greetings|good (morning|afternoon|evening))\b/i.test(aiBody)) {
       const greetingName = lead.first_name?.trim();
       aiBody = `${greetingName ? `Dear ${greetingName},` : "Dear Sir/Ma'am,"}\n\n${aiBody}`;
+    }
+
+    // BOLD THE PRODUCT, IN CODE, WHEN THE MODEL DID NOT.
+    //
+    // The prompt asks for the matched product name in bold and the model obeys
+    // most of the time — 9 of 15 on a measured regeneration run, 15 of 15 on a
+    // first draft. "Make it shorter" is what breaks it: trimming and adding
+    // emphasis markers pull against each other, and brevity wins.
+    //
+    // This is a mechanical rule with one right answer, so it does not belong to
+    // the model at all. Applied only when the body carries no emphasis already,
+    // so an email the model bolded thoughtfully is never second-guessed, and
+    // only to the first mention, because bolding every occurrence is the
+    // over-bolding this is trying to avoid.
+    //
+    // Step 1 only. A follow-up is two to four sentences threaded under a quoted
+    // email; emphasis there reads as shouting.
+    if (stepNumber === 1) {
+      aiBody = ensureProductEmphasis(aiBody, validated.data.product_match);
     }
 
     // Instantly cannot send real attachments, so deliver the brochure as a
