@@ -17,13 +17,72 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  *   • 50 sent today and 50 tomorrow produce two batches automatically.
  */
 
-/** How far ahead of the due date a follow-up is written.
+/** How far ahead of the due date a follow-up is written, as a floor.
  *
  *  One day, deliberately. Writing at campaign start would spend tokens on leads
  *  who reply or bounce first (roughly a quarter of them). Writing on the due day
  *  itself races Instantly, which may fire the step before the text lands. A day
- *  of lead time is the cheap middle. */
+ *  of lead time is the cheap middle.
+ *
+ *  This is now the MINIMUM, not the rule — see writeByAt(). A flat day of lead
+ *  time put every Sunday- and Monday-due follow-up in front of a reviewer on a
+ *  day the office is shut. */
 export const FOLLOWUP_LEAD_TIME_DAYS = 1;
+
+/** IST is UTC+5:30 with no daylight saving, so a fixed offset is exact rather
+ *  than an approximation. The client is an Indian manufacturer and its office
+ *  week is Monday–Friday; "the last working day" means that calendar. */
+const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+
+/** The IST calendar day a moment falls on, as a UTC-midnight Date.
+ *  Shifting into IST, truncating, and keeping the result in IST terms lets the
+ *  weekday tests below read as ordinary date arithmetic. */
+function istDayStart(at: Date): Date {
+  const shifted = new Date(at.getTime() + IST_OFFSET_MS);
+  shifted.setUTCHours(0, 0, 0, 0);
+  return shifted;
+}
+
+/** Monday–Friday in IST. 0 = Sunday, 6 = Saturday. */
+function isWorkingDay(istDay: Date): boolean {
+  const dow = istDay.getUTCDay();
+  return dow >= 1 && dow <= 5;
+}
+
+/**
+ * The moment a follow-up must be written by: the start of the last WORKING day
+ * (IST) that falls at least FOLLOWUP_LEAD_TIME_DAYS before it is due.
+ *
+ * The flat one-day rule quietly assumed someone is at a desk every day. They are
+ * not. A follow-up due Monday was written Sunday, so the only chance to read it
+ * before the customer did was a day the office is closed — and by Monday morning
+ * Instantly is already sending. Same for anything due Saturday or Sunday.
+ *
+ * Stepping back to Friday gives a real review window: the text exists during
+ * working hours, before the weekend, with the whole of Friday to change it.
+ *
+ * Worked through, for a follow-up due:
+ *   Tuesday   -> written from Monday   (one day, unchanged)
+ *   Saturday  -> written from Friday
+ *   Sunday    -> written from Friday
+ *   Monday    -> written from Friday   (three days ahead, deliberately)
+ *
+ * Returns a UTC instant, so the comparison in isDueForWriting stays a plain
+ * timestamp comparison with no timezone handling at the call site.
+ */
+export function writeByAt(dueAt: Date): Date {
+  // Start one full lead-time back, then walk to the working day at or before it.
+  const earliest = new Date(dueAt.getTime() - FOLLOWUP_LEAD_TIME_DAYS * 24 * 60 * 60 * 1000);
+  const day = istDayStart(earliest);
+
+  // At most four steps: any run of non-working days here is Saturday+Sunday.
+  for (let i = 0; i < 7 && !isWorkingDay(day); i++) {
+    day.setUTCDate(day.getUTCDate() - 1);
+  }
+
+  // Back out of IST terms into a real UTC instant: this is 00:00 IST that day.
+  return new Date(day.getTime() - IST_OFFSET_MS);
+}
 
 /** Generation attempts before the UPGRADE pass gives up on a template draft.
  *
@@ -105,12 +164,12 @@ export function followupDueAt(
   return new Date(base.getTime() + totalDays * 24 * 60 * 60 * 1000);
 }
 
-/** True when a follow-up should be written now: due within the lead-time window.
+/** True when a follow-up should be written now: we have reached the last
+ *  working day before it is due (see writeByAt).
  *  Already-overdue counts as due — a missed run must catch up rather than skip. */
 export function isDueForWriting(dueAt: Date | null, now = new Date()): boolean {
   if (!dueAt) return false;
-  const horizon = new Date(now.getTime() + FOLLOWUP_LEAD_TIME_DAYS * 24 * 60 * 60 * 1000);
-  return dueAt <= horizon;
+  return now >= writeByAt(dueAt);
 }
 
 /** PostgREST page size. Supabase caps a response at 1000 rows SERVER-side and a

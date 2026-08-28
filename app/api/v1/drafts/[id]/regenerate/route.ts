@@ -32,10 +32,15 @@ export async function POST(
   const result = await regenerateOneDraft(db, id, {
     userId: user.id,
     customInstruction: parsed.data.custom_instruction,
+    // One lead, one click — cheap enough to ask Instantly directly rather than
+    // trusting a webhook that is up to 15 minutes late 13% of the time.
+    verifyNotSent: true,
   });
 
   if (!result.ok) {
-    const status = result.code === "NOT_FOUND" ? 404 : result.code === "CONFLICT" ? 409 : 500;
+    const status = result.code === "NOT_FOUND" ? 404
+      : result.code === "CONFLICT" || result.code === "ALREADY_SENT" ? 409
+      : 500;
     return fail(status, result.code, result.reason);
   }
 

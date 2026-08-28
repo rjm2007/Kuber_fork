@@ -63,10 +63,10 @@ For a lead whose opening email went out on 12 August, on a seven-day ladder:
 
 ```
 12 Aug          opening email sent   (this lead's clock starts here)
-13-29 Aug       WINDOW 1 - instructions still change the outcome
-30 Aug 07:30    the AI writes the follow-up
-30-31 Aug       WINDOW 2 - read, edit or regenerate it
-31 Aug          Instantly sends it; frozen from here
+13-28 Aug       WINDOW 1 - instructions still change the outcome
+29 Aug          the AI writes the follow-up (Friday - the last working day)
+29-31 Aug       WINDOW 2 - read, edit or regenerate it
+31 Aug          Instantly sends it (Monday), ~3 min after the hour
 ```
 
 **Every lead has their own clock**, keyed off `campaign_leads.first_sent_at`.
@@ -74,10 +74,29 @@ Instantly drips a campaign out over days, so 100 leads sent across four days
 produce four separate waves of writing — roughly 25 emails a day, never 100 at
 once.
 
-**Why one day ahead** (`FOLLOWUP_LEAD_TIME_DAYS = 1`): writing at campaign start
-would spend credits on leads who reply or bounce first (about a quarter of
+**Why not sooner** (`FOLLOWUP_LEAD_TIME_DAYS = 1`, a floor): writing at campaign
+start would spend credits on leads who reply or bounce first (about a quarter of
 them). Writing on the due day itself races Instantly, which may fire the step
 before the text lands.
+
+**Why not exactly one day** — changed 29 Aug 2026. A flat day of lead time
+quietly assumed somebody is at a desk every day. A follow-up due Monday was
+written **Sunday**, so the only chance to read it before the customer did fell on
+a closed office, and by Monday morning Instantly is already sending.
+
+`writeByAt()` now walks back to the last **working** day in IST (Mon-Fri, the
+client's week):
+
+```
+due Tuesday    -> written from Monday    (one day, unchanged)
+due Saturday   -> written from Friday
+due Sunday     -> written from Friday
+due Monday     -> written from Friday    (three days ahead, deliberately)
+```
+
+Three-day-old text is fine: company research does not change in three days.
+Covered by `scripts/check-followup-write-day.mjs`, including the IST boundary a
+UTC implementation gets wrong (04:00 IST Monday is 22:30 UTC Sunday).
 
 ---
 
@@ -247,7 +266,11 @@ what makes the weekend case the normal case rather than an edge one.
 |---|---|---|
 | 1 | **Move the sending window start** from 10:00 to 11:00 or 12:00 IST | **Agreed.** Zero code — a campaign setting. Buys a review hour every morning, not just Mondays. Costs a couple of sending hours a day, which only matters near the daily cap, and we are not near it. Note it can be changed back by anyone, so it is a convention rather than a guarantee |
 | 2 | **Write on the last WORKING day**, not simply one day before | **Agreed — the important one.** A Monday send is written Friday, giving Friday afternoon plus Monday morning. Emails are then up to 3 days old at send, which does not matter: company research does not change in three days. Must respect IST working days |
-| 3 | **A "hold this step" stop button** | **On hold.** Wanted, not yet scheduled |
+| 3 | **A "hold this step" stop button** | **Built, 29 Aug 2026.** Campaign-level, not per step — Instantly has no per-step pause. See §14 |
+
+Levers 2 and 3 are now built. Lever 1 is still a per-campaign setting nobody has
+changed, and see §14.4 for why a single review hour is harder than it looks on a
+multi-country campaign.
 
 ### What Instantly can and cannot do about stopping
 
@@ -389,21 +412,69 @@ to diagnose.
 
 ---
 
-## 12. An experiment still worth running
+## 12. Answered live on 29 Aug 2026
 
-**Does Instantly lock the email text when it QUEUES the send, or when it
-actually SENDS it?**
+Two questions that had blocked everything else were settled with a real send
+against the client's own Instantly workspace, using the four test mailboxes.
+Two campaigns, 15-minute step delays, `pushkar.garg@` as the sender. Both test
+campaigns were deleted afterwards.
 
-This decides the real deadline for editing. If it renders at queue time, the
-true cut-off is earlier than the send time and everything above understates the
-risk.
+### 12.1 Instantly renders the text at SEND time, not queue time
 
-It cannot be answered by reading: it needs a live send. Set up a campaign with a
-one-day follow-up delay to a mailbox we control, change `customBody2` an hour
-before it fires, and read what actually arrives. Half a day of elapsed time,
-almost all of it waiting.
+| | |
+|---|---|
+| 01:54:37 | opening sent, follow-up now queued for 02:09:37 |
+| 01:57:54 | `customBody2` changed while the follow-up sat queued |
+| 02:12:39 | Instantly sent **the new text** |
 
-Until that is done, **do not promise the client a specific cut-off time.**
+Read straight from Instantly's own sent record:
+`FOLLOW-UP TEXT = VERSION TWO (edited AFTER the opening went out).`
+
+**A follow-up can be edited right up until it actually goes out.** There is no
+earlier hidden deadline. This is what makes a review window before the sending
+hour worth anything at all.
+
+### 12.2 Pausing HOLDS a queued follow-up, and resuming releases it
+
+| | Follow-ups due | Delivered | Late by |
+|---|---:|---:|---|
+| Running campaign (control) | 2 | 2 | ~3 min |
+| Paused campaign | 1 | **0** | 12+ min and counting |
+
+Then, on the paused one:
+
+| | |
+|---|---|
+| 01:57:55 | paused |
+| 02:10:44 | due — **nothing sent** |
+| 02:24:11 | resumed, 14 minutes past due |
+| 02:25:08 | **mail goes out, 57 seconds later** |
+
+**A hold delays mail; it never destroys it.** That is what makes Hold safe to
+offer to every user with no confirmation ceremony beyond the counts.
+
+### 12.3 Two facts learned along the way
+
+**Sends run about 3 minutes late.** Due 02:09:37, sent 02:12:39; due 02:18:38,
+sent 02:21:39; the same on the third. A send *hour* is a window, not an instant,
+so any cut-off promised to the client needs margin before it.
+
+**Instantly never returns a lead's stored email text.** Neither `GET /leads/{id}`
+nor `POST /leads/list` includes `custom_variables` — they come back empty even
+for a lead whose opening email demonstrably rendered from them. We can see what
+Instantly *sent*, never what it is *holding*. So our database can drift out of
+sync with Instantly and no audit could ever detect it; the only defence is that
+every path touching a follow-up calls `syncApprovedDraftToInstantly`.
+
+**Instantly accepts `delay_unit: "minutes"`** and honours it. That is what made
+this testable in 30 minutes instead of over two days.
+
+### 12.4 Still not measured
+
+Whether a hold applied *during* Instantly's own send pass stops a mail already
+handed to the SMTP server. The pause here was applied ~13 minutes before the due
+time. A mail in the final seconds of sending would presumably still go — treat
+Hold as "stops everything not yet sent", not "recalls".
 
 ## 13. How to test this safely
 
@@ -429,10 +500,86 @@ generation succeeds, the env key is doing the work.
 ```
 node scripts/check-followup-due-dates.mjs        due-date arithmetic
 node scripts/check-followup-schedule-preview.mjs the day each step lands on
+node scripts/check-followup-write-day.mjs         writing on the last working day
 node scripts/check-regen-step-targeting.mjs      which draft a bulk run rewrites
 node scripts/check-fallback-reason.mjs           failure -> client-facing reason
 node scripts/check-batch-budget.mjs              stopping before the lambda dies
 node scripts/check-revision-intent.mjs           local vs whole-email edits
 node scripts/check-product-emphasis.mjs          the product ends up in bold
 node scripts/check-model-html.mjs                stray HTML from the model
+```
+
+## 14. Hold sending (built 29 Aug 2026)
+
+### 14.1 What it is
+
+One button that stops Instantly sending anything further on a campaign —
+including follow-ups already queued — until a person resumes it. Proven in §12.2.
+
+Mechanically it IS a campaign pause, because that is the only lever Instantly
+offers. The hold adds the two facts a bare pause cannot carry: **who** stopped it
+and **when**. Those drive the banner, and without them a held campaign is
+indistinguishable from one somebody paused last week and forgot.
+
+### 14.2 Where it lives, and why not on the step
+
+**Top bar, next to the campaign name.** Visible on every tab.
+
+It was originally drawn on the step rows inside the Sequences tab. That is
+wrong: those rows sit to the right of the lead rail, so the button reads as
+"hold this one lead" — which Instantly can never do. A control that stops the
+whole campaign has to sit where nothing lead-shaped is next to it.
+
+Once held, the button disappears and an **amber banner above the tab strip** owns
+Resume. The banner is deliberately outside every tab body: a held campaign is
+otherwise invisible, and silence looks exactly like working normally.
+
+### 14.3 The rules it enforces
+
+| Action | Rule |
+|---|---|
+| Regenerate **one** follow-up | Allowed any time. Asks Instantly directly first — see below |
+| Regenerate **every** follow-up | **Refused unless sending is held.** `HOLD_REQUIRED` |
+| Resume | Anyone. Clears the hold from either the banner or the campaign list |
+| Auto-resume | **Never.** A hold that releases itself would send the very mail someone stopped, when nobody is watching |
+
+**Why single-lead is different.** Our "already sent" knowledge arrives by
+webhook, and measured across 820 real step-2 sends only 86.7% landed within a
+minute — the rest took up to 15. Inside that gap the screen says "not sent" for
+an email the customer is already reading; the user regenerates, gets a green
+tick, and the change reaches nobody.
+
+So a single-lead regenerate asks Instantly directly first
+(`getInstantlyLeadSentStepIndex`, one HTTP call) and refuses with `ALREADY_SENT`
+if it has gone. A hundred leads would be a hundred calls, so the bulk path
+removes the race by holding sending instead of polling it.
+
+### 14.4 What is NOT solved
+
+**There is no single review hour on a multi-country campaign.** Campaigns fan
+out into one Instantly sub-campaign per country, each on its own timezone — that
+is deliberate and correct (see `docs/campaign-timezone-rca.md`). A follow-up step
+set to 11:00 therefore fires at 11:00 *local to each recipient*: 11:00 IST for
+Indian leads, 05:30 IST for Australian ones, 20:30 IST for American ones.
+
+A reviewer in India reviewing 10:00-10:45 IST is ahead of the Indian sends and
+behind the Australian ones. **Lever 1 protects the India bucket and nothing
+else.** What actually protects every bucket is lever 2 (writing on the last
+working day, so the text exists well before any timezone fires) plus Hold for
+the "stop it now" case.
+
+Do not promise the client "review between 10 and 11" as though it covered the
+whole campaign. It covers their Indian leads.
+
+### 14.5 Files
+
+```
+supabase/migrations/2026_08_29_campaign_sending_hold.sql   sending_held_at / _by
+lib/services/campaign-lifecycle.ts                         holdSending(); resume clears the stamp
+app/api/v1/campaigns/[id]/hold/route.ts                    POST hold  (resume reuses /resume)
+lib/services/instantly.ts                                  getInstantlyLeadSentStepIndex()
+lib/services/regenerate-draft.ts                           verifyNotSent -> ALREADY_SENT
+app/api/v1/campaigns/[id]/regenerate-drafts/route.ts       HOLD_REQUIRED gate
+components/app/hold-sending-modal.tsx                      the counts + confirm
+components/app/campaign-drawer.tsx                         button, banner, bulk gate
 ```

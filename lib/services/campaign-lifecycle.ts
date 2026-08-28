@@ -60,7 +60,11 @@ export async function deleteCampaignInstantly(db: Db, campaignId: string): Promi
   return { deleted, errors };
 }
 
-/** Re-activate every sub-campaign of a paused master and mark it active again. */
+/** Re-activate every sub-campaign of a paused master and mark it active again.
+ *
+ *  Clears the hold stamp too: resuming from anywhere (the campaign list, the
+ *  Sequences banner) means sending is live again, so leaving sending_held_at
+ *  set would keep showing a "held" banner over a campaign that is sending. */
 export async function resumeCampaign(db: Db, campaignId: string): Promise<{ resumed: number; errors: string[] }> {
   const subs = await subCampaigns(db, campaignId);
   const errors: string[] = [];
@@ -75,6 +79,40 @@ export async function resumeCampaign(db: Db, campaignId: string): Promise<{ resu
       errors.push(`sub ${sub.id}: ${(e as Error).message}`);
     }
   }
-  await db.from("campaigns").update({ status: "active", updated_at: now }).eq("id", campaignId);
+  await db.from("campaigns").update({
+    status: "active",
+    sending_held_at: null,
+    sending_held_by: null,
+    updated_at: now,
+  }).eq("id", campaignId);
   return { resumed, errors };
+}
+
+/**
+ * Hold sending on a live campaign — a reversible stop someone can undo.
+ *
+ * Mechanically this IS pauseCampaign: Instantly has no per-step pause, so the
+ * only lever available stops the whole campaign. What a hold adds is the record
+ * of who pressed it and when, which is what the banner needs — a campaign that
+ * is merely `paused` cannot be told apart from one abandoned days ago.
+ *
+ * Measured live on 2026-08-29: a paused campaign held a follow-up 14 minutes
+ * past its due time and sent nothing, then released it 57 seconds after being
+ * re-activated. Held mail is delayed, never lost — which is what makes this
+ * safe to offer to every user rather than restricting it.
+ *
+ * Deliberately no auto-expiry. A hold that releases itself would send the very
+ * email someone stopped, at a moment nobody is watching.
+ */
+export async function holdSending(
+  db: Db,
+  campaignId: string,
+  userId: string,
+): Promise<{ paused: number; errors: string[] }> {
+  const result = await pauseCampaign(db, campaignId);
+  await db.from("campaigns").update({
+    sending_held_at: new Date().toISOString(),
+    sending_held_by: userId,
+  }).eq("id", campaignId);
+  return result;
 }

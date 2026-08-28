@@ -41,6 +41,34 @@ export async function POST(
     return fail(409, "CONFLICT", "A regeneration is already running for this campaign.");
   }
 
+  // Rewriting every follow-up while Instantly is still sending is a race nobody
+  // can win: the job takes minutes, sends continue throughout, and each one that
+  // goes out mid-run carries the old text while the screen reports success.
+  //
+  // Checking each lead against Instantly first would be one HTTP call per lead —
+  // a hundred calls for a hundred leads. Holding sending removes the race
+  // outright instead of measuring it, and a hold is free: measured live, held
+  // mail is delayed and released intact, never lost.
+  //
+  // Follow-ups only. Opening emails are regenerated before a campaign starts
+  // sending, so the same gate there would block the normal drafting flow.
+  if (stepNumber && stepNumber > 1) {
+    const { data: campaignRow } = await db
+      .from("campaigns")
+      .select("status, sending_held_at")
+      .eq("id", id)
+      .maybeSingle();
+
+    const sending = campaignRow?.status === "active" || campaignRow?.status === "processing";
+    if (sending && !campaignRow?.sending_held_at) {
+      return fail(
+        409,
+        "HOLD_REQUIRED",
+        "Hold sending before regenerating every follow-up — otherwise some can go out with the old text while this runs.",
+      );
+    }
+  }
+
   const { eligible, skipped } = await resolveRegenerationTargets(db, user, id, {
     stepNumber,
     campaignLeadIds: parsed.data.campaign_lead_ids,

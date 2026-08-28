@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { generateOneDraft } from "@/lib/services/generate-drafts";
 import { syncApprovedDraftToInstantly } from "@/lib/services/draft-sync";
+import { getInstantlyLeadSentStepIndex } from "@/lib/services/instantly";
 import { resolveStandingFollowupInstruction, mergeInstructions } from "@/lib/services/followup-instruction";
 
 /** Draft statuses a regeneration may start from. Anything else (sent, generating) is refused. */
@@ -25,7 +26,7 @@ export type DraftVersionRow = {
 
 export type RegenerateResult =
   | { ok: true; draft: DraftVersionRow }
-  | { ok: false; code: "NOT_FOUND" | "CONFLICT" | "INTERNAL" | "GENERATION_FAILED"; reason: string };
+  | { ok: false; code: "NOT_FOUND" | "CONFLICT" | "INTERNAL" | "GENERATION_FAILED" | "ALREADY_SENT"; reason: string };
 
 /**
  * Regenerate a single draft, creating a new version of it.
@@ -57,6 +58,13 @@ export async function regenerateOneDraft(
     bulkJobId?: string;
     /** Restricts which starting statuses are accepted; defaults to the full single-draft set. */
     allowedStatuses?: readonly string[];
+    /**
+     * Ask Instantly directly whether this step has already gone out, before
+     * touching anything. Single-lead regeneration only — one extra HTTP call is
+     * nothing for one click, and a hundred of them would be for a bulk run.
+     * The bulk path removes the race by requiring sending to be held instead.
+     */
+    verifyNotSent?: boolean;
   } = {},
 ): Promise<RegenerateResult> {
   const allowed = opts.allowedStatuses ?? REGENERATABLE_STATUSES;
@@ -88,7 +96,7 @@ export async function regenerateOneDraft(
   const { data: cl } = await db
     .from("campaign_leads")
     .select(`
-      id, lead_id,
+      id, lead_id, instantly_lead_id,
       attachment_path, attachment_name, attachment_mime, attachment_size, attachment_url,
       leads!lead_id(
         id, first_name, last_name, email, title, headline, seniority, city, country, assigned_to,
@@ -100,6 +108,30 @@ export async function regenerateOneDraft(
     .maybeSingle();
 
   if (!cl) return { ok: false, code: "NOT_FOUND", reason: "Campaign lead not found" };
+
+  // Ask Instantly, not ourselves, whether this follow-up has already left.
+  //
+  // A follow-up stays 'approved' after it sends — that is by design, it is what
+  // keeps it in the Instantly sync — so status alone can never rule this out.
+  // Our `sent` knowledge arrives by webhook, and 13% of those are up to 15
+  // minutes late. Inside that window the UI offers Regenerate on an email the
+  // customer already has, accepts the change, and shows success. The user walks
+  // away believing it was fixed.
+  //
+  // Step 1 is excluded: an opening email that has gone out is already marked
+  // 'sent' and refused above, so the extra call would buy nothing.
+  const stepNumber = oldDraft.step_number ?? 1;
+  if (opts.verifyNotSent && stepNumber > 1 && cl.instantly_lead_id) {
+    const sentIndex = await getInstantlyLeadSentStepIndex(cl.instantly_lead_id as string);
+    // stepIndex is 0-based: index N means step_order N+1 has been sent.
+    if (sentIndex !== null && sentIndex + 1 >= stepNumber) {
+      return {
+        ok: false,
+        code: "ALREADY_SENT",
+        reason: "This follow-up has already been sent to the customer, so it can no longer be changed.",
+      };
+    }
+  }
 
   const nextVersion = (oldDraft.version ?? 1) + 1;
 
