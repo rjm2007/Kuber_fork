@@ -270,6 +270,10 @@ type CampaignLead = {
   /** Every draft for this lead, all steps. `email_drafts` is flattened to the
    *  opening email by loadData; the Sequences tab needs the follow-ups too. */
   all_drafts?: EmailDraftRow[];
+  /** One live draft per follow-up step, straight from the API. Separate from
+   *  `all_drafts` because the embed behind that one can only ever return the
+   *  opening email — campaign_leads.draft_id is a one-to-one key. */
+  followup_drafts?: EmailDraftRow[];
   attachment?: AttachmentInfo;
 };
 
@@ -842,12 +846,21 @@ export function CampaignDetail({
    *  Both are needed: the template still carries the delay and the writing
    *  instructions, and losing it would make a step uneditable. */
   const [seqPane, setSeqPane] = useState<"lead" | "template">("lead");
-  const [seqLeadFilter, setSeqLeadFilter] = useState<"due" | "sent" | "unwritten" | "all">("due");
+  // Opens on ALL, not on a filtered subset. Defaulting to "due" showed 86 of
+  // 100 leads and made the other 14 — the replied and the bounced — look like
+  // they had vanished from the campaign. They stay in the list, labelled.
+  const [seqLeadFilter, setSeqLeadFilter] = useState<"due" | "sent" | "unwritten" | "all">("all");
   const [seqLeadSearch, setSeqLeadSearch] = useState("");
   const [seqLeadRegenerating, setSeqLeadRegenerating] = useState<string | null>(null);
   /** Editable follow-up waits, for the Steps pane. Held separately from
    *  campaignSteps so typing does not repeatedly re-save. */
-  const [seqStepEdits, setSeqStepEdits] = useState<{ delay: number; delay_unit: "minutes" | "hours" | "days" }[]>([]);
+  const [seqStepEdits, setSeqStepEdits] = useState<{ delay: number; delay_unit: "minutes" | "hours" | "days"; ai_instruction?: string | null }[]>([]);
+  /** Campaign-wide follow-up guidance, and the per-step boxes above. */
+  const [seqCampaignInstruction, setSeqCampaignInstruction] = useState("");
+  /** Which follow-up is being hand-edited, and its working copy. */
+  const [seqEditingDraftId, setSeqEditingDraftId] = useState<string | null>(null);
+  const [seqEditBody, setSeqEditBody] = useState("");
+  const [seqEditSaving, setSeqEditSaving] = useState(false);
   /** Per-lead follow-up version history.
    *
    *  Loaded ON DEMAND rather than in an effect keyed on the open lead, unlike
@@ -1020,7 +1033,7 @@ export function CampaignDetail({
       // screen means "the opening email" when it says draft. That flattening also
       // threw the follow-up drafts away, so anything asking for step 2 found
       // nothing. Keep the full set alongside it for the Sequences tab.
-      const allDrafts = getLeadDrafts(cl);
+      const allDrafts = [...getLeadDrafts(cl), ...(cl.followup_drafts ?? [])];
       const step1Draft = getLeadDraftForStep(cl, 1);
       return { ...cl, all_drafts: allDrafts, email_drafts: step1Draft ?? null };
     });
@@ -1182,8 +1195,9 @@ export function CampaignDetail({
       const { data: { session } } = await supabase.auth.getSession();
       if (!session || cancelled) return;
       try {
-        const { steps } = await fetchCampaignSteps(session.access_token, campaign.id);
+        const { steps, followup_instruction } = await fetchCampaignSteps(session.access_token, campaign.id);
         if (!cancelled) {
+          setSeqCampaignInstruction(followup_instruction ?? "");
           const mapped = steps.map((s) => ({ step_order: s.step_order, subject: s.subject, body: s.body, delay: s.delay, delay_unit: s.delay_unit }));
           setCampaignSteps(mapped);
           const followUps = mapped.filter((s) => s.step_order > 1);
@@ -1770,14 +1784,45 @@ export function CampaignDetail({
    * text yet, Instantly is left on the OLD schedule until they are written,
    * rather than firing boilerplate into the gap.
    */
+  /**
+   * Save a hand-edited follow-up.
+   *
+   * Goes through the draft edit action, which pushes to Instantly — Instantly
+   * holds its own copy of the body and reads it once, so without that push the
+   * edit would be visible here and the customer would still receive the text
+   * that was just replaced.
+   */
+  async function handleSaveFollowupEdit(draftId: string) {
+    setSeqEditSaving(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+      await editDraft(session.access_token, draftId, "", seqEditBody);
+      setSeqEditingDraftId(null);
+      await loadData();
+      toast.success("Follow-up updated");
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setSeqEditSaving(false);
+    }
+  }
+
   async function handleSaveSeqSteps() {
     if (!canEditSettings) return;
     setSeqStepSaving(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) return;
-      const rebuilt = rebuildStepsWithFollowupWaits(campaignSteps, seqStepEdits);
-      const res = await saveCampaignSteps(session.access_token, campaign.id, rebuilt);
+      const rebuilt = rebuildStepsWithFollowupWaits(campaignSteps, seqStepEdits)
+        // rebuildStepsWithFollowupWaits only knows about timing, so the
+        // per-step instruction is re-attached by position afterwards.
+        .map((st) => st.step_order > 1
+          ? { ...st, ai_instruction: seqStepEdits[st.step_order - 2]?.ai_instruction ?? null }
+          : st);
+      const res = await saveCampaignSteps(
+        session.access_token, campaign.id, rebuilt, seqCampaignInstruction.trim() || null,
+      );
       const { steps } = await fetchCampaignSteps(session.access_token, campaign.id);
       setCampaignSteps(steps);
       toast.success(
@@ -2519,12 +2564,26 @@ export function CampaignDetail({
       const draft = (cl.all_drafts ?? []).find((d) => d.step_number === seqStepOrder) ?? null;
       const sent = hasReceivedFollowupStep(cl, seqStepOrder);
       const due = hasUpcomingFollowupStep(cl, seqStepOrder, campaignSteps);
+      // Lead-LEVEL facts only. A single AI/Template badge on the row would be
+      // wrong half the time: one lead can have follow-up 1 written by the model
+      // and follow-up 3 fall back to the template. Those badges belong on the
+      // cards, where they are true of exactly one email. What IS true of the
+      // lead is how far through the sequence they got, and whether any template
+      // has actually reached them.
+      const followupSteps = campaignSteps.filter((st) => st.step_order > 1);
+      const sentCount = followupSteps.filter((st) => hasReceivedFollowupStep(cl, st.step_order)).length;
+      const anyTemplateSent = followupSteps.some((st) =>
+        hasReceivedFollowupStep(cl, st.step_order)
+        && (cl.all_drafts ?? []).find((d) => d.step_number === st.step_order)?.source === "template",
+      );
+
       return {
         cl, draft, finished,
         // Nothing is due or outstanding for a lead whose sequence has ended.
         sent, due: due && !finished,
         written: !!draft?.body,
         isTemplate: draft?.source === "template",
+        sentCount, totalSteps: followupSteps.length, anyTemplateSent,
       };
     })
     .filter((r) => {
@@ -2612,9 +2671,16 @@ export function CampaignDetail({
   // here too, while typing in this pane does not re-seed and wipe the edit.
   const seqStepSignature = campaignSteps.map((s) => `${s.step_order}:${s.delay}`).join(",");
   useEffect(() => {
-    setSeqStepEdits(extractFollowupWaitsFromSteps(campaignSteps));
+    const waits = extractFollowupWaitsFromSteps(campaignSteps);
+    const followUps = campaignSteps.filter((st) => st.step_order > 1);
+    setSeqStepEdits(waits.map((w, i) => ({ ...w, ai_instruction: followUps[i]?.ai_instruction ?? null })));
     // eslint-disable-next-line react-hooks/exhaustive-deps -- signature stands in for the array
   }, [seqStepSignature]);
+
+  /** How far ahead of its due date a follow-up is written. Mirrors
+   *  FOLLOWUP_LEAD_TIME_DAYS in lib/services/followup-schedule.ts — the writer
+   *  is the authority, this only reports what it will do. */
+  const FOLLOWUP_LEAD_TIME_DAYS = 1;
 
   const seqLeadTimeline = (() => {
     const cl = seqActiveLeadRow?.cl;
@@ -2632,8 +2698,12 @@ export function CampaignDetail({
         const dueAt = cl.first_sent_at
           ? new Date(new Date(cl.first_sent_at).getTime() + daysFromOpening * 864e5)
           : null;
+        // When the writer will reach this one. Due date minus the lead time it
+        // already works to — shown as a real date because "you can still change
+        // this" is only useful if it says until when.
+        const writesAt = dueAt ? new Date(dueAt.getTime() - FOLLOWUP_LEAD_TIME_DAYS * 864e5) : null;
         return {
-          step: st, draft, sent, dueAt, daysFromOpening,
+          step: st, draft, sent, dueAt, writesAt, daysFromOpening,
           written: !!draft?.body && !isInstantlyPlaceholder(draft.body),
           isTemplate: draft?.source === "template",
         };
@@ -4342,7 +4412,7 @@ export function CampaignDetail({
                 <p className="p-6 text-sm text-muted-foreground text-center">
                   {seqLeadFilter === "due" ? "No follow-ups waiting to go out." : "No leads match this filter."}
                 </p>
-              ) : seqLeadRows.map(({ cl, sent, written, finished, isTemplate }) => {
+              ) : seqLeadRows.map(({ cl, finished, sentCount, totalSteps, anyTemplateSent }) => {
                 const lead = cl.leads;
                 const name = [lead?.first_name, lead?.last_name].filter(Boolean).join(" ") || "Unknown";
                 const isActive = seqActiveLeadRow?.cl.id === cl.id;
@@ -4364,32 +4434,27 @@ export function CampaignDetail({
                       <div className="flex-1 min-w-0">
                         <p className={cn("text-xs font-medium truncate", isActive ? "text-primary" : "text-foreground")}>{name}</p>
                         <p className="text-[10px] text-muted-foreground truncate">{lead?.company_name ?? ""}</p>
-                        <div className="mt-0.5 flex items-center gap-1 flex-wrap">
+                        <div className="mt-0.5 flex items-center gap-1.5 flex-wrap">
                           {finished ? (
                             <span className="inline-flex px-1.5 py-0.5 rounded border text-[10px] font-semibold bg-muted text-muted-foreground border-border capitalize">
                               {finished}
                             </span>
-                          ) : sent ? (
-                            <span className={cn(
-                              "inline-flex px-1.5 py-0.5 rounded border text-[10px] font-semibold",
-                              isTemplate
-                                ? "bg-amber-500/15 text-amber-600 border-amber-500/25"
-                                : "bg-green-500/15 text-green-500 border-green-500/25",
-                            )}>
-                              {isTemplate ? "Sent · template" : "Sent"}
-                            </span>
-                          ) : !written ? (
-                            <span className="inline-flex px-1.5 py-0.5 rounded border text-[10px] font-semibold bg-muted text-muted-foreground border-border">
-                              Not written
-                            </span>
-                          ) : isTemplate ? (
-                            <span className="inline-flex px-1.5 py-0.5 rounded border text-[10px] font-semibold bg-amber-500/15 text-amber-600 border-amber-500/25">
-                              Template
-                            </span>
                           ) : (
-                            <span className="inline-flex px-1.5 py-0.5 rounded border text-[10px] font-semibold bg-primary/15 text-primary border-primary/25">
-                              AI
-                            </span>
+                            <>
+                              <span className="font-mono text-[10px] tabular-nums text-muted-foreground">
+                                {sentCount} of {totalSteps} sent
+                              </span>
+                              {/* A template actually REACHED this person. Worth a
+                                  mark at lead level because it is the one thing
+                                  here the client would want to chase; which step
+                                  it was is on the card. */}
+                              {anyTemplateSent && (
+                                <span
+                                  title="A template was sent to this lead"
+                                  className="inline-block size-1.5 rounded-full bg-amber-500"
+                                />
+                              )}
+                            </>
                           )}
                         </div>
                       </div>
@@ -4479,18 +4544,60 @@ export function CampaignDetail({
                         )}
 
                         {row.written ? (
-                          <div
-                            className="text-sm leading-relaxed [&_p]:mb-2"
-                            dangerouslySetInnerHTML={{ __html: row.draft?.body ?? "" }}
-                          />
+                          seqEditingDraftId === row.draft?.id ? (
+                            <RichTextEditor value={seqEditBody} onChange={setSeqEditBody} />
+                          ) : (
+                            <div
+                              className="text-sm leading-relaxed [&_p]:mb-2"
+                              dangerouslySetInnerHTML={{ __html: row.draft?.body ?? "" }}
+                            />
+                          )
                         ) : (
+                          /* Not written yet — so this is the window where an
+                             instruction still changes the outcome. Saying WHEN it
+                             closes is the whole point; "the day before it is due"
+                             is not something anyone can act on. */
                           <p className="text-xs text-muted-foreground">
-                            Written automatically the day before it is due.
+                            {row.writesAt
+                              ? <>Written automatically on <span className="font-medium text-foreground">{format(row.writesAt, "d MMM")}</span>. Anything added to this step&rsquo;s instruction before then will be used.</>
+                              : "Written automatically once the opening email has gone out."}
                           </p>
                         )}
 
                         {!row.sent && row.written && canEditSettings && (
-                          <div className="pt-3 border-t border-border flex items-center gap-2">
+                          <div className="pt-3 border-t border-border flex items-center gap-2 flex-wrap">
+                            {seqEditingDraftId === row.draft?.id ? (
+                              <>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  disabled={seqEditSaving}
+                                  onClick={() => void handleSaveFollowupEdit(row.draft!.id)}
+                                  className="h-7 gap-1.5 px-3 text-xs [&_svg]:size-3"
+                                >
+                                  {seqEditSaving ? <Loader2 className="animate-spin" /> : <Save />}
+                                  Save
+                                </Button>
+                                <Button
+                                  type="button" size="sm" variant="ghost"
+                                  onClick={() => setSeqEditingDraftId(null)}
+                                  className="h-7 px-3 text-xs"
+                                >
+                                  Cancel
+                                </Button>
+                              </>
+                            ) : (
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                onClick={() => { setSeqEditingDraftId(row.draft!.id); setSeqEditBody(row.draft!.body ?? ""); }}
+                                className="h-7 gap-1.5 px-3 text-xs [&_svg]:size-3"
+                              >
+                                <Pencil />
+                                Edit
+                              </Button>
+                            )}
                             <Button
                               type="button"
                               size="sm"
@@ -4599,12 +4706,34 @@ export function CampaignDetail({
                    lived in Options, two tabs from where you are standing when
                    you decide another step is needed. */
                 <div className="space-y-3">
+                  {/* Said plainly, because the pane sits under a lead's name and
+                      everything in it is campaign-wide. Editing here changes the
+                      schedule for everyone, not for the person on screen. */}
+                  <div className="rounded-lg border border-border bg-secondary/30 px-3 py-2">
+                    <p className="text-xs font-medium">{campaign.name}</p>
+                    <p className="text-[11px] text-muted-foreground">
+                      Timing and instructions for all {campaignLeads.length} leads in this campaign — not just this one.
+                    </p>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="eyebrow">Applies to every follow-up</Label>
+                    <Textarea
+                      value={seqCampaignInstruction}
+                      disabled={!canEditSettings}
+                      onChange={(e) => setSeqCampaignInstruction(e.target.value)}
+                      placeholder="e.g. Mention that we now hold stock in a Dubai warehouse, so Gulf customers get two-week delivery."
+                      className="text-sm min-h-16"
+                    />
+                  </div>
+
                   <p className="text-xs text-muted-foreground">
                     Each wait is counted from the previous email, so they add up — the day
                     shown is when that follow-up actually goes out.
                   </p>
                   {seqStepEdits.map((st, idx) => (
-                    <div key={idx} className="flex items-center gap-2 rounded-lg border border-border bg-field px-3 py-2">
+                    <div key={idx} className="rounded-lg border border-border bg-field px-3 py-2 space-y-2">
+                      <div className="flex items-center gap-2">
                       <span className="text-xs text-muted-foreground w-24 shrink-0">
                         Follow-up {idx + 1} after
                       </span>
@@ -4635,6 +4764,18 @@ export function CampaignDetail({
                           Remove
                         </Button>
                       )}
+                      </div>
+                      {/* Adds to the campaign-wide box above rather than
+                          replacing it: "mention the warehouse" belongs on every
+                          follow-up while "ask for a call" belongs only on the
+                          last, and that last step usually wants both. */}
+                      <Textarea
+                        value={st.ai_instruction ?? ""}
+                        disabled={!canEditSettings}
+                        onChange={(e) => setSeqStepEdits((prev) => prev.map((x, i) => (i === idx ? { ...x, ai_instruction: e.target.value } : x)))}
+                        placeholder={`Extra instruction for follow-up ${idx + 1} only (optional)`}
+                        className="text-xs min-h-12"
+                      />
                     </div>
                   ))}
                   {canEditSettings && (
