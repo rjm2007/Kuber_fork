@@ -106,6 +106,13 @@ export function revisionRulesFor(intent: RevisionIntent): string {
     "  Do NOT use HTML tags — they are added afterwards and will be shown literally.",
     "- Open the body with the greeting line, as [OLD EMAIL] does.",
     "- Do NOT include the sign-off block; it is appended afterwards.",
+    // Bold survives as **markers**, which plainToHtml turns into <strong>. This
+    // rule lives in the client's base prompt, which a whole-email change drops —
+    // so without repeating it here every regenerated email came back with bold
+    // only in the signature (which is stored pre-formatted) and none in the body.
+    "- Use **double asterisks** for bold. Bold the matched product name, and at",
+    "  most one real spec or certification that appears in the material. Never",
+    "  bold whole sentences or vague phrases.",
     "- product_match is the ONE product from the library that fits best, by exact name.",
     '- signature: omit it, or send "unchanged", to keep the current sign-off.',
   ];
@@ -134,6 +141,11 @@ export function revisionRulesFor(intent: RevisionIntent): string {
     "What still has to survive:",
     "- The greeting, with the recipient's name.",
     "- At least one concrete, correct reference to what the prospect does.",
+    // Shortening had been cutting the product out entirely, leaving "I can share
+    // the most suitable option from our range" — an email that never says what
+    // is being sold. A shorter email is still a sales email.
+    "- The name of ONE matched product from the library, in bold. Cutting every",
+    "  product leaves an email that never says what we sell.",
     "- Every rule in the FACTS section above.",
     "- Every rule in the OUTPUT section below.",
     ...output,
