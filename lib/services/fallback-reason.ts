@@ -22,12 +22,17 @@ export type FallbackReason = {
    *  whether the UI offers a Regenerate button or explains this is final. */
   fixable: boolean;
   /** Stable key for grouping the per-step breakdown ("3 AI credits ran out"). */
-  code: "no_credits" | "service_busy" | "thin_data" | "unusable_output" | "unknown";
+  code: "no_credits" | "bad_key" | "service_busy" | "thin_data" | "unusable_output" | "unknown";
 };
 
 const NO_CREDITS: FallbackReason = {
   code: "no_credits",
   message: "AI credits ran out — top up and regenerate to personalise this one.",
+  fixable: true,
+};
+const BAD_KEY: FallbackReason = {
+  code: "bad_key",
+  message: "The AI provider is rejecting the API key. Check or replace it in Settings > Keys.",
   fixable: true,
 };
 const SERVICE_BUSY: FallbackReason = {
@@ -69,6 +74,15 @@ export function classifyFallback(rawError: string | null | undefined): FallbackR
     || e.includes("requires more credits") || e.includes("402")
     || e.includes("every configured llm key")
   ) return NO_CREDITS;
+
+  // A rejected key is NOT a billing problem, and saying so sends someone to top
+  // up an account that has money in it. Seen live 28 Aug 2026: an OpenRouter key
+  // returning "401 Missing Authentication header" was reported to the user as
+  // "Out of credits". Checked before the rate-limit rule because 403 appears in
+  // both vocabularies.
+  if (e.includes("401") || e.includes("403") || e.includes("missing authentication")
+      || e.includes("invalid api key") || e.includes("incorrect api key")
+      || e.includes("unauthorized") || e.includes("no auth credentials")) return BAD_KEY;
 
   if (e.includes("429") || e.includes("rate limit") || e.includes("timeout")
       || e.includes("timed out") || e.includes("etimedout") || e.includes("503")

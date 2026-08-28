@@ -18,6 +18,9 @@ function classify(raw) {
     || e.includes("no credits remaining") || e.includes("out of credits")
     || e.includes("requires more credits") || e.includes("402")
     || e.includes("every configured llm key")) return "no_credits";
+  if (e.includes("401") || e.includes("403") || e.includes("missing authentication")
+    || e.includes("invalid api key") || e.includes("incorrect api key")
+    || e.includes("unauthorized") || e.includes("no auth credentials")) return "bad_key";
   if (e.includes("429") || e.includes("rate limit") || e.includes("timeout")
     || e.includes("timed out") || e.includes("etimedout") || e.includes("503")
     || e.includes("overloaded")) return "service_busy";
@@ -41,6 +44,14 @@ assert.equal(classify("503 Service Unavailable"), "service_busy");
 
 assert.equal(classify("lead has no organization record"), "thin_data");
 assert.equal(classify("model returned empty body"), "unusable_output");
+// A rejected key is not a billing problem. Reporting it as one sends someone to
+// top up an account that has money in it — which is what happened on 28 Aug 2026.
+assert.equal(classify('OpenRouter 401: {"error":{"message":"Missing Authentication header"}}'), "bad_key");
+assert.equal(classify("OpenAI 401: Incorrect API key provided"), "bad_key");
+assert.equal(classify("403 Unauthorized"), "bad_key");
+// But a 429 that names a quota is still a credit problem, not an auth one.
+assert.equal(classify('OpenAI 429: insufficient_quota'), "no_credits");
+
 assert.equal(classify("something nobody has seen before"), "unknown");
 assert.equal(classify(null), "unknown");
 assert.equal(classify(""), "unknown");
