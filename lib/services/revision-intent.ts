@@ -83,6 +83,15 @@ export function revisionRulesFor(intent: RevisionIntent): string {
     "- Keep the recipient's name and company spelled exactly as given.",
     "- No em dashes or en dashes. Straight apostrophes and quotes only.",
     "- No leftover placeholders such as \"(client name)\" or \"[Company]\".",
+    // In FACTS rather than OUTPUT on purpose: this section is the one the
+    // instruction cannot overrule. Stated under OUTPUT it read as advice, and
+    // "make it shorter" beat it in 6 of 15 emails — trimming and adding
+    // emphasis markers pull against each other and brevity wins. Code now
+    // guarantees this too (ensureProductEmphasis), so the rule and the
+    // safety net agree.
+    "- Name ONE matched product and wrap it in **double asterisks** for bold.",
+    "  Shortening never removes the product: an email that does not say what we",
+    "  sell has nothing left to act on.",
   ];
 
   // OpenAI's JSON response_format refuses any request whose messages do not
