@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { ok, fail } from "@/lib/api-response";
 import { safeSecretEqual } from "@/lib/auth/secret";
 import { writeDueFollowups, upgradeTemplateFollowups } from "@/lib/services/write-followups";
+import { publishReadySequences } from "@/lib/services/sequence-publish";
 
 export const maxDuration = 55;
 
@@ -50,8 +51,12 @@ export async function POST(req: NextRequest) {
     companyId: body.company_id,
   });
 
+  // A campaign waiting to publish goes live the moment its last follow-up
+  // lands, rather than waiting for someone to come back and press a button.
+  const publish = await publishReadySequences(db);
+
   chainIfMoreWork(req, result, body.company_id, body.limit);
-  return ok({ ...result, upgraded });
+  return ok({ ...result, upgraded, publish });
 }
 
 /**
@@ -125,8 +130,9 @@ export async function GET(req: NextRequest) {
   const db = createAdminClient();
   const upgraded = await upgradeTemplateFollowups(db, { companyId });
   const result = await writeDueFollowups(db, { companyId });
+  const publish = await publishReadySequences(db);
   chainIfMoreWork(req, result, companyId, undefined);
-  return ok({ ...result, upgraded });
+  return ok({ ...result, upgraded, publish });
 }
 
 /**
