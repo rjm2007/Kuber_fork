@@ -135,6 +135,38 @@ export async function logLlmUnavailable(
   } catch { /* non-fatal */ }
 }
 
+/**
+ * Clear the "no LLM credits" banner once drafting works again.
+ *
+ * /api/v1/service-health takes the NEWEST source='llm' row per company and
+ * shows a red banner while it carries an error — so a success row is what lets
+ * a fixed key win over a stale failure. Only org scraping ever wrote one, which
+ * meant that after topping up a key the alarm stayed on for the full six-hour
+ * window unless someone happened to enrich a company. Reported 28 Aug 2026: key
+ * replaced at 12:24, last failure 12:20, banner still up.
+ *
+ * Called once per batch rather than per draft — the banner only needs one row
+ * to flip, and one per draft would bury the log it lives in.
+ *
+ * Best-effort: a logging failure must never turn a successful batch into a
+ * failed one.
+ */
+export async function logLlmRecovered(
+  db: SupabaseClient,
+  companyId: string | null,
+): Promise<void> {
+  try {
+    await db.from("enrichment_logs").insert({
+      source: "llm",
+      event: "DRAFT_LLM_RECOVERED",
+      error: null,
+      ...(companyId ? { company_id: companyId } : {}),
+      payload: {},
+      created_at: new Date().toISOString(),
+    });
+  } catch { /* non-fatal */ }
+}
+
 /** One place for what happens when a draft attempt throws.
  *
  *  Previously both catch blocks wrote status 'failed' and nothing else:

@@ -9,6 +9,7 @@ import {
   generateOneDraft,
   countPendingDrafts,
   logLlmUnavailable,
+  logLlmRecovered,
   isProviderOutage,
 } from "@/lib/services/generate-drafts";
 import { hasUsableLlmKey } from "@/lib/services/provider-keys";
@@ -164,6 +165,10 @@ export async function POST(req: NextRequest) {
       processed: succeeded + failed, succeeded, failed, remaining, status: "llm_unavailable",
     });
   }
+
+  // Same reason as the follow-up writer: a success row is what clears the
+  // "no LLM credits" banner, and only org scraping used to write one.
+  if (succeeded > 0) await logLlmRecovered(cdb, campaign.company_id as string);
 
   if (remaining > 0 || ranOutOfTime) {
     const baseUrl = internalAppBaseUrl(req);
