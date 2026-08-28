@@ -468,6 +468,10 @@ async function recordUnattemptedFailure(db: SupabaseClient, target: CampaignLead
     campaign_id: campaignId,
     step_number: stepNumber,
     status: "failed",
+    // The reason was accepted as an argument and written only to the lead's
+    // activity log, so every row created here showed a blank reason in the UI
+    // and in any query — which is why a run of these looked unexplainable.
+    rejection_reason: reason.slice(0, 500),
     created_at: new Date().toISOString(),
   });
   await logLeadEvent(db, target.lead_id, "draft_failed", "Email draft generation failed", {
@@ -494,7 +498,12 @@ export async function generateOneDraft(
    * the model edits that email instead of writing a new one from lead data.
    */
   previousDraft?: PreviousDraftContent | null,
-): Promise<{ ok: true; draftId: string; status: string } | { ok: false; reason: string }> {
+): Promise<
+  | { ok: true; draftId: string; status: string }
+  /** `skipped` means another worker already did this one — not a fault, and the
+   *  caller should neither count it nor retry it. */
+  | { ok: false; reason: string; skipped?: boolean }
+> {
   const lead = unwrapLead(target.leads);
   if (!lead) {
     await recordUnattemptedFailure(db, target, campaignId, stepNumber, "Lead not found");
@@ -556,14 +565,26 @@ export async function generateOneDraft(
       .single();
 
     if (dErr || !draft) {
-      // The most likely cause is exactly this: the "generating" insert hit
-      // uq_email_drafts_campaign_lead_step because a live (non-rejected,
-      // non-failed) draft already exists for this campaign+lead+step — e.g.
-      // a stale campaign_leads.draft_id was reset to null while the row it
-      // used to point at was left behind. Record the failure anyway so this
-      // lead stops being re-selected forever instead of erroring identically
-      // on every self-triggered retry.
       const reason = dErr?.message ?? "Failed to create draft";
+
+      // A UNIQUE VIOLATION HERE IS USUALLY SOMEONE ELSE'S SUCCESS, NOT A
+      // FAILURE. uq_email_drafts_campaign_lead_step allows one live draft per
+      // (campaign, lead, step), so when two workers reach the same lead at once
+      // — the self-chain overlapping the 10-minute watchdog is the everyday
+      // way — one wins and the other lands here. The constraint did its job:
+      // no duplicate draft was written and the lead HAS its email.
+      //
+      // Recording that as "failed" made a healthy race look like a fault:
+      // 8 of 15 leads on a measured run carried a failed row alongside their
+      // approved draft, which is what the consistency score was counting.
+      // Reported as a skip instead, so the caller neither counts it nor retries
+      // work that is already done.
+      if (dErr?.code === "23505") {
+        return { ok: false, reason: "Another worker is already drafting this lead", skipped: true };
+      }
+
+      // Any other insert failure is real and must be recorded, or the lead is
+      // re-selected forever and errors identically on every retry.
       await recordUnattemptedFailure(db, target, campaignId, stepNumber, reason);
       return { ok: false, reason };
     }
