@@ -17,7 +17,7 @@ import { PROVIDER_META, resolveLlmTierOrder, type LlmProviderId } from "@/lib/se
 import { safeSecretEqual } from "@/lib/auth/secret";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-const LLM_CREDIT_CHECKS: Record<LlmProviderId, (db: SupabaseClient) => Promise<CreditCheck>> = {
+const LLM_CREDIT_CHECKS: Record<LlmProviderId, (db: SupabaseClient, scope: string) => Promise<CreditCheck>> = {
   openrouter: checkOpenRouterCredits,
   openai: checkOpenAICredits,
   anthropic: checkAnthropicCredits,
@@ -86,6 +86,26 @@ function isUnreachableDomain(error: string): boolean {
 function isProviderFault(error: string): boolean {
   return /No usable Firecrawl key configured|API key not configured|401|403|payment required|402|insufficient credits/i
     .test(error);
+}
+
+/**
+ * Turn a model's "I have nothing" into a real absent value.
+ *
+ * The prompt asks for JSON `null` when a field cannot be evidenced. Models
+ * sometimes return the WORD instead — the string "null" — and `!!"null"` is
+ * true, so it sailed through every check and was stored as the company's
+ * description. Live data: 2 organisations describe themselves as `null` and 5
+ * say they sell to `null`, and that text flows straight into the email prompt.
+ *
+ * Also catches the other ways a model says nothing ("N/A", "unknown", "-"),
+ * and trims, so a whitespace-only answer counts as absent too.
+ */
+function cleanExtracted(value: string | null | undefined): string | null {
+  const text = (value ?? "").trim();
+  if (!text) return null;
+  return /^(null|none|n\/a|na|unknown|undefined|not available|not specified|-)\.?$/i.test(text)
+    ? null
+    : text;
 }
 
 /** Which failure this scrape error actually is. */
@@ -562,8 +582,12 @@ Rules:
     }, org.company_id);
 
     const llmDuration = Date.now() - llmStart;
-    const hasDescription = !!extracted?.company_description;
-    const hasSellsTo = !!extracted?.sells_to;
+    // Normalise BEFORE anything reads it, so the "did we get data" test, the
+    // log line and the row we write all agree on what counts as empty.
+    const companyDescription = cleanExtracted(extracted?.company_description);
+    const sellsTo = cleanExtracted(extracted?.sells_to);
+    const hasDescription = !!companyDescription;
+    const hasSellsTo = !!sellsTo;
     const extractionEvent = hasDescription && hasSellsTo
       ? "LLM_EXTRACTION_SUCCESS"
       : "LLM_EXTRACTION_PARTIAL";
@@ -580,7 +604,7 @@ Rules:
     const totalDuration = Date.now() - orgStart;
 
     // Fix E: LLM returned no usable data — treat as soft failure, not success
-    const hasExtractedData = !!(extracted?.company_description);
+    const hasExtractedData = hasDescription;
     if (!hasExtractedData) {
       await markFailed(db, org.id, "LLM_EXTRACTION_PARTIAL_NO_DATA",
         "LLM returned no description or data for this org. Will retry.");
@@ -589,8 +613,8 @@ Rules:
 
     // Only reach here if we have real data
     await db.from("organizations").update({
-      company_description: extracted.company_description,
-      sells_to: extracted?.sells_to ?? null,
+      company_description: companyDescription,
+      sells_to: sellsTo,
       has_scraped: true,
       enrichment_stage: "done",
       enrichment_status: "ENRICHMENT_COMPLETE",
@@ -670,9 +694,20 @@ export async function POST(req: NextRequest) {
   // function's own comment) — a real mid-run 429/insufficient_quota still
   // surfaces reactively via /api/v1/service-health.
   const tierOrder = await resolveLlmTierOrder(db);
+  // Balances are per company now, so this gate needs one to ask about. The
+  // batch spans whatever orgs are queued, so it uses the first claimed org's
+  // company — the same company every scrape in this pass will bill.
+  const { data: gateOrg } = await db
+    .from("organizations")
+    .select("company_id")
+    .eq("enrichment_stage", "queued")
+    .limit(1)
+    .maybeSingle();
+  const gateScope = (gateOrg?.company_id as string | undefined) ?? "any";
+
   const [firecrawlCredits, ...tierCredits] = await Promise.all([
-    checkFirecrawlCredits(db),
-    ...tierOrder.map((p) => LLM_CREDIT_CHECKS[p](db)),
+    checkFirecrawlCredits(db, gateScope),
+    ...tierOrder.map((p) => LLM_CREDIT_CHECKS[p](db, gateScope)),
   ]);
   const primaryCredits = tierCredits[0]; // tierOrder[0] — the current Primary pick, or OpenRouter by default
   const anyLlmTierUsable = tierCredits.some((c) => c.ok);

@@ -14,7 +14,7 @@ import { dbForUser } from "@/lib/supabase/scoped";
 // (Gemini/Mistral/Groq) stay out of the UI same as they do there.
 const VISIBLE_LLM_PROVIDERS: ProviderId[] = ["openrouter", "openai", "anthropic"];
 
-const CHECKERS: Partial<Record<ProviderId, (db: ReturnType<typeof dbForUser>, opts?: CreditCheckOptions) => Promise<CreditCheck>>> = {
+const CHECKERS: Partial<Record<ProviderId, (db: ReturnType<typeof dbForUser>, scope: string, opts?: CreditCheckOptions) => Promise<CreditCheck>>> = {
   openrouter: checkOpenRouterCredits,
   openai: checkOpenAICredits,
   anthropic: checkAnthropicCredits,
@@ -45,7 +45,7 @@ export async function GET(req: NextRequest) {
         const meta = PROVIDER_META[id];
         const checker = CHECKERS[id];
         const result = checker
-          ? await checker(db, { fresh: bypassCache })
+          ? await checker(db, user.companyId ?? "any", { fresh: bypassCache })
           : { ok: false, remaining: null, message: `No credit check wired up for ${id}` };
         return { id, label: meta.label, ok: result.ok, remaining: result.remaining, message: result.message };
       }),

@@ -33,7 +33,7 @@ export async function GET(req: NextRequest) {
   const endDate = toDateOnly(now);
 
   const [keyCheck, accountsRes, overviewRes, dailyRes] = await Promise.all([
-    checkInstantlyCredits(db, { fresh: bypassCache }),
+    checkInstantlyCredits(db, "any" /* one shared Instantly workspace */, { fresh: bypassCache }),
     listInstantlyAccounts().then(
       (items) => ({ data: items, error: null as string | null }),
       (err: Error) => ({ data: null, error: err.message }),

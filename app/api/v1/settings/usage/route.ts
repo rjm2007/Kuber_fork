@@ -15,11 +15,18 @@ function statusFor(check: CreditCheck): UsageStatus {
   return check.ok ? "ok" : "low";
 }
 
-const PROVIDERS: Array<{ id: string; label: string; check: (db: ReturnType<typeof dbForUser>) => Promise<CreditCheck> }> = [
-  { id: "apollo", label: "Apollo", check: checkApolloCredits },
-  { id: "firecrawl", label: "Firecrawl", check: checkFirecrawlCredits },
-  { id: "openrouter", label: "OpenRouter", check: checkOpenRouterCredits },
-  { id: "instantly", label: "Instantly", check: checkInstantlyCredits },
+// `scope` is per provider, not per caller: Apollo and Instantly are one shared
+// account across companies, while Firecrawl and the LLM keys are per company.
+const PROVIDERS: Array<{
+  id: string;
+  label: string;
+  shared: boolean;
+  check: (db: ReturnType<typeof dbForUser>, scope: string) => Promise<CreditCheck>;
+}> = [
+  { id: "apollo", label: "Apollo", shared: true, check: checkApolloCredits },
+  { id: "firecrawl", label: "Firecrawl", shared: false, check: checkFirecrawlCredits },
+  { id: "openrouter", label: "OpenRouter", shared: false, check: checkOpenRouterCredits },
+  { id: "instantly", label: "Instantly", shared: true, check: checkInstantlyCredits },
 ];
 
 // Every manager can see whether a provider is running low; only super admins
@@ -30,7 +37,9 @@ export async function GET(req: NextRequest) {
   try { user = await requireManager(req); } catch (r) { return r as Response; }
 
   const db = dbForUser(user);
-  const checks = await Promise.all(PROVIDERS.map((p) => p.check(db)));
+  const checks = await Promise.all(
+    PROVIDERS.map((p) => p.check(db, p.shared ? "any" : (user.companyId ?? "any"))),
+  );
 
   const providers = PROVIDERS.map((p, i) => {
     const check = checks[i];

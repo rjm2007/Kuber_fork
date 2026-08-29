@@ -10,10 +10,10 @@ export async function GET(req: NextRequest) {
   try { user = await requireAuth(req); } catch (r) { return r as Response; }
 
   const db = dbForUser(user);
-  let check = await checkApolloCredits(db);
+  let check = await checkApolloCredits(db, "any" /* one shared Apollo account */);
   // Older cache entries predate `limit` — one fresh read fills it in.
   if (check.remaining != null && check.limit == null) {
-    check = await checkApolloCredits(db, { fresh: true });
+    check = await checkApolloCredits(db, "any" /* one shared Apollo account */, { fresh: true });
   }
   return ok({
     remaining: check.remaining,

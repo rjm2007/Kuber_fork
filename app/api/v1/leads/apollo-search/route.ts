@@ -106,7 +106,7 @@ export async function POST(req: NextRequest) {
   // Never request more than Apollo can actually pay for — if only 40 credits
   // are left, this import gets clamped to 40, not attempted at 50 and left
   // to fail (and archive-loop) partway through.
-  const apolloCredits = await checkApolloCredits(db);
+  const apolloCredits = await checkApolloCredits(db, "any" /* one shared Apollo account */);
   if (apolloCredits.remaining != null && apolloCredits.remaining < maxTotalLeads) {
     maxTotalLeads = Math.max(0, apolloCredits.remaining);
   }

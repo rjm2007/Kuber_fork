@@ -57,7 +57,7 @@ export async function GET(req: NextRequest) {
   const since = new Date(Date.now() - LEDGER_LOOKBACK_DAYS * 24 * 60 * 60 * 1000).toISOString();
 
   const [keyCheck, ledgerRes, allowanceRes, usageStatsRes, creditUsageRes] = await Promise.all([
-    checkApolloCredits(db, { fresh: bypassCache }),
+    checkApolloCredits(db, "any" /* one shared Apollo account */, { fresh: bypassCache }),
     db.from("enrichment_logs")
       .select("id, created_at, event, error, payload")
       .eq("source", "apollo")
