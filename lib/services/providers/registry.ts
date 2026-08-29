@@ -302,11 +302,17 @@ async function callAnthropic(secret: string, model: string, opts: CompletionOpts
   };
 
   if (thinkingModel) {
-    // Drafting is a rule-following task, not a research one. `low` keeps the
-    // reasoning (and the bill) short while leaving thinking on — turning it off
-    // is worse here, because a thinking-disabled Claude can leak <thinking>
-    // tags straight into the email body.
-    body.output_config = { effort: "low" };
+    // Drafting is a rule-following task, not a research one, so the reasoning
+    // (and the bill) should stay short — but not so short the model gives up.
+    //
+    // `low` was measured returning an EMPTY body three times running on one
+    // lead (a freight forwarder, i.e. a prospect with no obvious plastics
+    // angle) while Sonnet 4.6 wrote 218 usable words for the same lead.
+    // `medium` is the floor that still produces an email on the awkward ones.
+    //
+    // Thinking stays ON: a thinking-disabled Claude can leak <thinking> tags
+    // straight into the email body, which is worse than the token cost.
+    body.output_config = { effort: "medium" };
   } else {
     body.temperature = opts.temperature ?? DEFAULT_TEMPERATURE;
   }
