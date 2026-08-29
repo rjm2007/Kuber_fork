@@ -60,4 +60,34 @@ assert.equal(tooShort("x".repeat(MIN_BODY_CHARS)), false);
 // Tags stripped, not counted: 130 real chars wrapped in markup still passes.
 assert.equal(tooShort(`<p><strong>${"y".repeat(130)}</strong></p>`), false);
 
+// ── The model explaining itself instead of writing the email ─────────────────
+// Asked to write a follow-up to a haircare importer, Claude invented a sentinel
+// that appears nowhere in our code or our prompt, and we SAVED it as an
+// approved, ready-to-send follow-up (live, 30 Aug 2026).
+const looksLikeRefusal = (t) =>
+  /[A-Z][A-Z0-9]*_[A-Z0-9_]{3,}/.test(t) ||
+  /(?:there is no honest|no honest product match|I cannot (?:write|generate|produce)|I'm unable to (?:write|generate)|as an AI(?: language)? model|fabricating one would)/i.test(t);
+
+const theRealRefusal =
+  "Dear Karan, NO_EMAIL_GENERATED: Shimmers Cosmetics is a haircare import and " +
+  "distribution house with no plastic manufacturing or packaging production activity " +
+  "identified. There is no honest product match from the Kuber Polyplast range, and " +
+  "fabricating one would be dishonest.";
+assert.equal(looksLikeRefusal(theRealRefusal), true, "the refusal that started this must be caught");
+assert.equal(looksLikeRefusal("I cannot write an email for this lead."), true);
+assert.equal(looksLikeRefusal("As an AI model, I am unable to help here."), true);
+
+// Real masterbatch copy must never trip it. These are verbatim from live drafts —
+// shouty product words, specs with colons and angle brackets, and the signature
+// block are all normal here, and none of them contain an ALL_CAPS_SNAKE token.
+for (const real of [
+  "Kuber Polyplast is an ISO 9001:2015 certified manufacturer with 30 years experience and FREE SAMPLES available.",
+  "Our OXO-Biodegradable and UV Stabiliser grades suit outdoor use. Black Masterbatch with <50 PPM grit.",
+  "Contact details: +91 84485 81064(M) ankit.singh@kuberpolyplast.com www.kuberpolyplast.com",
+  "18,000 MT annual production capacity. 6,670+ clients across 40+ countries.",
+]) {
+  assert.equal(looksLikeRefusal(real), false, `real copy must pass: ${real.slice(0, 40)}`);
+}
+
 console.log("ok — empty and stub bodies are rejected, real short emails pass");
+console.log("ok — refusals and invented markers are rejected, real copy is not");
