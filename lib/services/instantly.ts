@@ -9,14 +9,19 @@ const BASE = "https://api.instantly.ai/api/v2";
 async function h() {
   return {
     "Content-Type": "application/json",
-    Authorization: `Bearer ${await requireServiceSecret("instantly", "Instantly")}`,
+    // See the note in authOnly() below — one shared Instantly workspace.
+    Authorization: `Bearer ${await requireServiceSecret("instantly", "Instantly", "any")}`,
   };
 }
 
 /** Auth-only variant for the endpoints that must not send Content-Type
  *  (GETs and multipart uploads). */
 async function authOnly() {
-  return { Authorization: `Bearer ${await requireServiceSecret("instantly", "Instantly")}` };
+  // "any": Apollo and Instantly are ONE account/workspace shared by every
+  // company — the client and dev send from the same three mailboxes and
+  // draw on the same Apollo credit pool. Cross-tenant here is deliberate,
+  // which is why it is spelled out rather than left to a missing filter.
+  return { Authorization: `Bearer ${await requireServiceSecret("instantly", "Instantly", "any")}` };
 }
 
 async function iJson<T>(res: Response): Promise<T> {

@@ -46,7 +46,7 @@ export async function POST(req: NextRequest) {
   const locations = country?.length ? country : undefined;
 
   // Mock mode needs no key and no balance — there is nothing to spend.
-  if (!mock && !(await getServiceSecret("apollo"))) {
+  if (!mock && !(await getServiceSecret("apollo", "any" /* one shared Apollo account */))) {
     return fail(503, "UPSTREAM_APOLLO", "Apollo API key not configured — add one in Settings > Keys");
   }
 

@@ -122,6 +122,7 @@ export async function POST(req: NextRequest) {
       cdb,
       target,
       campaignId,
+      campaign.company_id as string,
       campaign.human_in_loop,
       campaign.name,
       undefined,

@@ -18,7 +18,8 @@ async function headers() {
     "Content-Type": "application/json",
     "Cache-Control": "no-cache",
     accept: "application/json",
-    "x-api-key": await requireServiceSecret("apollo", "Apollo"),
+    // "any": one shared Apollo account and credit pool across companies.
+    "x-api-key": await requireServiceSecret("apollo", "Apollo", "any"),
   };
 }
 

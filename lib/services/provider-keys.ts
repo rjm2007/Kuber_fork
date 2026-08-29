@@ -30,23 +30,58 @@ export interface ResolvedKey {
   secret: string;
 }
 
+/**
+ * Whose keys to consider.
+ *
+ * `"any"` means "deliberately cross-tenant" and must be spelled out at the call
+ * site. It exists for the integrations where one account genuinely IS shared —
+ * Apollo and Instantly are a single workspace serving every company — so that
+ * sharing reads as a decision in the code rather than an oversight.
+ */
+export type KeyScope = string | "any";
+
 /** Rows healthy right now, or cooling-off with an expired cooldown, ordered
  *  cheapest-to-try first. `exclude` lets a rotation loop skip keys it has
- *  already tried within the same request. */
+ *  already tried within the same request.
+ *
+ *  `scope` is REQUIRED, and that is the whole point. This function used to take
+ *  only `db` and trust it to be a company-scoped client. Every LLM path called
+ *  it with the admin client instead, which bypasses RLS — and provider_keys has
+ *  RLS on with zero policies, so the database could not catch it either. The
+ *  query therefore returned BOTH companies' keys and picked whichever sorted
+ *  first by priority.
+ *
+ *  Measured live on 2026-08-29, before this filter existed:
+ *
+ *    openai    -> candidates: CLIENT, DEV  -> winner CLIENT "Backup"
+ *    apollo    -> candidates: DEV, CLIENT  -> winner DEV "KEY-1"
+ *    firecrawl -> candidates: DEV, CLIENT  -> winner DEV "KEY-1"
+ *
+ *  i.e. dev's AI work was billed to the client's OpenAI key, and the client's
+ *  scraping ran on dev's Firecrawl key. Passing the scope explicitly makes the
+ *  filter impossible to forget: a caller that wants cross-tenant has to say so. */
 export async function getActiveKey(
   db: Db,
   provider: ProviderId,
+  scope: KeyScope,
   opts?: { exclude?: Set<string> },
 ): Promise<ResolvedKey | null> {
   const exclude = opts?.exclude ?? new Set<string>();
   const nowIso = new Date().toISOString();
 
-  const { data: rows } = await db
+  let query = db
     .from("provider_keys")
     .select("id, secret_vault_id")
     .eq("provider", provider)
     .eq("is_active", true)
-    .or(`status.eq.healthy,and(status.eq.cooling_off,cooling_off_until.lte.${nowIso})`)
+    .or(`status.eq.healthy,and(status.eq.cooling_off,cooling_off_until.lte.${nowIso})`);
+
+  // Belt and braces: the filter is applied here even when the caller also hands
+  // us a scoped client, because the scoped proxy is exactly what the LLM paths
+  // were failing to use.
+  if (scope !== "any") query = query.eq("company_id", scope);
+
+  const { data: rows } = await query
     .order("priority", { ascending: true })
     .order("created_at", { ascending: true });
 

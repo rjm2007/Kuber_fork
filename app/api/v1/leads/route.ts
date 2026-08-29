@@ -260,7 +260,7 @@ export async function POST(req: NextRequest) {
 
   // Fire enrichment regardless of whether a domain was typed in — scrape-orgs
   // resolves a missing one from the lead's own email before it claims anything.
-  if (process.env.INTERNAL_SECRET && (await getServiceSecret("firecrawl"))) {
+  if (process.env.INTERNAL_SECRET && (await getServiceSecret("firecrawl", "any"))) {
     const baseUrl = internalAppBaseUrl(req);
     const secret = process.env.INTERNAL_SECRET;
     after(() =>

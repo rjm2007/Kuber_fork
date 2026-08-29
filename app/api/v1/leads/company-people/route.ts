@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
 
   const { apollo_org_id, page } = parsed.data;
 
-  if (!mock && !(await getServiceSecret("apollo"))) {
+  if (!mock && !(await getServiceSecret("apollo", "any" /* one shared Apollo account */))) {
     return fail(503, "UPSTREAM_APOLLO", "Apollo API key not configured — add one in Settings > Keys");
   }
 

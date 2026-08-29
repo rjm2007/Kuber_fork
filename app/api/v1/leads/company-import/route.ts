@@ -195,7 +195,7 @@ export async function POST(req: NextRequest) {
   // Never in mock mode: these leads already carry their email, so the reveal
   // would find nothing to claim — but calling it at all is a paid code path
   // pointed at fabricated Apollo ids, and not calling it is free.
-  if (!mock && importId && leads.length > 0 && (await getServiceSecret("apollo"))) {
+  if (!mock && importId && leads.length > 0 && (await getServiceSecret("apollo", "any" /* one shared Apollo account */))) {
     after(() =>
       fetch(`${baseUrl}/api/v1/leads/enrich`, {
         method: "POST",

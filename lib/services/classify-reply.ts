@@ -15,6 +15,8 @@ export type ReplyClassification = z.infer<typeof ClassificationSchema>;
 interface ClassifyArgs {
   originalEmailText: string | null;
   replyText: string;
+  /** Whose LLM key pays for this. See complete(). */
+  companyId: string;
 }
 
 export async function classifyReply(db: SupabaseClient, args: ClassifyArgs): Promise<ReplyClassification> {
@@ -31,7 +33,7 @@ export async function classifyReply(db: SupabaseClient, args: ClassifyArgs): Pro
     const { json } = await complete<ReplyClassification>({
       system: classifier,
       user,
-    });
+    }, args.companyId);
     const parsed = ClassificationSchema.safeParse(json);
     if (parsed.success) return parsed.data;
   } catch { /* fall through to safe default */ }

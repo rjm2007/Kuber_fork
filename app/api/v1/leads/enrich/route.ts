@@ -62,7 +62,7 @@ export async function POST(req: NextRequest) {
 
   // DB-first key resolution (Settings > Keys), matching bulkMatch()'s own path
   // — an env-only check 503s the whole email-reveal pass in production.
-  if (!(await getServiceSecret("apollo"))) {
+  if (!(await getServiceSecret("apollo", "any" /* one shared Apollo account */))) {
     return fail(503, "UPSTREAM_APOLLO", "Apollo API key not configured — add one in Settings > Keys");
   }
 
@@ -245,7 +245,7 @@ export async function POST(req: NextRequest) {
   }
 
   // Trigger org scraping AFTER enrichment — domains are now populated on orgs.
-  if (stats.enriched_org_ids.length > 0 && secret && (await getServiceSecret("firecrawl"))) {
+  if (stats.enriched_org_ids.length > 0 && secret && (await getServiceSecret("firecrawl", companyId ?? "any"))) {
     after(() =>
       fetch(`${baseUrl}/api/enrich/scrape-orgs`, {
         method: "POST",

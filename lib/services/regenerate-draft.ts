@@ -87,7 +87,7 @@ export async function regenerateOneDraft(
 
   const { data: campaign } = await db
     .from("campaigns")
-    .select("id, name, human_in_loop, ai_prompt_context")
+    .select("id, name, human_in_loop, ai_prompt_context, company_id")
     .eq("id", oldDraft.campaign_id)
     .maybeSingle();
 
@@ -198,6 +198,7 @@ export async function regenerateOneDraft(
     db,
     cl,
     oldDraft.campaign_id,
+    campaign.company_id as string,
     campaign.human_in_loop,
     campaign.name,
     opts.userId,

@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { fetchWithRetry, sleep } from "@/lib/http";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createScopedClient } from "@/lib/supabase/scoped";
 import { getActiveKey, markKeyFailed, markKeySucceeded } from "@/lib/services/provider-keys";
 
 const BASE = "https://api.firecrawl.dev/v2";
@@ -22,12 +22,21 @@ export interface FirecrawlResult {
 // db is optional so every existing call site (scrapePage(url)) keeps working
 // unchanged — pass it when the caller already has one in scope so rotation
 // state (markKeyFailed/Succeeded) is written through the same client.
-export async function scrapePage(url: string, db?: SupabaseClient): Promise<FirecrawlResult> {
-  const client = db ?? createAdminClient();
+/**
+ * Scrape one page using THIS company's Firecrawl key.
+ *
+ * `companyId` is required for the same reason it is on complete(): the old
+ * optional-`db` form defaulted to the admin client, so key selection returned
+ * every company's Firecrawl keys and used whichever sorted first. Measured on
+ * 2026-08-29, the client's scraping was running on dev's key. Firecrawl credits
+ * are bought per account, so this was spending the wrong company's money.
+ */
+export async function scrapePage(url: string, companyId: string): Promise<FirecrawlResult> {
+  const client = createScopedClient(companyId);
   const tried = new Set<string>();
 
   for (;;) {
-    const resolved = await getActiveKey(client, "firecrawl", { exclude: tried });
+    const resolved = await getActiveKey(client, "firecrawl", companyId, { exclude: tried });
     if (!resolved) return { success: false, error: "No usable Firecrawl key configured" };
 
     const res = await fetchWithRetry("firecrawl", `${BASE}/scrape`, {
@@ -74,10 +83,10 @@ export interface FirecrawlSearchResult {
 }
 
 /** Search the web via Firecrawl /v2/search. Returns top results as markdown snippets. */
-export async function searchWeb(query: string, limit = 5, db?: SupabaseClient): Promise<string> {
+export async function searchWeb(query: string, limit: number, companyId: string): Promise<string> {
   try {
-    const client = db ?? createAdminClient();
-    const resolved = await getActiveKey(client, "firecrawl");
+    const client = createScopedClient(companyId);
+    const resolved = await getActiveKey(client, "firecrawl", companyId);
     if (!resolved) return "";
 
     const res = await fetchWithRetry("firecrawl", `${BASE}/search`, {
@@ -107,11 +116,11 @@ export async function searchWeb(query: string, limit = 5, db?: SupabaseClient): 
 }
 
 /** Scrape homepage + /about, concat with separator. Returns null on total failure. */
-export async function scrapeOrg(domain: string): Promise<ScrapeOrgResult | null> {
+export async function scrapeOrg(domain: string, companyId: string): Promise<ScrapeOrgResult | null> {
   const homeUrl = `https://${domain}`;
   const aboutUrl = `https://${domain}/about`;
 
-  const homeResult = await scrapePage(homeUrl);
+  const homeResult = await scrapePage(homeUrl, companyId);
 
   if (
     !homeResult.success ||
@@ -130,7 +139,7 @@ export async function scrapeOrg(domain: string): Promise<ScrapeOrgResult | null>
 
   await sleep(300);
 
-  const aboutResult = await scrapePage(aboutUrl);
+  const aboutResult = await scrapePage(aboutUrl, companyId);
   if (
     aboutResult.success &&
     aboutResult.data?.markdown &&

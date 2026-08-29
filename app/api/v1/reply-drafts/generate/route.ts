@@ -154,6 +154,7 @@ export async function POST(req: NextRequest) {
   if (error || !rd) return fail(500, "INTERNAL", error?.message ?? "Could not create the draft");
 
   const result = await generateReplyDraft(db, {
+    companyId: user.companyId ?? "any",
     replyDraftId: rd.id,
     masterCampaignId,
     campaignName,
