@@ -4,7 +4,7 @@
 // registered in PROVIDER_REGISTRY — nothing else in the app changes.
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { fetchWithRetry } from "@/lib/http";
-import type { CompletionOpts, ProviderCategory, ProviderId } from "@/lib/services/providers/types";
+import type { CompletionOpts, ProviderCallConfig, ProviderCategory, ProviderId } from "@/lib/services/providers/types";
 
 export interface ProviderMeta {
   id: ProviderId;
@@ -285,7 +285,7 @@ export function anthropicRejectsTemperature(model: string): boolean {
   return ANTHROPIC_NO_SAMPLING.some((p) => m.startsWith(p));
 }
 
-async function callAnthropic(secret: string, model: string, opts: CompletionOpts): Promise<object> {
+async function callAnthropic(secret: string, model: string, opts: CompletionOpts, config?: ProviderCallConfig): Promise<object> {
   const thinkingModel = anthropicRejectsTemperature(model);
 
   const body: Record<string, unknown> = {
@@ -317,6 +317,9 @@ async function callAnthropic(secret: string, model: string, opts: CompletionOpts
       "Content-Type": "application/json",
       "x-api-key": secret,
       "anthropic-version": "2023-06-01",
+      // Only present for identity-linked / multi-workspace keys, which 400
+      // without it. Harmless (ignored) on a single-workspace key.
+      ...(config?.workspaceId ? { "anthropic-workspace-id": config.workspaceId } : {}),
     },
     body: JSON.stringify(body),
   });
@@ -351,7 +354,12 @@ async function callGemini(secret: string, model: string, opts: CompletionOpts): 
   return parseJsonResponse(text);
 }
 
-export type LlmCallFn = (secret: string, model: string, opts: CompletionOpts) => Promise<object>;
+export type LlmCallFn = (
+  secret: string,
+  model: string,
+  opts: CompletionOpts,
+  config?: ProviderCallConfig,
+) => Promise<object>;
 
 export const LLM_CALL_REGISTRY: Record<LlmProviderId, LlmCallFn> = {
   openrouter: callOpenRouter,

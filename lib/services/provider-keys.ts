@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { ProviderId } from "@/lib/services/providers/types";
+import type { ProviderCallConfig, ProviderId } from "@/lib/services/providers/types";
 import { SERVICE_PROVIDER_IDS } from "@/lib/services/providers/registry";
 import { isOutOfCredits } from "@/lib/services/provider-errors";
 
@@ -101,6 +101,36 @@ export async function getActiveKey(
   if (envSecret?.trim()) return { source: "env", keyId: null, secret: envSecret };
 
   return null;
+}
+
+/** Settings key holding the Anthropic workspace id for a company. Stored in
+ *  the shared per-company `settings` table rather than as a new column, because
+ *  it is one optional string that only one provider uses. */
+export const ANTHROPIC_WORKSPACE_SETTING_KEY = "anthropic_workspace_id";
+
+/**
+ * Extra per-key request config for a provider. Today only Anthropic needs any:
+ * an identity-linked (multi-workspace) API key is rejected with a 400 unless
+ * every request carries `anthropic-workspace-id`.
+ *
+ *   "anthropic-workspace-id is required when authenticating with an
+ *    identity-linked API key; send the id of the workspace this request acts in"
+ *
+ * Returns an empty object for every other provider, and for an Anthropic key
+ * that is scoped to a single workspace (those do not need the header).
+ */
+export async function getProviderCallConfig(
+  db: Db,
+  provider: ProviderId,
+): Promise<ProviderCallConfig> {
+  if (provider !== "anthropic") return {};
+  const { data } = await db
+    .from("settings")
+    .select("value")
+    .eq("key", ANTHROPIC_WORKSPACE_SETTING_KEY)
+    .maybeSingle();
+  const fromDb = (data?.value as string | null)?.trim();
+  return { workspaceId: fromDb || process.env.ANTHROPIC_WORKSPACE_ID?.trim() || null };
 }
 
 export async function getConfiguredModel(db: Db, provider: ProviderId): Promise<string | null> {
