@@ -41,6 +41,13 @@ function fillTemplate(text: string, vars: { first_name: string; company: string 
 // (subject patterns, openings, offerings, closings, etc. live there as options).
 // Code only adds greeting + signature and turns "brochure" into a download link.
 
+/** Shortest plausible real email body, in plain-text characters.
+ *
+ *  The shortest legitimate opening email measured on live data was 515 chars
+ *  and a deliberately terse follow-up nudge runs ~235, so 120 sits well clear
+ *  of anything real while still catching an empty or stub generation. */
+const MIN_BODY_CHARS = 120;
+
 const DraftSchema = z.object({
   subject: z.string(),
   body: z.string(),
@@ -791,6 +798,36 @@ export async function generateOneDraft(
         .join("; ");
       console.error("Draft schema validation failed for lead", lead.id, issues, json);
       throw new Error(`Draft shape mismatch — ${issues}`);
+    }
+
+    // An email with no email in it.
+    //
+    // The schema accepts `body: ""` because z.string() does, so a model that
+    // returns an empty body produced a saved, ready-to-send draft consisting of
+    // "Dear <name>," followed immediately by the signature — nothing else. It
+    // looked healthy everywhere: status 'draft', source 'ai', no error recorded.
+    //
+    // Measured 30 Aug 2026 across 18 drafts on the same 6 leads: Haiku 4.5 did
+    // it once and Sonnet 5 once, so roughly one in nine on the weaker models.
+    // It is not model-specific — nothing here stopped OpenAI doing the same.
+    //
+    // Throwing routes it into the existing retry path, which is what should
+    // always have happened: a blank generation is a failed generation.
+    // MIN_BODY_CHARS is deliberately low — the shortest legitimate email
+    // measured was 515 characters, and a real follow-up nudge runs ~235 — so
+    // this only catches output that is empty or a stub, never a terse email.
+    const bodyText = validated.data.body.replace(/<[^>]+>/g, " ").trim();
+    if (bodyText.length < MIN_BODY_CHARS) {
+      throw new Error(
+        `Model returned an empty email body (${bodyText.length} chars) — retrying rather than sending a greeting and a signature`,
+      );
+    }
+
+    // Step 1 must carry a subject; a follow-up must NOT (it threads as a reply,
+    // and Instantly uses an empty subject to keep it in the same thread). The
+    // shared schema cannot express that, so it is checked here.
+    if (stepNumber === 1 && !validated.data.subject.trim()) {
+      throw new Error("Model returned an empty subject for an opening email — retrying");
     }
 
     // A follow-up threads as a reply, so the signature is already sitting in the
