@@ -313,7 +313,11 @@ async function checkCredits(
   const cached = opts?.fresh ? null : await getCached(db, settingsKey);
   if (cached) return cached;
 
-  const resolved = await getActiveKey(db, provider);
+  // "any": this reports a balance for the service-health banner and caches
+  // it in the cross-tenant system_state row — it never selects the key that
+  // gets SPENT (that is complete()/scrapePage()). Per-company balances are
+  // a follow-up; showing a shared reading costs nobody money.
+  const resolved = await getActiveKey(db, provider, "any");
   if (!resolved) {
     const fresh = { ok: false, remaining: null, message: `No usable ${provider} key configured` };
     await setCached(db, settingsKey, fresh);

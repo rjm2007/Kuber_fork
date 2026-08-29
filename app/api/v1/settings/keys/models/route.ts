@@ -61,7 +61,7 @@ export async function GET(req: NextRequest) {
   }
 
   const db = dbForUser(user);
-  const key = await getActiveKey(db, provider);
+  const key = await getActiveKey(db, provider, user.companyId ?? "any");
 
   try {
     let models: ProviderModelOption[] = [];

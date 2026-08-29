@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createScopedClient } from "@/lib/supabase/scoped";
 import { getActiveKey, markKeyFailed, markKeySucceeded, resolveModel } from "@/lib/services/provider-keys";
 import { LLM_CALL_REGISTRY, PROVIDER_META, resolveLlmTierOrder, type LlmProviderId } from "@/lib/services/providers/registry";
 import type { CompletionOpts } from "@/lib/services/providers/types";
@@ -15,14 +15,14 @@ export interface LlmResult<T> {
  *  provider-keys.ts) before giving up on that provider entirely. Only
  *  returns null when the provider has no usable key at all (no DB row and
  *  no env fallback) — that's "skip this tier," not a failure to report. */
-async function tryProvider<T>(db: SupabaseClient, provider: LlmProviderId, opts: CompletionOpts): Promise<T | null> {
+async function tryProvider<T>(db: SupabaseClient, companyId: string, provider: LlmProviderId, opts: CompletionOpts): Promise<T | null> {
   const call = LLM_CALL_REGISTRY[provider];
   const meta = PROVIDER_META[provider];
   const tried = new Set<string>();
   let lastErr: Error | null = null;
 
   for (;;) {
-    const resolved = await getActiveKey(db, provider, { exclude: tried });
+    const resolved = await getActiveKey(db, provider, companyId, { exclude: tried });
     if (!resolved) break;
 
     try {
@@ -42,15 +42,28 @@ async function tryProvider<T>(db: SupabaseClient, provider: LlmProviderId, opts:
   return null; // provider not configured at all — not an error, just skip this tier
 }
 
-export async function complete<T = object>(opts: CompletionOpts, db?: SupabaseClient): Promise<LlmResult<T>> {
-  const client = db ?? createAdminClient();
+/**
+ * Run one completion against the first LLM provider that has a usable key for
+ * THIS company.
+ *
+ * `companyId` is required. It used to be an optional `db`, defaulting to the
+ * admin client when omitted — and every caller omitted it, so key selection saw
+ * every company's rows and picked whichever sorted first. On 2026-08-29 that
+ * meant dev's drafting ran on the client's OpenAI key. See getActiveKey().
+ *
+ * The scoped client is built here rather than taken as an argument so a caller
+ * cannot accidentally hand in an unscoped one; the tier order and the selected
+ * model are per-company too, and both now read through it.
+ */
+export async function complete<T = object>(opts: CompletionOpts, companyId: string): Promise<LlmResult<T>> {
+  const client = createScopedClient(companyId);
   const tierOrder = await resolveLlmTierOrder(client);
   const errors: string[] = [];
 
   for (let i = 0; i < tierOrder.length; i++) {
     const provider = tierOrder[i];
     try {
-      const json = await tryProvider<T>(client, provider, opts);
+      const json = await tryProvider<T>(client, companyId, provider, opts);
       if (json !== null) return { json, tier: i + 1 };
     } catch (err) {
       errors.push(`${PROVIDER_META[provider].label}: ${(err as Error).message}`);

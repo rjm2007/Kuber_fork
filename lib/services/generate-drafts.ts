@@ -504,6 +504,10 @@ export async function generateOneDraft(
   db: SupabaseClient,
   target: CampaignLeadTarget,
   campaignId: string,
+  /** Whose LLM key pays for this draft. Explicit rather than derived from `db`,
+   *  because `db` is the admin client on the cron paths — which is exactly how
+   *  key selection ended up spanning both companies. See complete(). */
+  companyId: string,
   humanInLoop: boolean,
   campaignName: string,
   userId?: string,
@@ -776,7 +780,7 @@ export async function generateOneDraft(
       // differ. An instruction-led revision stays at the low default: "remove
       // the last paragraph" wants precision, not imagination.
       ...(isPlainRegeneration ? { temperature: 0.8 } : {}),
-    });
+    }, companyId);
 
     const validated = isRevision
       ? RevisionDraftSchema.safeParse(json)

@@ -20,7 +20,9 @@ export async function GET(_req: NextRequest) {
   // configure keys through the UI.
   const [apollo, firecrawl, openrouter, openai] = await Promise.all(
     (["apollo", "firecrawl", "openrouter", "openai"] as const).map((p) =>
-      getActiveKey(db, p).then((k) => !!k).catch(() => false),
+      // "any": this is an unauthenticated liveness probe asking whether the
+      // deployment has any usable key at all, not whose key it is.
+      getActiveKey(db, p, "any").then((k) => !!k).catch(() => false),
     ),
   );
 

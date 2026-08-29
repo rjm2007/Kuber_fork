@@ -54,6 +54,8 @@ function resolveRevisedSignature(returned: string | undefined, original: string)
 }
 
 interface GenerateReplyArgs {
+  /** Whose LLM key pays for this. See complete(). */
+  companyId: string;
   replyDraftId: string;
   masterCampaignId: string | null;
   campaignName: string;
@@ -171,7 +173,7 @@ export async function generateReplyDraft(
           args.customInstruction ? `Additional instruction: ${args.customInstruction}` : "",
         ].filter(Boolean).join("\n");
 
-    const { json } = await complete<{ subject: string; body: string; signature?: string }>({ system, user });
+    const { json } = await complete<{ subject: string; body: string; signature?: string }>({ system, user }, args.companyId);
     const parsed = isRevision ? RevisionReplySchema.safeParse(json) : ReplySchema.safeParse(json);
     if (!parsed.success) throw new Error("Reply shape mismatch");
 

@@ -296,7 +296,7 @@ const SCRAPE_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 async function processOneOrg(
   db: Db,
-  org: { id: string; domain: string | null; name: string; scraped_markdown: string | null; scraped_at: string | null },
+  org: { id: string; company_id: string; domain: string | null; name: string; scraped_markdown: string | null; scraped_at: string | null },
 ): Promise<"merged" | void> {
   const orgStart = Date.now();
 
@@ -371,7 +371,7 @@ async function processOneOrg(
   }
 
   if (!markdown) try {
-    const result = await scrapePage(`https://${org.domain}`, db);
+    const result = await scrapePage(`https://${org.domain}`, org.company_id);
     const scrapeDuration = Date.now() - scrapeStart;
 
     if (!result.success) {
@@ -469,7 +469,7 @@ Rules:
 - If you cannot find real evidence for a field in the provided content, return null for that field. Never invent facts. Never describe yourself or any third party — only describe the company whose website you are reading.`,
       user: `Company name: ${org.name}\nWebsite domain: ${org.domain ?? "unknown"}\n\nWebsite content:\n${markdown.slice(0, 8000)}`,
       maxTokens: 1024, // output is a tiny JSON object; keeps cost + credit floor low
-    }, db);
+    }, org.company_id);
 
     const llmDuration = Date.now() - llmStart;
     const hasDescription = !!extracted?.company_description;

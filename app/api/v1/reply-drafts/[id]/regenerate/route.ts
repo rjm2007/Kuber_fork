@@ -39,6 +39,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (error || !rd) return fail(500, "INTERNAL", error?.message ?? "insert failed");
 
   const result = await generateReplyDraft(db, {
+    companyId: user.companyId ?? "any",
     replyDraftId: rd.id,
     masterCampaignId,
     campaignName,

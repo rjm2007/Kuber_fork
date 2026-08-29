@@ -18,6 +18,8 @@ export async function regenerateFollowUpText(opts: {
   leadFirstName: string | null;
   currentBody: string; // HTML
   instruction: string;
+  /** Whose LLM key pays for this. See complete(). */
+  companyId: string;
 }): Promise<{ body: string }> {
   const system = [
     "You rewrite short cold-email follow-up nudges.",
@@ -38,7 +40,7 @@ export async function regenerateFollowUpText(opts: {
     `Instruction: ${opts.instruction}`,
   ].join("\n");
 
-  const { json } = await complete<{ body: string }>({ system, user });
+  const { json } = await complete<{ body: string }>({ system, user }, opts.companyId);
   const validated = FollowUpRewriteSchema.safeParse(json);
   if (!validated.success) throw new Error("Follow-up rewrite shape mismatch");
 
@@ -52,6 +54,8 @@ export async function regenerateFollowUpText(opts: {
 export async function regenerateFollowUpTemplateText(opts: {
   currentBody: string; // HTML or plain
   instruction: string;
+  /** Whose LLM key pays for this. See complete(). */
+  companyId: string;
 }): Promise<{ body: string }> {
   const system = [
     "You rewrite short cold-email follow-up nudges as campaign templates.",
@@ -72,7 +76,7 @@ export async function regenerateFollowUpTemplateText(opts: {
     `Instruction: ${opts.instruction}`,
   ].join("\n");
 
-  const { json } = await complete<{ body: string }>({ system, user });
+  const { json } = await complete<{ body: string }>({ system, user }, opts.companyId);
   const validated = FollowUpRewriteSchema.safeParse(json);
   if (!validated.success) throw new Error("Follow-up template rewrite shape mismatch");
 

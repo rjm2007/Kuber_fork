@@ -12,7 +12,8 @@
 // reads sitting next to multi-hundred-ms third-party HTTP calls.
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getActiveKey } from "@/lib/services/provider-keys";
+import { getActiveKey, type KeyScope } from "@/lib/services/provider-keys";
+import { createScopedClient } from "@/lib/supabase/scoped";
 import type { ServiceProviderId } from "@/lib/services/providers/registry";
 
 /** Key in the shared `settings` table holding the selected Instantly sender.
@@ -38,8 +39,12 @@ export async function getSendingAccounts(db: SupabaseClient): Promise<string[]> 
 
 /** Resolves to the DB key if one is configured, else the .env.local value,
  *  else null when the integration has no credential at all. */
-export async function getServiceSecret(provider: ServiceProviderId): Promise<string | null> {
-  const resolved = await getActiveKey(createAdminClient(), provider);
+export async function getServiceSecret(
+  provider: ServiceProviderId,
+  scope: KeyScope,
+): Promise<string | null> {
+  const db = scope === "any" ? createAdminClient() : createScopedClient(scope);
+  const resolved = await getActiveKey(db, provider, scope);
   return resolved?.secret ?? null;
 }
 
@@ -48,8 +53,9 @@ export async function getServiceSecret(provider: ServiceProviderId): Promise<str
 export async function requireServiceSecret(
   provider: ServiceProviderId,
   label: string,
+  scope: KeyScope,
 ): Promise<string> {
-  const secret = await getServiceSecret(provider);
+  const secret = await getServiceSecret(provider, scope);
   if (!secret) {
     throw new Error(`${label} API key not configured — add one in Settings > Keys`);
   }

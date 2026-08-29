@@ -19,6 +19,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const rewritten = await regenerateFollowUpTemplateText({
       currentBody: parsed.data.body,
       instruction: parsed.data.instruction ?? "Rewrite this follow-up.",
+      companyId: user.companyId ?? "any",
     });
     return ok({ body: rewritten.body });
   } catch (e) {

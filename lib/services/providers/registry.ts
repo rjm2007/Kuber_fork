@@ -37,7 +37,21 @@ export const PROVIDER_META: Record<ProviderId, ProviderMeta> = {
   anthropic: {
     id: "anthropic", category: "llm", label: "Claude (Anthropic direct)",
     modelInputMode: "dropdown",
-    modelOptions: ["claude-opus-4-8", "claude-sonnet-5", "claude-haiku-4-5"],
+    // Two generations, and the difference matters for drafting:
+    //
+    //   claude-opus-5, claude-sonnet-5   reject temperature (see
+    //                                    anthropicRejectsTemperature) and run
+    //                                    adaptive thinking instead. Tuned here
+    //                                    via output_config.effort.
+    //   claude-sonnet-4-6, haiku-4-5     still take temperature, so the 0.2
+    //                                    determinism / 0.8 regeneration-variety
+    //                                    split this app relies on keeps working
+    //                                    exactly as tuned on OpenRouter.
+    //
+    // Sonnet 5 is the default: best quality-per-rupee for bulk drafting
+    // ($2/$10 per Mtok). Haiku 4.5 ($1/$5) is the cheap option and the closest
+    // behavioural match to the current setup.
+    modelOptions: ["claude-opus-5", "claude-sonnet-5", "claude-sonnet-4-6", "claude-haiku-4-5"],
     defaultModel: "claude-sonnet-5",
   },
   gemini: {
@@ -240,7 +254,63 @@ const callGroq = (secret: string, model: string, opts: CompletionOpts) =>
   callOpenAICompatible("https://api.groq.com/openai/v1/chat/completions", "Groq", secret, model, opts);
 
 // ── Anthropic (direct Messages API — different auth + response shape) ─────
+
+/**
+ * Claude models that REJECT sampling parameters.
+ *
+ * Anthropic removed `temperature` / `top_p` / `top_k` from the Claude 5
+ * generation and from Opus 4.7/4.8 — sending one is a hard 400, not a warning.
+ * Because this file sends `temperature` on every call, that made two of the
+ * three models offered in Settings > Keys (including the default,
+ * claude-sonnet-5) fail on every single request.
+ *
+ * Thinking replaces the knob: these models reason adaptively by default, and
+ * `output_config.effort` is what tunes the spend. Older models (Haiku 4.5,
+ * Sonnet 4.6, Opus 4.6 and earlier) still take temperature normally, so they
+ * keep the determinism this app relies on — 0.2 for drafting, 0.8 for a plain
+ * regeneration.
+ *
+ * Matched as prefixes so a dated snapshot (claude-sonnet-5-20260101) is caught
+ * too. Anything unrecognised keeps temperature, which is the safe default for
+ * every model that existed before this rule.
+ */
+const ANTHROPIC_NO_SAMPLING = [
+  "claude-fable-5", "claude-mythos-5",
+  "claude-opus-5", "claude-sonnet-5",
+  "claude-opus-4-8", "claude-opus-4-7",
+];
+
+export function anthropicRejectsTemperature(model: string): boolean {
+  const m = model.trim().toLowerCase();
+  return ANTHROPIC_NO_SAMPLING.some((p) => m.startsWith(p));
+}
+
 async function callAnthropic(secret: string, model: string, opts: CompletionOpts): Promise<object> {
+  const thinkingModel = anthropicRejectsTemperature(model);
+
+  const body: Record<string, unknown> = {
+    model,
+    // Thinking tokens are billed inside max_tokens, so a 2048 ceiling that is
+    // ample for a short email can be swallowed by reasoning and truncate the
+    // JSON mid-object. max_tokens is a cap, not a spend — raising it for the
+    // thinking models costs nothing when the reply is short.
+    max_tokens: thinkingModel
+      ? Math.max(opts.maxTokens ?? DEFAULT_MAX_TOKENS, 8192)
+      : (opts.maxTokens ?? DEFAULT_MAX_TOKENS),
+    system: opts.system,
+    messages: [{ role: "user", content: opts.user }],
+  };
+
+  if (thinkingModel) {
+    // Drafting is a rule-following task, not a research one. `low` keeps the
+    // reasoning (and the bill) short while leaving thinking on — turning it off
+    // is worse here, because a thinking-disabled Claude can leak <thinking>
+    // tags straight into the email body.
+    body.output_config = { effort: "low" };
+  } else {
+    body.temperature = opts.temperature ?? DEFAULT_TEMPERATURE;
+  }
+
   const res = await fetchWithRetry("llm", "https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -248,13 +318,7 @@ async function callAnthropic(secret: string, model: string, opts: CompletionOpts
       "x-api-key": secret,
       "anthropic-version": "2023-06-01",
     },
-    body: JSON.stringify({
-      model,
-      max_tokens: opts.maxTokens ?? DEFAULT_MAX_TOKENS,
-      temperature: opts.temperature ?? DEFAULT_TEMPERATURE,
-      system: opts.system,
-      messages: [{ role: "user", content: opts.user }],
-    }),
+    body: JSON.stringify(body),
   });
   if (!res.ok) throwHttpError("Anthropic", res.status, await res.text());
   const data = await res.json() as { content?: Array<{ type: string; text?: string }> };

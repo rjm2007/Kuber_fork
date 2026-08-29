@@ -168,6 +168,7 @@ async function writeOne(
     db,
     cl as Parameters<typeof generateOneDraft>[1],
     target.campaignId,
+    campaign.company_id,
     // human_in_loop is deliberately ignored for follow-ups: they are
     // auto-approved by design (agreed with the client 21 Aug 2026 — "no need to
     // certify the follow-ups"). Passing false makes generateOneDraft mark the

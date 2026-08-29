@@ -69,7 +69,7 @@ export async function POST(req: NextRequest) {
   // the same path searchPeople() itself uses. Checking process.env directly
   // here 503'd every deployment that stores its key in the UI instead of an
   // env var (i.e. production), even with a healthy Apollo key configured.
-  const apolloKey = await getServiceSecret("apollo");
+  const apolloKey = await getServiceSecret("apollo", "any" /* one shared Apollo account */);
   if (!apolloKey) return fail(503, "UPSTREAM_APOLLO", "Apollo API key not configured — add one in Settings > Keys");
 
   // ── Preview mode ──────────────────────────────────────────────────────────
