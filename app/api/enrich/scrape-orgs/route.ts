@@ -39,6 +39,29 @@ export const maxDuration = 300;
 const RETRYABLE_STATUSES = new Set(["SCRAPE_FAILED", "LLM_EXTRACTION_FAILED"]);
 const MAX_ENRICHMENT_ATTEMPTS = 3;
 
+/**
+ * How many attempts a failure of THIS kind is worth, before the org stops and
+ * goes to Input Required.
+ *
+ * A scrape failure is usually about reaching the site — the target was slow,
+ * rate-limited us, or was briefly down — and a later attempt genuinely can
+ * succeed, so it keeps the full three.
+ *
+ * An LLM extraction failure is different. By then the page is already in hand:
+ * the model read it and could not find a company description worth keeping.
+ * Measured across 1,335 failed orgs, 44 of these said "LLM returned no
+ * description or data" — a thin site or a holding page, which the third read
+ * does not fix. Two is enough to cover a genuine blip (a timeout, an aborted
+ * call) without paying the model a third time to reach the same conclusion.
+ *
+ * Note the counter is shared, so this is a ceiling on the org's TOTAL attempts
+ * given the failure it just hit — not a separate budget per failure type.
+ */
+const MAX_ATTEMPTS_BY_STATUS: Record<string, number> = {
+  SCRAPE_FAILED: 3,
+  LLM_EXTRACTION_FAILED: 2,
+};
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 type Db = SupabaseClient;
@@ -103,7 +126,7 @@ async function markFailed(db: Db, orgId: string, status: string, errorMessage: s
     .single();
 
   const attempts = (org?.enrichment_attempts ?? 0) + 1;
-  const outOfRetries = attempts >= MAX_ENRICHMENT_ATTEMPTS;
+  const outOfRetries = attempts >= (MAX_ATTEMPTS_BY_STATUS[status] ?? MAX_ENRICHMENT_ATTEMPTS);
   // Transient failure with attempts left: requeue instead of concluding — the
   // ongoing scrape-orgs self-chain (and the daily watchdog) will pick it back
   // up automatically, so this needs no human until it's actually out of tries.
