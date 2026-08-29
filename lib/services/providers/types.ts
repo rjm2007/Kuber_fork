@@ -33,6 +33,24 @@ export interface CompletionOpts {
   temperature?: number;
 }
 
+/**
+ * Provider-specific request config that is a property of the KEY, not of the
+ * call. Resolved once per attempt in tryProvider() and handed to the call fn.
+ */
+export interface ProviderCallConfig {
+  /**
+   * Anthropic only. An identity-linked (multi-workspace) API key is rejected
+   * with a 400 unless every request names the workspace it acts in:
+   *
+   *   "anthropic-workspace-id is required when authenticating with an
+   *    identity-linked API key"
+   *
+   * A plain single-workspace key does not need this and ignores it, so the
+   * header is only sent when a value is configured.
+   */
+  workspaceId?: string | null;
+}
+
 export type CreditCheck = {
   ok: boolean;
   remaining: number | null;

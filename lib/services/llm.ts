@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createScopedClient } from "@/lib/supabase/scoped";
-import { getActiveKey, markKeyFailed, markKeySucceeded, resolveModel } from "@/lib/services/provider-keys";
+import { getActiveKey, getProviderCallConfig, markKeyFailed, markKeySucceeded, resolveModel } from "@/lib/services/provider-keys";
 import { LLM_CALL_REGISTRY, PROVIDER_META, resolveLlmTierOrder, type LlmProviderId } from "@/lib/services/providers/registry";
 import type { CompletionOpts } from "@/lib/services/providers/types";
 
@@ -27,7 +27,8 @@ async function tryProvider<T>(db: SupabaseClient, companyId: string, provider: L
 
     try {
       const model = await resolveModel(db, provider, meta.defaultModel ?? "");
-      const json = (await call(resolved.secret, model, opts)) as T;
+      const config = await getProviderCallConfig(db, provider);
+      const json = (await call(resolved.secret, model, opts, config)) as T;
       if (resolved.keyId) await markKeySucceeded(db, resolved.keyId);
       return json;
     } catch (err) {
