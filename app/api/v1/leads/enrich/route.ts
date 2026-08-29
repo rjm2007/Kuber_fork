@@ -118,7 +118,7 @@ export async function POST(req: NextRequest) {
   // A logged-in manager gets an uncached reading: the likeliest reason someone
   // is hitting Enrich by hand is that they just topped up, and a stale
   // five-minute "out of credits" answer would look like the top-up failed.
-  const credits = await checkApolloCredits(db, { fresh: user.companyId !== null });
+  const credits = await checkApolloCredits(db, "any" /* one shared Apollo account */, { fresh: user.companyId !== null });
   if (!credits.ok) {
     await logEnrichFailure(db, companyId, "CREDITS_EXHAUSTED", credits.message, {
       warning: credits.message,

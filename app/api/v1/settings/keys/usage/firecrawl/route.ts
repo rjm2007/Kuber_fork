@@ -45,7 +45,7 @@ export async function GET(req: NextRequest) {
   const since = new Date(Date.now() - LEDGER_LOOKBACK_DAYS * 24 * 60 * 60 * 1000).toISOString();
 
   const [keyCheck, ledgerRes] = await Promise.all([
-    checkFirecrawlCredits(db, { fresh: bypassCache }),
+    checkFirecrawlCredits(db, user.companyId ?? "any", { fresh: bypassCache }),
     db.from("enrichment_logs")
       .select("id, created_at, event, error, payload")
       .eq("source", "firecrawl")

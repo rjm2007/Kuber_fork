@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { getActiveKey } from "@/lib/services/provider-keys";
+import { type KeyScope, getActiveKey } from "@/lib/services/provider-keys";
 import type { CreditCheck } from "@/lib/services/providers/types";
 import type { ProviderId } from "@/lib/services/providers/types";
 
@@ -25,6 +25,22 @@ const APOLLO_MIN_CREDITS = 5;
 // companies, so the balance behind them is one global number — and this is
 // called both from a scoped route (service-health) and from the unscoped
 // enrichment relay, which cannot satisfy settings.company_id (NOT NULL).
+/**
+ * Cache key for one provider's balance, per company.
+ *
+ * system_state is a GLOBAL table keyed only by `key`, so every company shared
+ * one row per provider: whichever company refreshed last decided what all the
+ * others were shown. That was harmless while the keys themselves were shared,
+ * and became wrong the moment provider_keys went per-company — the client could
+ * be shown dev's Firecrawl balance and top up the wrong account.
+ *
+ * "any" keeps the old global row, which is right for the genuinely shared
+ * accounts (Apollo, Instantly) and for unauthenticated callers.
+ */
+function cacheKeyFor(settingsKey: string, scope: KeyScope): string {
+  return scope === "any" ? settingsKey : `${settingsKey}:${scope}`;
+}
+
 async function getCached(db: Db, key: string): Promise<CreditCheck | null> {
   const { data } = await db.from("system_state").select("value, updated_at").eq("key", key).maybeSingle();
   if (!data) return null;
@@ -308,19 +324,21 @@ async function checkCredits(
   db: Db,
   provider: ProviderId,
   settingsKey: string,
+  scope: KeyScope,
   opts?: CreditCheckOptions,
 ): Promise<CreditCheck> {
-  const cached = opts?.fresh ? null : await getCached(db, settingsKey);
+  const cacheKey = cacheKeyFor(settingsKey, scope);
+  const cached = opts?.fresh ? null : await getCached(db, cacheKey);
   if (cached) return cached;
 
   // "any": this reports a balance for the service-health banner and caches
   // it in the cross-tenant system_state row — it never selects the key that
   // gets SPENT (that is complete()/scrapePage()). Per-company balances are
   // a follow-up; showing a shared reading costs nobody money.
-  const resolved = await getActiveKey(db, provider, "any");
+  const resolved = await getActiveKey(db, provider, scope);
   if (!resolved) {
     const fresh = { ok: false, remaining: null, message: `No usable ${provider} key configured` };
-    await setCached(db, settingsKey, fresh);
+    await setCached(db, cacheKey, fresh);
     return fresh;
   }
 
@@ -329,15 +347,15 @@ async function checkCredits(
   return fresh;
 }
 
-export const checkFirecrawlCredits = (db: Db, opts?: CreditCheckOptions) => checkCredits(db, "firecrawl", "credit_check_firecrawl", opts);
-export const checkApolloCredits = (db: Db, opts?: CreditCheckOptions) => checkCredits(db, "apollo", "credit_check_apollo", opts);
-export const checkInstantlyCredits = (db: Db, opts?: CreditCheckOptions) => checkCredits(db, "instantly", "credit_check_instantly", opts);
-export const checkOpenRouterCredits = (db: Db, opts?: CreditCheckOptions) => checkCredits(db, "openrouter", "credit_check_openrouter", opts);
-export const checkOpenAICredits = (db: Db, opts?: CreditCheckOptions) => checkCredits(db, "openai", "credit_check_openai", opts);
-export const checkAnthropicCredits = (db: Db, opts?: CreditCheckOptions) => checkCredits(db, "anthropic", "credit_check_anthropic", opts);
-export const checkGeminiCredits = (db: Db, opts?: CreditCheckOptions) => checkCredits(db, "gemini", "credit_check_gemini", opts);
-export const checkMistralCredits = (db: Db, opts?: CreditCheckOptions) => checkCredits(db, "mistral", "credit_check_mistral", opts);
-export const checkGroqCredits = (db: Db, opts?: CreditCheckOptions) => checkCredits(db, "groq", "credit_check_groq", opts);
+export const checkFirecrawlCredits = (db: Db, scope: KeyScope, opts?: CreditCheckOptions) => checkCredits(db, "firecrawl", "credit_check_firecrawl", scope, opts);
+export const checkApolloCredits = (db: Db, scope: KeyScope, opts?: CreditCheckOptions) => checkCredits(db, "apollo", "credit_check_apollo", scope, opts);
+export const checkInstantlyCredits = (db: Db, scope: KeyScope, opts?: CreditCheckOptions) => checkCredits(db, "instantly", "credit_check_instantly", scope, opts);
+export const checkOpenRouterCredits = (db: Db, scope: KeyScope, opts?: CreditCheckOptions) => checkCredits(db, "openrouter", "credit_check_openrouter", scope, opts);
+export const checkOpenAICredits = (db: Db, scope: KeyScope, opts?: CreditCheckOptions) => checkCredits(db, "openai", "credit_check_openai", scope, opts);
+export const checkAnthropicCredits = (db: Db, scope: KeyScope, opts?: CreditCheckOptions) => checkCredits(db, "anthropic", "credit_check_anthropic", scope, opts);
+export const checkGeminiCredits = (db: Db, scope: KeyScope, opts?: CreditCheckOptions) => checkCredits(db, "gemini", "credit_check_gemini", scope, opts);
+export const checkMistralCredits = (db: Db, scope: KeyScope, opts?: CreditCheckOptions) => checkCredits(db, "mistral", "credit_check_mistral", scope, opts);
+export const checkGroqCredits = (db: Db, scope: KeyScope, opts?: CreditCheckOptions) => checkCredits(db, "groq", "credit_check_groq", scope, opts);
 
 /** Used by the "Re-check" button on a specific stored key — bypasses the
  *  currently-active-key resolution and the 5-minute cache entirely, since

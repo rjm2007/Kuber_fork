@@ -56,7 +56,7 @@ export async function POST(req: NextRequest) {
   // so read fresh rather than serving a stale "out of credits".
   const credits = mock
     ? { ok: true, remaining: null as number | null, message: "mock" }
-    : await checkApolloCredits(db, { fresh: true });
+    : await checkApolloCredits(db, "any" /* one shared Apollo account */, { fresh: true });
   if (!credits.ok) {
     return fail(402, "APOLLO_OUT_OF_CREDITS", credits.message);
   }
