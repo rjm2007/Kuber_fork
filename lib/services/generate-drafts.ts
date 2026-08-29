@@ -48,6 +48,28 @@ function fillTemplate(text: string, vars: { first_name: string; company: string 
  *  of anything real while still catching an empty or stub generation. */
 const MIN_BODY_CHARS = 120;
 
+/**
+ * Does this read as the model talking ABOUT the task instead of doing it?
+ *
+ * Two signals, both cheap:
+ *
+ *  1. An ALL_CAPS_SNAKE token. Real email copy does not contain them; machine
+ *     markers do. This is what caught NO_EMAIL_GENERATED. Deliberately requires
+ *     an underscore, so ordinary shouting ("FREE SAMPLES") and product/spec
+ *     text ("ISO 9001:2015", "OXO", "UV") never match.
+ *  2. A short list of refusal phrases the model reaches for when it decides it
+ *     cannot write the email honestly.
+ *
+ * Kept as a narrow allow-through rather than a clever classifier: a false
+ * positive costs one retry, while a false negative sends the customer an
+ * explanation of why we could not write to them.
+ */
+export function looksLikeRefusal(bodyText: string): boolean {
+  if (/[A-Z][A-Z0-9]*_[A-Z0-9_]{3,}/.test(bodyText)) return true;
+  return /(?:there is no honest|no honest product match|I cannot (?:write|generate|produce)|I'm unable to (?:write|generate)|as an AI(?: language)? model|fabricating one would)/i
+    .test(bodyText);
+}
+
 const DraftSchema = z.object({
   subject: z.string(),
   body: z.string(),
@@ -820,6 +842,29 @@ export async function generateOneDraft(
     if (bodyText.length < MIN_BODY_CHARS) {
       throw new Error(
         `Model returned an empty email body (${bodyText.length} chars) — retrying rather than sending a greeting and a signature`,
+      );
+    }
+
+    // The model explaining itself instead of writing an email.
+    //
+    // Asked to write a follow-up to a haircare importer, Claude returned:
+    //
+    //   "NO_EMAIL_GENERATED: Shimmers Cosmetics is a haircare import and
+    //    distribution house with no plastic manufacturing... There is no honest
+    //    product match from the Kuber Polyplast range, and fabricating one
+    //    would..."
+    //
+    // That sentinel exists nowhere in our code or our system prompt — the model
+    // invented it to signal "I cannot do this honestly". Reasonable of it; the
+    // problem is that we SAVED the refusal as an approved, ready-to-send
+    // follow-up (seen live 30 Aug 2026). The customer would have received it.
+    //
+    // Treating it as a failure is right on both paths: an opening email retries,
+    // and a follow-up falls through to the template safety net, which is exactly
+    // what that net is for — a lead we cannot honestly personalise.
+    if (looksLikeRefusal(bodyText)) {
+      throw new Error(
+        "Model returned a refusal or an internal marker instead of an email — retrying rather than sending it",
       );
     }
 
