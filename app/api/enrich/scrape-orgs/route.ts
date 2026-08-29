@@ -36,7 +36,64 @@ export const maxDuration = 300;
 // automatically trying again. Not retryable = the content itself is the
 // problem (no domain, empty page, nothing extractable) — retrying instantly
 // won't change the outcome, so these go straight to a human via Input Required.
-const RETRYABLE_STATUSES = new Set(["SCRAPE_FAILED", "LLM_EXTRACTION_FAILED"]);
+const RETRYABLE_STATUSES = new Set([
+  "SCRAPE_FAILED",
+  "LLM_EXTRACTION_FAILED",
+  // Was missing, and the error message said "Will retry." while the code sent
+  // it straight to Input Required on the first failure. The model returning no
+  // description is the single most common extraction failure (44 of 1,335
+  // failed orgs), and the page is already cached, so a second read is free.
+  "LLM_EXTRACTION_PARTIAL_NO_DATA",
+  // Our key was missing or dead. Firecrawl was never called, so this says
+  // nothing about the company — see PROVIDER_FAULT_STATUSES below.
+  "SCRAPE_PROVIDER_UNAVAILABLE",
+]);
+
+/**
+ * Failures that were OUR fault, not the company's.
+ *
+ * The org never got a real attempt — no key, no credits, provider down — so the
+ * strike is not deducted and "Retry all" is free to reset it. Everything else
+ * counts: a dead domain or an empty page will still be dead and empty next month.
+ *
+ * This distinction is why 436 organisations are currently written off with
+ * "No usable Firecrawl key configured". They were never reached.
+ */
+const PROVIDER_FAULT_STATUSES = new Set(["SCRAPE_PROVIDER_UNAVAILABLE"]);
+
+/**
+ * Firecrawl could not reach the site at all — DNS failure, dead domain.
+ *
+ * Measured against the live API: an unreachable host returns success=false and
+ * costs NO credit, while a host that answers (even with a 404 page) costs one.
+ * Either way there is nothing to gain from asking again — the domain is wrong,
+ * and it will still be wrong tomorrow. So this is a hard stop, not a retry.
+ */
+function isUnreachableDomain(error: string): boolean {
+  return /DNS resolution failed|ENOTFOUND|could not be resolved|name not resolved/i.test(error);
+}
+
+/**
+ * The scrape never happened because OUR side was not ready.
+ *
+ * The batch already has a credit gate that skips everything when Firecrawl
+ * reports no balance, but that gate reads a cached balance and cannot catch a
+ * key that is simply absent or unreadable — scrapePage returns
+ * "No usable Firecrawl key configured" per org instead. That string is on 436
+ * permanently-failed organisations today: every one of them spent a strike on
+ * a request that was never sent.
+ */
+function isProviderFault(error: string): boolean {
+  return /No usable Firecrawl key configured|API key not configured|401|403|payment required|402|insufficient credits/i
+    .test(error);
+}
+
+/** Which failure this scrape error actually is. */
+function classifyScrapeFailure(error: string): string {
+  if (isProviderFault(error)) return "SCRAPE_PROVIDER_UNAVAILABLE";
+  if (isUnreachableDomain(error)) return "SCRAPE_DOMAIN_UNREACHABLE";
+  return "SCRAPE_FAILED";
+}
 const MAX_ENRICHMENT_ATTEMPTS = 3;
 
 /**
@@ -125,8 +182,15 @@ async function markFailed(db: Db, orgId: string, status: string, errorMessage: s
     .eq("id", orgId)
     .single();
 
-  const attempts = (org?.enrichment_attempts ?? 0) + 1;
-  const outOfRetries = attempts >= (MAX_ATTEMPTS_BY_STATUS[status] ?? MAX_ENRICHMENT_ATTEMPTS);
+  // A failure that was ours does not cost the org an attempt. Without this, an
+  // outage silently spends every org's retry budget on a problem they had no
+  // part in — which is exactly how 436 of them ended up permanently failed.
+  const providerFault = PROVIDER_FAULT_STATUSES.has(status);
+  const attempts = providerFault
+    ? (org?.enrichment_attempts ?? 0)
+    : (org?.enrichment_attempts ?? 0) + 1;
+  const outOfRetries = !providerFault
+    && attempts >= (MAX_ATTEMPTS_BY_STATUS[status] ?? MAX_ENRICHMENT_ATTEMPTS);
   // Transient failure with attempts left: requeue instead of concluding — the
   // ongoing scrape-orgs self-chain (and the daily watchdog) will pick it back
   // up automatically, so this needs no human until it's actually out of tries.
@@ -407,7 +471,10 @@ async function processOneOrg(
         error: errMsg,
         payload: { domain: org.domain },
       });
-      await markFailed(db, org.id, "SCRAPE_FAILED", errMsg);
+      // A domain that does not resolve is not a transient blocker — asking
+      // again just repeats the same DNS lookup. Stop now instead of spending
+      // two more attempts to learn the same thing.
+      await markFailed(db, org.id, classifyScrapeFailure(errMsg), errMsg);
       return;
     }
 
@@ -452,7 +519,7 @@ async function processOneOrg(
       error: errMsg,
       payload: { domain: org.domain },
     });
-    await markFailed(db, org.id, "SCRAPE_FAILED", errMsg);
+    await markFailed(db, org.id, classifyScrapeFailure(errMsg), errMsg);
     return;
   }
 

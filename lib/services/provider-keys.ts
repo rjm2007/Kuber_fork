@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ProviderCallConfig, ProviderId } from "@/lib/services/providers/types";
-import { SERVICE_PROVIDER_IDS } from "@/lib/services/providers/registry";
+import { SERVICE_PROVIDER_IDS, type ServiceProviderId } from "@/lib/services/providers/registry";
 import { isOutOfCredits } from "@/lib/services/provider-errors";
 
 type Db = SupabaseClient;
@@ -203,6 +203,40 @@ export async function hasUsableLlmKey(db: Db, companyId: string): Promise<boolea
     .or(`status.eq.healthy,and(status.eq.cooling_off,cooling_off_until.lte.${new Date().toISOString()})`)
     .limit(1);
 
+  return (data ?? []).length > 0;
+}
+
+/**
+ * Is there a usable key for ONE service provider (Firecrawl, Apollo, Instantly)?
+ *
+ * The mirror of hasUsableLlmKey, and it exists for the same reason. Draft
+ * generation already refuses to start when no LLM provider will serve it, so an
+ * outage costs nothing. Scraping had no such guard: when the Firecrawl key went
+ * dry, every org was still attempted, each attempt failed on our problem rather
+ * than the company's, and each one burned a strike. 436 organisations were
+ * permanently written off that way with `No usable Firecrawl key configured` —
+ * companies that were never actually reached.
+ *
+ * Reads the health already recorded on provider_keys rather than asking the
+ * provider for a balance: a balance check is itself a billable call, and that
+ * habit is what made Apollo's usage impossible to account for.
+ */
+export async function hasUsableServiceKey(
+  db: Db,
+  provider: ServiceProviderId,
+  scope: KeyScope,
+): Promise<boolean> {
+  if ((process.env[ENV_KEY_VARS[provider]] ?? "").trim().length > 0) return true;
+
+  let query = db
+    .from("provider_keys")
+    .select("id")
+    .eq("provider", provider)
+    .eq("is_active", true)
+    .or(`status.eq.healthy,and(status.eq.cooling_off,cooling_off_until.lte.${new Date().toISOString()})`);
+  if (scope !== "any") query = query.eq("company_id", scope);
+
+  const { data } = await query.limit(1);
   return (data ?? []).length > 0;
 }
 
