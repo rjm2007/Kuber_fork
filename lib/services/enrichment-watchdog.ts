@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { MAX_ENRICH_ATTEMPTS } from "@/lib/services/enrich-leads";
 import { countPendingDrafts, logLlmUnavailable } from "@/lib/services/generate-drafts";
-import { hasUsableLlmKey } from "@/lib/services/provider-keys";
+import { hasUsableLlmKey, hasUsableServiceKey } from "@/lib/services/provider-keys";
 
 type Db = SupabaseClient;
 
@@ -326,8 +326,70 @@ function triggerFollowupWriter(baseUrl: string) {
   }).catch(() => {});
 }
 
+/**
+ * Bring back the organisations that failed because OUR Firecrawl key was down.
+ *
+ * This is the gap the draft side already covers and scraping did not. Draft
+ * generation refuses to start when no LLM provider will serve it, logs the
+ * outage, and picks the work back up once a key is healthy. Scraping had no
+ * equivalent: an org marked failed stayed failed forever, and the only way back
+ * was a human pressing "Retry all".
+ *
+ * The result is visible in the data — 436 organisations permanently failed with
+ * "No usable Firecrawl key configured". They were never actually reached, so
+ * they deserve a real attempt once a key exists.
+ *
+ * Deliberately narrow: it requeues ONLY SCRAPE_PROVIDER_UNAVAILABLE. A dead
+ * domain or an empty page is the company's own problem and stays where it is —
+ * requeueing those is what turns a watchdog into a credit-burning loop.
+ */
+export async function triggerScrapeRecoveryWatchdog(baseUrl: string, db: Db) {
+  const { data: orgs } = await db
+    .from("organizations")
+    .select("id, company_id")
+    .eq("enrichment_stage", "failed")
+    .eq("enrichment_status", "SCRAPE_PROVIDER_UNAVAILABLE")
+    .limit(500);
+
+  if (!orgs?.length) return;
+
+  // One key check per company, not per org.
+  const usableByCompany = new Map<string, boolean>();
+  const recoverable: string[] = [];
+  for (const org of orgs) {
+    const companyId = org.company_id as string;
+    if (!usableByCompany.has(companyId)) {
+      usableByCompany.set(companyId, await hasUsableServiceKey(db, "firecrawl", companyId));
+    }
+    if (usableByCompany.get(companyId)) recoverable.push(org.id as string);
+  }
+  if (recoverable.length === 0) return;
+
+  await db
+    .from("organizations")
+    .update({
+      enrichment_stage: "queued",
+      enrichment_status: "SCRAPE_QUEUED",
+      last_error: null,
+      updated_at: new Date().toISOString(),
+    })
+    .in("id", recoverable);
+
+  // enrichment_attempts is deliberately NOT reset: markFailed never charged an
+  // attempt for a provider fault, so the org still has its full budget.
+  await db.from("enrichment_logs").insert({
+    source: "system",
+    event: "SCRAPE_QUEUED",
+    payload: { total_orgs: recoverable.length, triggered_by: "scrape_recovery_watchdog" },
+    created_at: new Date().toISOString(),
+  });
+
+  triggerScrapeWatchdog(baseUrl);
+}
+
 export async function runEnrichmentWatchdog(baseUrl: string, db: Db) {
   triggerScrapeWatchdog(baseUrl);
+  await triggerScrapeRecoveryWatchdog(baseUrl, db);
   triggerFollowupWriter(baseUrl);
   await triggerRegenerationWatchdog(baseUrl, db);
   await triggerDraftGenerationWatchdog(baseUrl, db);
