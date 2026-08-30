@@ -309,11 +309,23 @@ const SIGNATURE_KEYS = [
   "signature_company",
 ] as const;
 
+/**
+ * Used only when a company has not configured its own signature.
+ *
+ * There is NO phone number here, deliberately. This default used to carry
+ * "+91-XXXXXXXXXX" behind a TODO saying to replace it before going live — and
+ * it went live: 4 emails reached real inboxes signed with a fake number, and 14
+ * drafts still hold it. A signature with no phone is merely incomplete; one
+ * with a made-up number tells a prospect to call something that does not exist.
+ *
+ * Both companies now set signature_contact explicitly, so this is a backstop
+ * rather than a live path — which is precisely why a fake value could sit here
+ * unnoticed for weeks. Every value in this object must be safe to actually send.
+ */
 const SIGNATURE_DEFAULTS = {
   name:    "Kuber Polyplast Sales Team",
   title:   "Business Development",
-  // TODO: Replace +91-XXXXXXXXXX with the real phone number before sending live campaigns.
-  contact: "Kuber Polyplast\n+91-XXXXXXXXXX\nsales@kuberpolyplast.com",
+  contact: "Kuber Polyplast\nsales@kuberpolyplast.com",
   company: "Kuber Polyplast",
 };
 
