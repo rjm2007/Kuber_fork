@@ -82,6 +82,10 @@ export const CampaignStepInput = z.object({
    *  Capped because it rides into the prompt — a long instruction crowds out
    *  the company research the follow-up is supposed to be built from. */
   ai_instruction: z.string().trim().max(1000).nullable().optional(),
+  /** Per-step follow-up text for when the email cannot be personalised.
+   *  Empty/null means inherit the Settings default — see
+   *  lib/services/followup-template.ts. */
+  fallback_body: z.string().trim().max(2000).nullable().optional(),
 });
 
 export const CampaignStepsSchema = z.object({

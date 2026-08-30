@@ -18,7 +18,7 @@ export async function GET(
   try { await assertCampaignAccess(db, user, id); } catch (r) { return r as Response; }
   const { data } = await db
     .from("campaign_steps")
-    .select("id,step_order,delay,delay_unit,subject,body,ai_instruction")
+    .select("id,step_order,delay,delay_unit,subject,body,ai_instruction,fallback_body")
     .eq("campaign_id", id)
     .order("step_order");
 

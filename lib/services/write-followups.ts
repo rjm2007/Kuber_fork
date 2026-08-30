@@ -4,7 +4,8 @@ import { createScopedClient } from "@/lib/supabase/scoped";
 import { findFollowupsToWrite, MAX_TOTAL_ATTEMPTS, type FollowupTarget } from "@/lib/services/followup-schedule";
 import { generateOneDraft, logLlmRecovered } from "@/lib/services/generate-drafts";
 import { syncApprovedDraftToInstantly } from "@/lib/services/draft-sync";
-import { getFollowupFallbackTemplate, renderFollowupFallback } from "@/lib/services/settings";
+import { renderFollowupFallback } from "@/lib/services/settings";
+import { resolveFollowupTemplate } from "@/lib/services/followup-template";
 import { classifyFallback } from "@/lib/services/fallback-reason";
 import { resolveStandingFollowupInstruction } from "@/lib/services/followup-instruction";
 import { hasUsableLlmKey } from "@/lib/services/provider-keys";
@@ -242,7 +243,10 @@ async function writeTemplateFallback(
   const { data: lead } = await db
     .from("leads").select("first_name").eq("id", target.leadId).maybeSingle();
 
-  const template = await getFollowupFallbackTemplate(db);
+  // Same resolver the no-data path uses, so the two reasons a follow-up cannot
+  // be personalised now produce the SAME text — this campaign's own wording for
+  // this step, else the Settings default, else the built-in.
+  const template = await resolveFollowupTemplate(db, target.campaignId, target.stepOrder);
   const body = renderFollowupFallback(template, (lead?.first_name as string | null) ?? "");
 
   const { error } = await db.from("email_drafts").insert({

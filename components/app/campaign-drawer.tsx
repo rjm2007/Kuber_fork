@@ -881,7 +881,9 @@ export function CampaignDetail({
   const sendingHeld = !!heldAt;
   /** Editable follow-up waits, for the Steps pane. Held separately from
    *  campaignSteps so typing does not repeatedly re-save. */
-  const [seqStepEdits, setSeqStepEdits] = useState<{ delay: number; delay_unit: "minutes" | "hours" | "days"; ai_instruction?: string | null }[]>([]);
+  const [seqStepEdits, setSeqStepEdits] = useState<{ delay: number; delay_unit: "minutes" | "hours" | "days"; ai_instruction?: string | null; fallback_body?: string | null }[]>([]);
+  /** Which step's fallback template is currently being rewritten by the AI. */
+  const [seqFallbackRegenerating, setSeqFallbackRegenerating] = useState<number | null>(null);
   /** Campaign-wide follow-up guidance, and the per-step boxes above. */
   const [seqCampaignInstruction, setSeqCampaignInstruction] = useState("");
   /** Which follow-up is being hand-edited, and its working copy. */
@@ -1921,7 +1923,11 @@ export function CampaignDetail({
         // rebuildStepsWithFollowupWaits only knows about timing, so the
         // per-step instruction is re-attached by position afterwards.
         .map((st) => st.step_order > 1
-          ? { ...st, ai_instruction: seqStepEdits[st.step_order - 2]?.ai_instruction ?? null }
+          ? {
+              ...st,
+              ai_instruction: seqStepEdits[st.step_order - 2]?.ai_instruction ?? null,
+              fallback_body: seqStepEdits[st.step_order - 2]?.fallback_body ?? null,
+            }
           : st);
       const res = await saveCampaignSteps(
         session.access_token, campaign.id, rebuilt, seqCampaignInstruction.trim() || null,
@@ -1937,6 +1943,35 @@ export function CampaignDetail({
       toast.error("Failed to save: " + (e as Error).message);
     } finally {
       setSeqStepSaving(false);
+    }
+  }
+
+  /**
+   * Rewrite ONE step's fallback template with the AI.
+   *
+   * Uses the campaign-level template route that has existed since August and was
+   * never wired to anything. It rewrites text only — nothing is saved until the
+   * user presses Save on the Steps pane, so a bad rewrite costs a click to undo.
+   */
+  async function handleRegenerateFallback(idx: number, instruction: string) {
+    const current = seqStepEdits[idx]?.fallback_body?.trim();
+    if (!current) {
+      toast.error("Write a first version to rewrite, or leave it empty to use the default.");
+      return;
+    }
+    setSeqFallbackRegenerating(idx);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+      const { body } = await regenerateFollowUpStepTemplate(
+        session.access_token, campaign.id, idx + 2, current, instruction || undefined,
+      );
+      setSeqStepEdits((prev) => prev.map((x, i) => (i === idx ? { ...x, fallback_body: body } : x)));
+      toast.success("Rewritten — press Save to keep it");
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setSeqFallbackRegenerating(null);
     }
   }
 
@@ -2812,7 +2847,11 @@ export function CampaignDetail({
   useEffect(() => {
     const waits = extractFollowupWaitsFromSteps(campaignSteps);
     const followUps = campaignSteps.filter((st) => st.step_order > 1);
-    setSeqStepEdits(waits.map((w, i) => ({ ...w, ai_instruction: followUps[i]?.ai_instruction ?? null })));
+    setSeqStepEdits(waits.map((w, i) => ({
+      ...w,
+      ai_instruction: followUps[i]?.ai_instruction ?? null,
+      fallback_body: followUps[i]?.fallback_body ?? null,
+    })));
     // eslint-disable-next-line react-hooks/exhaustive-deps -- signature stands in for the array
   }, [seqStepSignature]);
 
@@ -5041,6 +5080,41 @@ export function CampaignDetail({
                           </>
                         );
                       })()}
+
+                      {/* The text sent when this follow-up CANNOT be personalised —
+                          the lead has no company data, or the AI failed. Separate
+                          from the instruction above, which only guides the AI. */}
+                      <div className="space-y-1.5 pt-2 border-t border-border">
+                        <Label className="eyebrow">If it can&apos;t be personalised</Label>
+                        <Textarea
+                          value={st.fallback_body ?? ""}
+                          disabled={!canEditSettings}
+                          onChange={(e) => setSeqStepEdits((prev) => prev.map((x, i) => (i === idx ? { ...x, fallback_body: e.target.value } : x)))}
+                          placeholder="Leave empty to use the company default. Supports {{first_name}}."
+                          className="text-xs min-h-14"
+                        />
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="flex-1 text-[10px] text-muted-foreground">
+                            Sent when the lead has no company details, or the AI cannot write.
+                            {!st.fallback_body?.trim() && " Currently using the company default."}
+                          </p>
+                          {canEditSettings && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="h-7 gap-1.5 text-[11px]"
+                              disabled={seqFallbackRegenerating !== null}
+                              onClick={() => void handleRegenerateFallback(idx, "Make it shorter and more natural.")}
+                            >
+                              {seqFallbackRegenerating === idx
+                                ? <Loader2 className="size-3 animate-spin" />
+                                : <RotateCcw className="size-3" />}
+                              Rewrite
+                            </Button>
+                          )}
+                        </div>
+                      </div>
                     </div>
                   ))}
                   {canEditSettings && (

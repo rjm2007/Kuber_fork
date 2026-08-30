@@ -440,6 +440,11 @@ export type CampaignStepInput = {
    *  Optional so callers that only care about timing (the Options tab) can keep
    *  passing steps without it — and must not blank what someone typed. */
   ai_instruction?: string | null;
+  /** Text sent when this follow-up cannot be personalised — the lead has no
+   *  company data, or the AI failed. Null/empty inherits the Settings default.
+   *  Optional for the same reason as ai_instruction: the Options tab edits only
+   *  timing and must not blank what someone typed here. */
+  fallback_body?: string | null;
 };
 
 export type FollowupStepInput = {
