@@ -41,12 +41,30 @@ function fillTemplate(text: string, vars: { first_name: string; company: string 
 // (subject patterns, openings, offerings, closings, etc. live there as options).
 // Code only adds greeting + signature and turns "brochure" into a download link.
 
-/** Shortest plausible real email body, in plain-text characters.
+/**
+ * Shortest plausible real email body, in plain-text characters — per step.
  *
- *  The shortest legitimate opening email measured on live data was 515 chars
- *  and a deliberately terse follow-up nudge runs ~235, so 120 sits well clear
- *  of anything real while still catching an empty or stub generation. */
-const MIN_BODY_CHARS = 120;
+ * An opening email and a follow-up are not the same shape, and one threshold
+ * for both was wrong. Measured against 1,366 real AI-written follow-ups:
+ *
+ *   shortest  78 chars      average 260      longest 611
+ *
+ * A follow-up is MEANT to be a short nudge, so the flat 120 used here would
+ * have rejected 9 perfectly good ones and paid for a needless regeneration
+ * each time. The shortest legitimate opening email, by contrast, measured 515
+ * chars — nothing real comes close to 120 there.
+ *
+ * 60 for a follow-up keeps clear headroom under that observed 78 while still
+ * catching what this guard exists for: the model returning nothing. The real
+ * failure was a FOUR character body, and the signature is appended after this
+ * check, so an empty generation is 0-4 chars either way.
+ */
+const MIN_BODY_CHARS_OPENING = 120;
+const MIN_BODY_CHARS_FOLLOWUP = 60;
+
+function minBodyCharsFor(stepNumber: number): number {
+  return stepNumber > 1 ? MIN_BODY_CHARS_FOLLOWUP : MIN_BODY_CHARS_OPENING;
+}
 
 /**
  * Does this read as the model talking ABOUT the task instead of doing it?
@@ -846,9 +864,10 @@ export async function generateOneDraft(
     // measured was 515 characters, and a real follow-up nudge runs ~235 — so
     // this only catches output that is empty or a stub, never a terse email.
     const bodyText = validated.data.body.replace(/<[^>]+>/g, " ").trim();
-    if (bodyText.length < MIN_BODY_CHARS) {
+    const minBodyChars = minBodyCharsFor(stepNumber);
+    if (bodyText.length < minBodyChars) {
       throw new Error(
-        `Model returned an empty email body (${bodyText.length} chars) — retrying rather than sending a greeting and a signature`,
+        `Model returned an empty email body (${bodyText.length} chars, minimum ${minBodyChars}) — retrying rather than sending a greeting and a signature`,
       );
     }
 
