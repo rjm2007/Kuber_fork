@@ -1736,7 +1736,19 @@ export function CampaignDetail({
         toast.error("No leads were sent to Instantly. Check timezone and sending window settings.");
         return;
       }
-      toast.success(`${result.sent} lead${result.sent !== 1 ? "s" : ""} sent to Instantly`);
+      // A campaign fans out into one sub-campaign per country. Some can fail
+      // while others succeed, and that used to be invisible: the send reported
+      // only the number that went, so a country that failed entirely looked
+      // like a smaller campaign rather than a problem.
+      const sendErrors = result.errors ?? [];
+      if (sendErrors.length > 0) {
+        toast.warning(
+          `${result.sent} lead${result.sent !== 1 ? "s" : ""} sent, but ${sendErrors.length} group${sendErrors.length !== 1 ? "s" : ""} failed — ${sendErrors[0]}`,
+          { duration: 12000 },
+        );
+      } else {
+        toast.success(`${result.sent} lead${result.sent !== 1 ? "s" : ""} sent to Instantly`);
+      }
       setCheckedIds(new Set());
       await loadData();
       await loadCampaigns(session.access_token);

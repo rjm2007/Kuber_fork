@@ -1009,7 +1009,9 @@ export async function sendApprovedLeads(
   token: string,
   campaignId: string,
   opts?: { campaignLeadIds?: string[] },
-): Promise<{ buckets: number; sent: number }> {
+  /** Per-country failures from a PARTIAL send. Empty on a clean run.
+   *  Optional so an older server response still type-checks. */
+): Promise<{ buckets: number; sent: number; errors?: string[] }> {
   return apiFetch(`/api/v1/campaigns/${campaignId}/send`, {
     method: "POST",
     ...(opts?.campaignLeadIds?.length
