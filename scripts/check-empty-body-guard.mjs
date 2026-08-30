@@ -16,10 +16,17 @@
  */
 import assert from "node:assert/strict";
 
-const MIN_BODY_CHARS = 120;
+// Per step: an opening email and a follow-up are not the same shape.
+const MIN_BODY_CHARS_OPENING = 120;
+const MIN_BODY_CHARS_FOLLOWUP = 60;
+const minBodyCharsFor = (stepNumber) =>
+  stepNumber > 1 ? MIN_BODY_CHARS_FOLLOWUP : MIN_BODY_CHARS_OPENING;
 
-/** Same shape as the guard: strip tags, trim, measure. */
-const tooShort = (body) => body.replace(/<[^>]+>/g, " ").trim().length < MIN_BODY_CHARS;
+/** Same shape as the guard: strip tags, trim, measure. Defaults to step 1. */
+const tooShort = (body, stepNumber = 1) =>
+  body.replace(/<[^>]+>/g, " ").trim().length < minBodyCharsFor(stepNumber);
+
+const MIN_BODY_CHARS = MIN_BODY_CHARS_OPENING;
 
 // ── What the guard exists to catch ───────────────────────────────────────────
 assert.equal(tooShort(""), true, "an empty body must be rejected");
@@ -89,5 +96,35 @@ for (const real of [
   assert.equal(looksLikeRefusal(real), false, `real copy must pass: ${real.slice(0, 40)}`);
 }
 
+// ── A follow-up is MEANT to be short ────────────────────────────────────────
+// Measured over 1,366 real AI-written follow-ups: shortest 78, average 260.
+// A flat 120 rejected 9 good ones and paid for a needless regeneration each
+// time, so the threshold is per step.
+const shortestRealFollowUp =
+  "Hi Karan, Just following up on my earlier email. Would it be worth a quick look?";
+assert.ok(shortestRealFollowUp.length < MIN_BODY_CHARS_OPENING,
+  "this real follow-up is shorter than the opening-email floor — that is the point");
+assert.equal(tooShort(shortestRealFollowUp, 2), false, "a real short follow-up must pass");
+assert.equal(tooShort(shortestRealFollowUp, 1), true, "the same text as an OPENING email is too short");
+
+// The template nudge the safety net writes, at 86 chars, must also survive.
+assert.equal(
+  tooShort("Hi Sales, Just following up on my previous note — would love your thoughts. Best regards", 2),
+  false,
+);
+
+// But an empty generation is still caught on a follow-up. The real failure was
+// a four-character body, and the signature is appended AFTER this check.
+assert.equal(tooShort("", 2), true);
+assert.equal(tooShort("Hi.", 2), true);
+assert.equal(tooShort("<p><br><br></p>", 2), true);
+
+// Boundaries, so neither threshold can drift unnoticed.
+assert.equal(tooShort("x".repeat(59), 2), true);
+assert.equal(tooShort("x".repeat(60), 2), false);
+assert.equal(tooShort("x".repeat(119), 1), true);
+assert.equal(tooShort("x".repeat(120), 1), false);
+
 console.log("ok — empty and stub bodies are rejected, real short emails pass");
 console.log("ok — refusals and invented markers are rejected, real copy is not");
+console.log("ok — follow-ups may be short; opening emails may not");
