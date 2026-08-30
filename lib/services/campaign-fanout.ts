@@ -80,6 +80,10 @@ function pickTimezone(
 
 // ─── Main entry point ─────────────────────────────────────────────────────────
 
+/** Supabase caps a response at 1000 rows server-side; a larger `.limit()` is
+ *  silently clamped, so paging is the only way past it. */
+const FANOUT_PAGE_SIZE = 1000;
+
 export async function sendCampaign(
   campaignId: string,
   _actorId: string,
@@ -91,7 +95,7 @@ export async function sendCampaign(
      *  campaign, matching every other manager-scoped view in the app. */
     restrictToLeadOwnerId?: string | null;
   },
-): Promise<{ buckets: number; sent: number }> {
+): Promise<{ buckets: number; sent: number; errors: string[] }> {
   // Bootstrap client: used only to look up which company owns this campaign.
   // Everything after that runs on `db`, scoped to that company, so the
   // instantly_campaigns / campaign_leads rows written below are stamped with it.
@@ -188,52 +192,83 @@ export async function sendCampaign(
   // restrictToLeadOwnerId is set below — an outer join can't be filtered on
   // a joined column, so an employee-scoped send would silently see every
   // lead in the campaign instead of just their own.
-  let eligibleQuery = db
-    .from("campaign_leads")
-    .select(`
-      id, lead_id,
-      leads:lead_id!inner ( email, first_name, last_name, country, time_zone, assigned_to )
-    `)
-    .eq("campaign_id", campaignId)
-    .eq("crm_status", "approved")
-    .is("instantly_campaign_id", null);
+  // Paged, because Supabase caps a response at 1000 rows SERVER-side and does
+  // not say it truncated. Reading this unpaged meant a campaign with more than
+  // 1000 eligible leads silently sent to the first 1000 and reported success —
+  // and the same cap on the drafts read below is worse still: a lead whose text
+  // fell outside the window is pushed to Instantly with NO custom body, so
+  // Instantly sends its own generic fallback while our UI shows the
+  // personalised email sitting right there. Nothing logs it.
+  //
+  // Same trap, same fix as lib/services/followup-schedule.ts readAll(), where
+  // it has already bitten twice. There is no `.limit()` large enough — the
+  // ceiling belongs to the server, so paging is the only answer.
+  const buildEligible = (from: number, to: number) => {
+    let q = db
+      .from("campaign_leads")
+      .select(`
+        id, lead_id,
+        leads:lead_id!inner ( email, first_name, last_name, country, time_zone, assigned_to )
+      `)
+      .eq("campaign_id", campaignId)
+      .eq("crm_status", "approved")
+      .is("instantly_campaign_id", null);
 
-  if (opts?.campaignLeadIds?.length) {
-    eligibleQuery = eligibleQuery.in("id", opts.campaignLeadIds);
-  }
-  if (opts?.restrictToLeadOwnerId) {
-    eligibleQuery = eligibleQuery.eq("leads.assigned_to", opts.restrictToLeadOwnerId);
-  }
+    if (opts?.campaignLeadIds?.length) q = q.in("id", opts.campaignLeadIds);
+    if (opts?.restrictToLeadOwnerId) q = q.eq("leads.assigned_to", opts.restrictToLeadOwnerId);
 
-  const { data: cls, error: clsErr } = await eligibleQuery;
-  if (clsErr) throw new Error(clsErr.message);
+    // A stable order is required for paging: without one, Postgres may return
+    // rows in a different order per page and a lead can be seen twice or missed.
+    return q.order("id", { ascending: true }).range(from, to);
+  };
+
+  const cls: Array<{ id: string; lead_id: string; leads: unknown }> = [];
+  for (let from = 0; ; from += FANOUT_PAGE_SIZE) {
+    const { data, error } = await buildEligible(from, from + FANOUT_PAGE_SIZE - 1);
+    if (error) throw new Error(error.message);
+    if (!data?.length) break;
+    cls.push(...(data as typeof cls));
+    if (data.length < FANOUT_PAGE_SIZE) break;
+  }
 
   // A co-worker's lead (or anyone else's) landing in a requested id list is
   // now caught by the same "not eligible" error an employee would already
   // get for a not-yet-certified lead — restrictToLeadOwnerId simply removes
   // it from `cls` above, so the existing count mismatch check covers it too.
-  if (opts?.campaignLeadIds?.length && (cls?.length ?? 0) !== opts.campaignLeadIds.length) {
+  if (opts?.campaignLeadIds?.length && cls.length !== opts.campaignLeadIds.length) {
     throw new Error("Some selected leads are not eligible to send");
   }
 
   let totalSent = 0;
   const bucketErrors: string[] = [];
-  const eligibleCount = cls?.length ?? 0;
+  const eligibleCount = cls.length;
 
   // 5) Push NEW leads (only when there are any) ───────────────────────────────
-  if (cls && cls.length > 0) {
-    const leadIds = cls.map((r) => r.lead_id);
-
-    // Active drafts (highest version per lead+step)
-    const { data: allDrafts } = await db
-      .from("email_drafts")
-      .select("lead_id,step_number,subject,body,version")
-      .eq("campaign_id", campaignId)
-      .in("lead_id", leadIds)
-      .eq("status", "approved");
+  if (cls.length > 0) {
+    // Active drafts (highest version per lead+step), read in pages.
+    //
+    // Deliberately NOT filtered by `.in("lead_id", leadIds)` any more: with a
+    // thousand ids that list runs to ~37KB of URL and can be silently dropped
+    // by an intermediary. Scoping to the campaign returns a superset — it also
+    // includes leads already sent — which is harmless, because the map below is
+    // only ever read for leads present in `cls`.
+    const allDrafts: Array<{ lead_id: string; step_number: number; subject: string | null; body: string | null; version: number | null }> = [];
+    for (let from = 0; ; from += FANOUT_PAGE_SIZE) {
+      const { data, error } = await db
+        .from("email_drafts")
+        .select("lead_id,step_number,subject,body,version")
+        .eq("campaign_id", campaignId)
+        .eq("status", "approved")
+        .order("id", { ascending: true })
+        .range(from, from + FANOUT_PAGE_SIZE - 1);
+      if (error) throw new Error(error.message);
+      if (!data?.length) break;
+      allDrafts.push(...(data as typeof allDrafts));
+      if (data.length < FANOUT_PAGE_SIZE) break;
+    }
 
     const draftMap = new Map<string, Map<number, { subject: string | null; body: string | null }>>();
-    for (const d of ((allDrafts ?? []).sort((a, b) => (b.version ?? 0) - (a.version ?? 0)))) {
+    for (const d of (allDrafts.sort((a, b) => (b.version ?? 0) - (a.version ?? 0)))) {
       if (!draftMap.has(d.lead_id)) draftMap.set(d.lead_id, new Map());
       const byStep = draftMap.get(d.lead_id)!;
       if (!byStep.has(d.step_number)) byStep.set(d.step_number, { subject: d.subject, body: d.body });
@@ -546,7 +581,17 @@ export async function sendCampaign(
     throw new Error(`All sub-campaign activations failed: ${activationErrors.join("; ")}`);
   }
 
-  return { buckets: (subs ?? []).length, sent: totalSent };
+  // `errors` is additive — every existing caller reads `buckets`/`sent` and is
+  // unaffected. It was previously collected and then dropped on the floor, so a
+  // send where India and the UK succeeded and Germany failed returned
+  // "sent: 120" with no mention of Germany. The failure was recorded on
+  // instantly_campaigns.last_error, where nobody would look.
+  //
+  // Only a total failure throws (above). A PARTIAL failure must not throw —
+  // the leads that did send are already in Instantly, and turning that into an
+  // exception would report a successful send as an error and invite someone to
+  // press Send again.
+  return { buckets: (subs ?? []).length, sent: totalSent, errors: bucketErrors };
   } finally {
     // Always release the send lock — on success or failure.
     await db.from("campaigns").update({ send_lock_at: null }).eq("id", campaignId);
