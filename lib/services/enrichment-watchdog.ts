@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { MAX_ENRICH_ATTEMPTS } from "@/lib/services/enrich-leads";
 import { countPendingDrafts, logLlmUnavailable } from "@/lib/services/generate-drafts";
 import { hasUsableLlmKey, hasUsableServiceKey } from "@/lib/services/provider-keys";
+import { checkInstantlyCredits } from "@/lib/services/provider-credits";
 
 type Db = SupabaseClient;
 
@@ -387,7 +388,30 @@ export async function triggerScrapeRecoveryWatchdog(baseUrl: string, db: Db) {
   triggerScrapeWatchdog(baseUrl);
 }
 
+/**
+ * Keep the Instantly health reading fresh.
+ *
+ * Every other provider's balance is refreshed as a side effect of real work —
+ * the scrape batch checks Firecrawl and the LLM tiers before every pass. Nothing
+ * does that for Instantly: the only caller is the Settings > Keys page, so the
+ * cached reading was last written on 24 Aug and sat six days stale. An Instantly
+ * outage would therefore never raise the service-health banner; the first sign
+ * would be mail quietly not arriving.
+ *
+ * One cheap call per pass, and `fresh` is deliberately NOT set — the 5-minute
+ * cache inside checkCredits already collapses repeat passes, so this refreshes
+ * roughly every 5 minutes rather than every 10-minute tick.
+ *
+ * Scoped "any": Instantly is one workspace shared by every company.
+ */
+async function refreshInstantlyHealth(db: Db) {
+  try {
+    await checkInstantlyCredits(db, "any");
+  } catch { /* a health probe must never break the watchdog */ }
+}
+
 export async function runEnrichmentWatchdog(baseUrl: string, db: Db) {
+  await refreshInstantlyHealth(db);
   triggerScrapeWatchdog(baseUrl);
   await triggerScrapeRecoveryWatchdog(baseUrl, db);
   triggerFollowupWriter(baseUrl);

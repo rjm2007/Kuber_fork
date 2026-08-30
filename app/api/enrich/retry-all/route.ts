@@ -3,6 +3,7 @@ import { requireManager } from "@/lib/auth/api-auth";
 import { ok, fail } from "@/lib/api-response";
 import { internalAppBaseUrl } from "@/lib/internal-url";
 import { dbForUser } from "@/lib/supabase/scoped";
+import { TERMINAL_STATUS_LIST } from "@/lib/services/enrichment-status";
 
 /** Mirrors MAX_ENRICHMENT_ATTEMPTS in the scrape worker. */
 const MAX_ENRICHMENT_ATTEMPTS = 3;
@@ -44,6 +45,12 @@ export async function POST(req: NextRequest) {
   //                Required rather than being retried forever
   const RETRY_ELIGIBLE = `enrichment_attempts.lt.${MAX_ENRICHMENT_ATTEMPTS},enrichment_status.eq.SCRAPE_PROVIDER_UNAVAILABLE`;
 
+  // Hopeless failures are excluded outright, whatever their attempt count. All
+  // 427 NO_DOMAIN orgs sit at attempts=1, so without this every press requeued
+  // them to fail again immediately — churn that achieved nothing and made the
+  // Input Required count look actionable when it was not.
+
+
   // What this press will actually spend, counted BEFORE the requeue (the update
   // changes the very rows we are measuring). Firecrawl bills for reaching a
   // site, so an org with no domain is free and a fresh cached scrape is free —
@@ -55,12 +62,17 @@ export async function POST(req: NextRequest) {
     .select("id", { count: "exact", head: true })
     .eq("enrichment_stage", "failed");
 
+  /** Failed, and not one of the hopeless kinds. */
+  const retryableBase = () => failedBase()
+    .not("enrichment_status", "in", TERMINAL_STATUS_LIST)
+    .or(RETRY_ELIGIBLE);
+
   const [{ count: totalFailed }, { count: eligible }, { count: eligibleNoDomain }, { count: eligibleCached }] =
     await Promise.all([
       failedBase(),
-      failedBase().or(RETRY_ELIGIBLE),
-      failedBase().or(RETRY_ELIGIBLE).is("domain", null),
-      failedBase().or(RETRY_ELIGIBLE).not("scraped_markdown", "is", null).gte("scraped_at", cacheCutoff),
+      retryableBase(),
+      retryableBase().is("domain", null),
+      retryableBase().not("scraped_markdown", "is", null).gte("scraped_at", cacheCutoff),
     ]);
 
   const free = (eligibleNoDomain ?? 0) + (eligibleCached ?? 0);
@@ -80,6 +92,7 @@ export async function POST(req: NextRequest) {
       updated_at: new Date().toISOString(),
     })
     .eq("enrichment_stage", "failed")
+    .not("enrichment_status", "in", TERMINAL_STATUS_LIST)
     .or(RETRY_ELIGIBLE)
     .select("id");
 
