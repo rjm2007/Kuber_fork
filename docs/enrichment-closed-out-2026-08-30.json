@@ -1,0 +1,4061 @@
+{
+  "closedAt": "2026-08-30T11:17:42.052Z",
+  "reason": "Client: current lead quality is poor; not worth spending Firecrawl credits re-enriching these.",
+  "howToUndo": "PATCH organizations set enrichment_attempts = <previous> for these ids, then press Retry all.",
+  "count": 579,
+  "orgs": [
+    {
+      "id": "ad77baac-6411-4c93-8f4a-71b91f1c5cf1",
+      "name": "CR.V3( I CLOUD)",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "f04a3441-5264-4aca-8c15-4fa6f32fc25d",
+      "name": "FANTIPLAS LTDA",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "8f8f46be-2e10-4309-8adc-a3ae276c4afe",
+      "name": "PTI PLASTIC & RUBBER GASKET INC.",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "aef6f29c-90fa-49c6-9b2d-d0cb354fbca7",
+      "name": "CARLOS MEDINA",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "7e69f192-db3d-4f05-ac37-d5bb608e82ea",
+      "name": "Risco PLASTICOS",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "806b36c8-ff85-4b88-8e6e-02679c7881cb",
+      "name": "EnerPlastics LLC",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "2995b951-03f8-4816-b461-df976ea4f211",
+      "name": "Medexus Pharmaceuticals",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "51cbd922-b0f2-4f75-a5d3-ae3d3c5a1b2d",
+      "name": "OBG Pharmaceuticals",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "dba4c4be-3d06-4439-9b53-0df428dcee87",
+      "name": "Al-Alamea For Color",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "491fd669-ca10-4e85-8ace-60c4d76a60fe",
+      "name": "Escobas y Fibras Olimpia",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "2326c82f-0f3b-4b03-b864-1fd830f4d0bf",
+      "name": "Salem M Balfaqih",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "6764c4de-1037-4bd6-8651-5a5fd2662bf9",
+      "name": "El Hashimia For advanced Industry",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "d6dc2163-320d-4752-90df-4185cf47d596",
+      "name": "Twentieth Century Forge, inc",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "73749c9c-5091-4992-9238-275528f4bba2",
+      "name": "Plasticos Ruiz SL",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "aeff4726-128c-402b-9983-d24fe70d755c",
+      "name": "INSTAPRINT S.A.C",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "b40e9e86-3efc-457f-b390-2560d2018055",
+      "name": "Aeovian Pharmaceuticals",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "80f339f6-ec8b-4596-8d3b-42e41534dda7",
+      "name": "Ravi Plastics Works",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "c0041562-f72d-401e-a305-de281bb746ac",
+      "name": "Suresh Polymers",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "29eaf08a-e63a-4a34-ab8a-34881323ef39",
+      "name": "Amit Packaging Co",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "8268eba0-83f1-48bc-83e5-c3d53bc8bc13",
+      "name": "Yilmaz Plastik Sanayi",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "a098acea-e029-401e-bbd1-68c228ea2421",
+      "name": "Al Shenawy",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "4fa38080-e21d-4ad3-91b0-7dc7593076ed",
+      "name": "OM PATEL",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "92b33c4c-4553-4533-a90b-4da82e2bf31e",
+      "name": "Oswaldo ortiz",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "2c167484-2440-4dbf-ac56-d843e65e8e34",
+      "name": "UNNIOM",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "58fb7f30-c5cf-4060-b3fb-90fd2e9c8946",
+      "name": "Quagen Pharmaceuticals",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "e7c0d220-f857-4296-8a8f-ecacdc96d3ae",
+      "name": "Zarbis Pharmaceuticals",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "7b39ab1c-3b64-4bd3-b0f8-d700352b6a5d",
+      "name": "Strive Pharmaceuticals",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "01cfa65e-b05e-4ef2-bfb4-02da66f690f8",
+      "name": "QbD Pharmaceuticals",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "f1c854b2-4f5c-4134-9bc4-5671119ea779",
+      "name": "Ayadi International Plastic Industries",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "512d1d7f-291a-4fce-8661-ae10edd5fe79",
+      "name": "Rebul Cosmetics",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "12a5c871-f264-48c0-82ee-6febe9177d7c",
+      "name": "BGM Pharmaceuticals",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "922c3d07-4988-466d-9fa1-4e5b20582577",
+      "name": "Blue Ocean Closures",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "fcb64d9e-f7b0-411e-a3b5-6feaa9e1d9b7",
+      "name": "VAL GROUP",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "a90f7096-a6de-415c-afe0-c099b0800e0c",
+      "name": "CDC Pharmaceuticals",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "6f6b87b4-81b5-4ab9-b492-8f09487ee582",
+      "name": "S A Plastic Industries",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "0cc19edf-8138-47e5-afc3-37188b2abe97",
+      "name": "Quality Mineral Industries / SAM-A Bangladesh Ltd",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "6baf24f7-3a1e-4abf-907b-0d8fa0d902be",
+      "name": "VIVA (EMIN LTD)",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "83834e88-4761-4c1b-8030-0e795a6cd469",
+      "name": "Universal Plastic Consult",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "63c3043e-2461-486f-889a-647ade4e10b1",
+      "name": "Solar Asia LLC",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "bfd20893-9c1e-48a4-b741-b7f545e1e762",
+      "name": "Berlin Packaging Netherlands",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "e63887d1-657d-4130-8b16-15787a9a53c1",
+      "name": "Divyadeep limited",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "b26bcee4-0a30-432b-aa80-3213aa5be13b",
+      "name": "Dynamic Closures (Aust) Pty Ltd",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "6877a1d3-ea7f-4bda-b07d-068ef6f0f8e1",
+      "name": "Corvaglia Closures USA",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "e6accd88-d813-4abd-a16c-93358f8acd72",
+      "name": "MAGNA CLOSURES AUTOMOTIVE PRIVATE LIMITED",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "1c8dc4ad-5129-45c3-ab12-d8b53f7e43a3",
+      "name": "Akij Printing & Packages Ltd",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "29387116-f440-d084-572c-ec636a4433f1",
+      "name": "BIP Candy & Toys UK Ltd",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 0,
+      "enrichment_status": "No website found"
+    },
+    {
+      "id": "301543ff-924e-7a82-e18e-c6287eb5df45",
+      "name": "Core Technology Molding Corporation",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 0,
+      "enrichment_status": "No website found"
+    },
+    {
+      "id": "f8f0b6ec-61f4-3e3b-7a39-b7deaede3896",
+      "name": "Plastic Molding Technology - Texas",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 0,
+      "enrichment_status": "No website found"
+    },
+    {
+      "id": "350e515b-5a7a-47b7-91b5-99acd2ec3b48",
+      "name": "United Company for the trade packaging Material",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "ff69a840-29f1-465f-9ca7-2c08402c604d",
+      "name": "AGS Automotive",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 0,
+      "enrichment_status": "No website found"
+    },
+    {
+      "id": "11f22209-efd6-4459-886d-9ea13eef45a1",
+      "name": "BigLift Shipping B.V.",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "0b2d8623-902b-31cf-78e3-d43910f19fb9",
+      "name": "PGS Rodanar Pallets",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 0,
+      "enrichment_status": "No website found"
+    },
+    {
+      "id": "83d69ce7-e151-bbcb-2f66-174aad05eadd",
+      "name": "Fairway Furniture",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 0,
+      "enrichment_status": "No website found"
+    },
+    {
+      "id": "6bf86fcc-60ca-7546-09c8-ec616d14723a",
+      "name": "DS Pipe & Steel Supply, LLC",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 0,
+      "enrichment_status": "No website found"
+    },
+    {
+      "id": "da0c3fd3-8ffb-1404-302d-32c6008efce3",
+      "name": "Feydom Furniture",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 0,
+      "enrichment_status": "No website found"
+    },
+    {
+      "id": "05a6000d-521d-3fec-070e-74fefbccc8a9",
+      "name": "Royal Furniture",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 0,
+      "enrichment_status": "No website found"
+    },
+    {
+      "id": "2053a53d-5588-e744-4ce6-b5e9f96a5d03",
+      "name": "JAMES JONES & SONS (PALLETS AND PACKAGING) LIMITED",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 0,
+      "enrichment_status": "No website found"
+    },
+    {
+      "id": "98c74a7b-5d72-432c-9f0f-1d3aae93d447",
+      "name": "SARL STPA",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "2d736d01-5be4-4450-82ed-fdc304fb40fc",
+      "name": "Silgan Plastic Food Containers Corporation",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "ca0c1616-3fa3-4b1e-eec4-60b30b8b86c6",
+      "name": "Gpi Tanks Poland",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "db204fc3-1391-4494-a511-7bf2a2b1a159",
+      "name": "Nixxo Trading Co LLC",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "dc4920a6-cecd-447b-a092-ba4516d13257",
+      "name": "Safrer SARL societe industrielle",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "ddf4026f-a64f-406b-8bac-7b42a0c05c49",
+      "name": "RAMDEV PLASTIC INDUSTRIES",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "6f49fdbd-8f21-4b1d-b829-5ace30ec5a13",
+      "name": "Scalpel",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "eabf8263-8d08-4b15-8c1e-c532542f0794",
+      "name": "Plastic Recycling, Inc.",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "c3f9d7b2-c105-4c2e-bd65-e955a64d3a53",
+      "name": "Sia Plast LLC",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "96e145e0-abca-4563-8317-278903f55a12",
+      "name": "THM PLASTIC",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "f3d7a2e7-bfd4-49b3-9420-479d5de10084",
+      "name": "TAJOURI PLAST",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "3c4311b3-6235-47b3-ac1f-19cff388d7b8",
+      "name": "GM COLOR",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "2f4077ff-e9c5-4d15-8aa9-62c9ecdaf2e5",
+      "name": "SARL BM LUX",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "3333db54-90af-454d-a346-05085c985ffa",
+      "name": "Ami Polymer Pvt. Ltd.",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "f1a8e810-c2e7-4d09-a805-d9d57563c5a5",
+      "name": "Pronext",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "06ec8fbd-7762-41c5-b0a6-54e89c92a1b6",
+      "name": "Eurotec",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "3401acde-08c0-40f9-bdf9-9f423a97248b",
+      "name": "ayse",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "64ef87bb-4336-4ce3-9433-b4cd745eaa98",
+      "name": "ASR Polymer",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "8dd7cf1d-655b-48c6-9b6d-3f84d679f952",
+      "name": "Chemcel Industries Limited",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "5f9bad6d-b170-4f8e-b21e-03c7b5721a27",
+      "name": "Finlay Brushware Ltd",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "60c8cfad-457a-45bf-9807-5b7f08a8a592",
+      "name": "BMS CHEMIE",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "2383c4e5-d13e-4e33-b589-dc2438ad6ba2",
+      "name": "BIP Candy & Toys UK Ltd",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 0,
+      "enrichment_status": "No website found"
+    },
+    {
+      "id": "20974dbe-7533-45f8-baa2-b9e9853752c0",
+      "name": "Hansen Plastics Corporation",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "2d08ad50-95ee-48a7-99ec-c2c3789fd0bc",
+      "name": "AKKAD CARPET AND YARNS",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "885dd4c1-a28d-4499-8e86-469085abe6ea",
+      "name": "FARID AND PAULO",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "318c8836-c492-4b6a-ab8b-04e6b0082649",
+      "name": "HONEST TRADING",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "9605025a-32b3-40d4-ba12-307e5b0f2b2a",
+      "name": "TAYSEER POLYMERS TRADING",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "cff55e1d-b19c-41bc-aaf9-cc35872fbf7e",
+      "name": "SARL FIL PLASTIQUE",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "a8045006-d165-48f4-ae41-02c81ec79889",
+      "name": "AL-Nadasorplastio tradting",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "06aa9b74-de54-4602-8556-d514a826c584",
+      "name": "Amir Attal Fresh Home Appliance",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "c0a20972-ab05-4932-aba6-2ca8bfc85ab1",
+      "name": "B-Trust",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "fb2ce894-0543-4b50-8e11-2e02099a9a1d",
+      "name": "Cairo Color Egypt",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "edb0efdc-b993-4f4e-a276-2add0d69055d",
+      "name": "Summit Plastic Molding",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 0,
+      "enrichment_status": "No website found"
+    },
+    {
+      "id": "ab38ce88-c352-491b-8f50-ba2194adcd1e",
+      "name": "American Plastic Molding",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 0,
+      "enrichment_status": "No website found"
+    },
+    {
+      "id": "ea83ec2a-6692-41ba-b0f1-835221e7dbee",
+      "name": "Core Technology Molding Corporation",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 0,
+      "enrichment_status": "No website found"
+    },
+    {
+      "id": "9a944086-5134-4efc-acd4-d061dff2e4c2",
+      "name": "Al Nour Plast",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "4b398850-7473-4b2b-b2d4-db0cfc342a3f",
+      "name": "Portland Bottling Company",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "cedf3c18-bd4e-4e11-9a69-a1d0f784c218",
+      "name": "Cadbury Schweppes Bottling Group",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "3bb136fb-b1f9-48b2-9f8e-838a6cf1e999",
+      "name": "Fitz's Bottling Company",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "163a099f-a3a4-4046-9f79-e0096a72148f",
+      "name": "Ale-8-One Bottling Company",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "8993952f-66c4-4692-bce3-e20800c8d2f2",
+      "name": "Thomas Hardy Bottling Group",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "09ba4f27-334d-4143-99e4-5ee146bad698",
+      "name": "Matrix Bottling Group",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "1e622a46-46d5-46b3-9578-1a7d7fa42cf4",
+      "name": "Martell Mumm Perrier-Jouët",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "02c7f049-995f-4c37-9e4d-6ca34c97d905",
+      "name": "Planet Bottling Company Ltd",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "5eacd69f-1fe0-4058-841a-ca69c9b4af8d",
+      "name": "Good Spirits Bottling Ltd.",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "7f67ab03-0441-45ba-bcee-4d3f8bdaf2cf",
+      "name": "Minges Bottling Group",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "a5bca30d-51f9-42a1-902b-4ecdd49bd1a5",
+      "name": "Well Above Bottling and Canning, LLC",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "81c8028c-3224-47c4-870d-951974c93947",
+      "name": "Danish Bottling Company A/S",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "11ce5597-f8ee-4b54-9aca-a22d3713a046",
+      "name": "ITC Beverages and Bottling Factory",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "6503edb1-9c39-4933-aa96-54715b00d4dc",
+      "name": "Winkelshoek Wynkelder",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "acc4b9dd-7756-4701-b929-01224972fef9",
+      "name": "Northern Bottling Company",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "30b3ae44-0c30-4a4e-a66b-5b262c131610",
+      "name": "Frind Estate Winery",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "f6c24f1b-47bd-4dec-8d16-f0063284f51e",
+      "name": "Mango Bottling Inc",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "883d16f2-56d4-4a3b-bb29-777564688644",
+      "name": "MIDWEST CUSTOM BOTTLING LLC",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "228f654b-b9ab-4473-acff-bed918d0b2fb",
+      "name": "Aqua Systems",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "1cd63ef9-4cf1-4bdd-b7a7-3e9707dba0de",
+      "name": "Pure Bottling",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "6c82b30f-aee5-4202-a67a-a4a6f54a3f75",
+      "name": "Borrisoleigh Bottling Ltd",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "57b4574d-4935-4310-97a0-8df7aa824a8d",
+      "name": "Greencroft Bottling Company",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "130ee0bf-4140-4e44-b7db-dc916e5a9818",
+      "name": "Waco Bottling Co.",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "e35291e3-e117-44eb-9784-3c6052141345",
+      "name": "Atlantic Coca-Cola Bottling Company",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "3d7ef197-999c-4348-8687-6e1caba7a328",
+      "name": "Brooklyn Bottling Corp.",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "13c68f0a-371e-470c-962e-7af2a14365c1",
+      "name": "Foley Family Wines & Spirits",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "446ea4ff-aac5-4320-a6ab-b1ffd67512de",
+      "name": "Kiri Bottling Company Limited",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "5318573f-5866-4a33-ae4f-d1d518aac465",
+      "name": "Pepsi Cola Bottling Co",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "e1b93a4d-48e4-4978-a664-1936db30ff60",
+      "name": "Top It Off Bottling",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "affa1241-c5d2-4898-9729-ca5364a4e8de",
+      "name": "HOUSTON BOTTLING & CO-PACK LIMITED",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "a0cf3a7e-0fd4-4203-9b65-9a91d716d368",
+      "name": "Caribbean Bottling Company (Bahamas) Ltd.",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "1478dd6a-91dd-4917-8b59-22e93ebdf6cd",
+      "name": "Crown Maple, LLC & Madava Sugar Maple, LLC",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "6af57238-71a6-4366-9e43-69ef18f0ef10",
+      "name": "Tropical Bottling Company",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "241b5dbe-a8c9-4cfd-9cc1-165a51685ea0",
+      "name": "Plastic Molding Technology - Colorado",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 0,
+      "enrichment_status": "No website found"
+    },
+    {
+      "id": "1b24cd46-e084-4d7a-9781-e16436d87bf3",
+      "name": "GOTHA COSMETICS",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "b03aff33-e78c-4f19-9680-151891f66bd7",
+      "name": "Mondial Cosmetics",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "fb7a8436-03de-4f3e-bc55-e9bfea986eec",
+      "name": "Serpol-Cosmetics",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "c02f80b2-276f-44bf-bd48-f62b0c6b9fa3",
+      "name": "Freshly Cosmetics",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "fd696b07-4ec2-42a1-962b-1fdedfe79e17",
+      "name": "MPlus Cosmetics",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "8ee1fcf5-5444-429d-8b94-30743cbe0d78",
+      "name": "ERTE COSMETICS",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "4077d6e0-5d0f-4754-9c2e-9473cbf1e808",
+      "name": "SAGA COSMETICS",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "00aa1671-8758-4b41-8117-e84fb00a4a98",
+      "name": "PT. Vitapharm (Viva Cosmetics)",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "6262e14c-b591-4a65-9440-c6f72e6e44f2",
+      "name": "Pink Frogs Cosmetics SB",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "02ffa7a2-b2cd-4531-892a-98a55bb324ee",
+      "name": "Art Cosmetics",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "245b11e5-3e8e-4860-b953-02deffb57c2c",
+      "name": "PDT Cosmetici | Skin Care Beauty Cosmetics",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "756c9e10-075f-4bd5-977a-ccf3678ab58b",
+      "name": "Primor Cosmetics",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "224a0e6e-2207-4191-8ae8-0772a0a6aa7f",
+      "name": "GFL Cosmetics",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "f23e1bec-9620-4725-9dc2-73bb95833dba",
+      "name": "Milani Cosmetics",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "68ae8567-a6a9-48f5-87d1-c2535019b895",
+      "name": "Meroda Cosmetics",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "7492c539-cdea-4c08-af5d-d9b7ad45a220",
+      "name": "Vision Cosmetics",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "18c02906-5cbd-423a-8c1e-1e1663bbcc08",
+      "name": "Crystallini Cosmetics",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "0bd9618f-dbd7-47a3-af11-6d14542a9c2d",
+      "name": "Prestige Cosmetics",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "449fd39c-ed64-45e8-a00b-aa48fa758777",
+      "name": "CAIA Cosmetics",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "e74e29eb-645f-4d1a-a307-68be6a6a2bbb",
+      "name": "IsaDora Cosmetics",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "e54066e3-fa1b-421c-ae89-7d83b9a2b262",
+      "name": "MADARA Cosmetics",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "8b37499d-328e-48ab-8d57-98b1d81a94e9",
+      "name": "ELHA Cosmetics",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "94ba6e55-56e3-473a-84d8-8908a14bd5a0",
+      "name": "ADA Cosmetics",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "a1152350-8b12-4ec4-95b3-b441431ad0d7",
+      "name": "Diamond Cosmetics",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "cf36886f-4fea-4dfb-b7d0-d8555ba6498e",
+      "name": "TOP COSMETICS",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "18ad17a6-02c3-44c0-91cc-eb5aa142c774",
+      "name": "Gaya cosmetics",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "6fedeedb-fbc2-4a52-9e8f-bc792a967831",
+      "name": "Hourglass Cosmetics",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "f2092c27-cc4f-432b-8a41-011fe914ef38",
+      "name": "Delia Cosmetics",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "e043b86e-343e-4f0d-8203-0d7a186da625",
+      "name": "Hegron Cosmetics BV",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "1de94d8b-ae60-4c7b-8f21-20f419999568",
+      "name": "Plastic Molding Manufacturing",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 0,
+      "enrichment_status": "No website found"
+    },
+    {
+      "id": "2a4e4995-84ef-4812-80a7-1b800ac9c022",
+      "name": "Euthalia Cosmetics",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "3b581679-1016-4338-b584-098310393a71",
+      "name": "RoseLab Cosmetics",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "a91cde1a-a6b2-40ee-9ecc-60230c335421",
+      "name": "Hunca Cosmetics",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "fed36175-f326-4b4d-8102-0031af26231f",
+      "name": "HSA Cosmetics S.p.A.",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "ccb61e4d-15c3-4b0e-9fb2-c4dc20847b7d",
+      "name": "Leader Cosmetics",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "70c75205-6a0b-465a-a99b-9956d6ade6bb",
+      "name": "Zoé Cosmetics",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "0086ee1e-4397-445c-a9b3-8e9266049103",
+      "name": "Senna Cosmetics",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "565ecb1a-35c6-4a00-afe9-0a36aae897a2",
+      "name": "Dewavrin Cosmetics",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "06631bd6-a025-4af2-a2d3-25fd70b5f405",
+      "name": "Silver Cosmetics",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "f316e667-66dd-4c89-9975-9ffef3b1fddb",
+      "name": "Krika Cosmetics",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "9f47a5c6-9782-4ed4-81b2-bec9a2bf5976",
+      "name": "Natural Cosmetics Holland (part of AIZURU Natural Home & Personal Care)",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "9920fd18-e591-4870-97eb-d0f7a0ebf15a",
+      "name": "SOSU Cosmetics",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "079ddd06-36e2-42ca-a0d6-1df816e633ea",
+      "name": "Fun Cosmetics",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "5353dd98-66b4-4473-ac64-7edd22a6b481",
+      "name": "Cosmoway Cosmetics",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "5cfdf90f-51da-4d06-a21a-d2b217788937",
+      "name": "Indigo Cosmetics",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "3ca77a37-cecd-4951-b190-cf66c40b75d7",
+      "name": "Saigu Cosmetics",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "036191fe-317c-4517-8718-0502f41c0770",
+      "name": "SHANY Cosmetics",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "8b0faac7-f376-4fc3-aace-009ff210a6e5",
+      "name": "BeautyStat Cosmetics",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "c826b726-fa64-4a08-a6f4-6e7a888a4f78",
+      "name": "IVB Cosmetics",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "042a3452-bfa5-4514-a30d-42a80c11f761",
+      "name": "Faber-Castell Cosmetics",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "75ec1ad9-b974-4108-91b4-129fc64d8fe7",
+      "name": "Handa Pharmaceuticals",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "56625346-63ec-4219-a268-40de84100b45",
+      "name": "Othera Pharmaceuticals",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "ec9f6c30-b9a8-4cf8-89ef-21923ed44135",
+      "name": "Noven Pharmaceuticals",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "ca4501df-1647-4944-92b7-2dfb9b92cb09",
+      "name": "Artpharma Pharmaceuticals",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "752df4ec-95d6-406c-aeba-f17522f87d7c",
+      "name": "MACRO GROUP Pharmaceuticals",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "80936294-70c1-410e-87e7-07a919f33549",
+      "name": "KLEVA Pharmaceuticals S.A.",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "47122eec-dc37-4501-86a3-f6a0ff3a4926",
+      "name": "Rosemont Pharmaceuticals",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "f074db30-06c4-477c-90e4-5eb3f382962d",
+      "name": "Ligand Pharmaceuticals",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "5a1e46e1-981b-4191-936f-febb896cca91",
+      "name": "Syndax Pharmaceuticals",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "4c6d6320-1f77-4f6b-9a1a-78d17a14d839",
+      "name": "Vivera Pharmaceuticals",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "e84b27bb-fa3e-41b4-9408-74b3b0b12ef4",
+      "name": "Madrigal Pharmaceuticals",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "909f4084-d549-42af-8ef8-1f83ceb0d230",
+      "name": "Marius Pharmaceuticals",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "98c9dcfc-1a82-4349-8a75-8b54ad6959f8",
+      "name": "GENEITH PHARMACEUTICALS LTD.",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "9aca579e-b701-4df0-a426-972492484c31",
+      "name": "Plastic Molding Technology - Texas",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 0,
+      "enrichment_status": "No website found"
+    },
+    {
+      "id": "aa87f9ae-ea84-4ce8-be66-735e653d1180",
+      "name": "Amici Pharmaceuticals",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "fb0e8dea-2d98-4585-a05a-0eb9dee14fdc",
+      "name": "Stira Pharmaceuticals",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "8c1191f5-5c53-4097-aec4-3c83db29ae43",
+      "name": "Servier Pharmaceuticals",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "ec2830d3-3ff7-43d8-9bcd-6ed9a82e1a2d",
+      "name": "JCR Pharmaceuticals",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "064c89a4-a5bf-4476-ac23-a6897a5f1156",
+      "name": "Fennec Pharmaceuticals Inc",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "ada9a215-8b61-4ac8-9b7a-ac10b3c5ee07",
+      "name": "Liber Pharmaceuticals",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "ec10066b-d511-49bd-adcc-0802bdfb5a94",
+      "name": "SAJA Pharmaceuticals",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "3ec1d59f-f1e8-4538-81e0-06bb771db3bd",
+      "name": "Ceban Pharmaceuticals",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "29282527-4b1a-403b-9209-3eb380bbbd55",
+      "name": "AFT Pharmaceuticals",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "54410b24-6f55-4162-a5ce-a0689068ed61",
+      "name": "Parla Pharmaceuticals",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "f9a3553d-7b03-48a1-bdb6-620fcccae03c",
+      "name": "SERB Pharmaceuticals",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "9e65be89-c898-4562-a117-a05caf88c367",
+      "name": "Azurity Pharmaceuticals",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "ab8b644c-47ce-4ab9-a335-19b6f17e7008",
+      "name": "Phathom Pharmaceuticals",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "71c6d28a-3b30-43bd-9a6f-f22ef8a210f4",
+      "name": "Acertis Pharmaceuticals",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "65c32cad-fc25-4345-9509-0bbc2ffb516d",
+      "name": "AVVA Pharmaceuticals",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "e7aad2a3-044a-4412-b021-de898ebb8ab3",
+      "name": "Botanix Pharmaceuticals",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "e819e92c-bd16-4cc3-b6a7-ea516684791b",
+      "name": "Douglas Pharmaceuticals",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "9a370f76-910b-49fa-98a1-f490d5efc16c",
+      "name": "Xseer Pharmaceuticals",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "eb17db5a-a6d7-45ff-9d40-0e5a7c953876",
+      "name": "Andone Pharmaceuticals",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "7daab2ec-1d3a-4023-9fca-ef57537ec73d",
+      "name": "Universal Pharmaceuticals",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "d120ea5e-5726-4a92-a9be-70c72f287130",
+      "name": "Yamo Pharmaceuticals",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "5bc03212-b3c5-47c5-b6c1-eb58eaf9943d",
+      "name": "Lifeline Pharmaceuticals",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "0a72c5e9-2585-4e7e-a40c-5afff5665d1a",
+      "name": "Atabay Pharmaceuticals and Fine Chemicals",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "c30bca36-faa4-4715-8856-f7553035b309",
+      "name": "Repolar Pharmaceuticals",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "2d973490-0c62-4781-a302-0ddbc9868bbe",
+      "name": "Novatek Pharmaceuticals",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "30d2ad88-3b45-4f72-a89d-af6550a848ed",
+      "name": "TRACON Pharmaceuticals",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "db4c89c0-d820-4e2a-b975-16fc8511166a",
+      "name": "Clarity Pharmaceuticals",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "9d6aa150-3b5e-4d77-ba7f-fcc403dcd0d8",
+      "name": "Polaris Pharmaceuticals",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "f1fed2c4-4e41-47a1-bb4f-6a0e2cb7725c",
+      "name": "CAPZER PHARMACEUTICALS",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "5dfebb4d-2b8b-43ef-af6a-c05be149e72d",
+      "name": "UPM Pharmaceuticals",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "fd7ee960-4ce2-4882-a7b0-fb7417101fe7",
+      "name": "Xediton Pharmaceuticals",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "b007a4c4-9085-46ca-be2b-5224693897d4",
+      "name": "Key Pharmaceuticals",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "35e1c304-778b-412f-9418-6b484b092a70",
+      "name": "InMed Pharmaceuticals",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "d68ee096-ebed-4843-bdaa-8223eb096a9f",
+      "name": "AssistPro Pharmaceuticals",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "338b39b2-9e0e-4bde-94c7-8b59c6b6e20f",
+      "name": "Omicron Pharmaceuticals",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "640b2030-4b0b-4cb6-81f8-d2f4539db591",
+      "name": "Rivus Pharmaceuticals",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "00d94551-6672-4bea-b58a-5ff5c88c52c8",
+      "name": "Caraway Pharmaceuticals",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "80cb88d9-8f98-4e3c-9ecd-ffbbdb5fc299",
+      "name": "Optimer Pharmaceuticals",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "76a87369-d44c-44ef-a491-ab8b3cf59884",
+      "name": "Philadelphia Pharmaceuticals",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "1be9142a-ec9a-4ffb-a3b6-dd9b856b366f",
+      "name": "LANCET Pharmaceuticals",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "eba55b89-2ead-494f-a5aa-31bdb4e87172",
+      "name": "Purna Pharmaceuticals",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "e698b90d-c429-4d1d-a1ed-32c70697e8bc",
+      "name": "CORXEL Pharmaceuticals",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "4560b4d6-26d9-4d74-a24c-86c1c2c8a9e8",
+      "name": "DalCor Pharmaceuticals",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "f710b9df-f53d-4539-993a-c4fff3ce7d45",
+      "name": "NVE Pharmaceuticals",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "b462ba16-40bc-4e43-aa7b-301e0b8815ae",
+      "name": "Silgan Closures",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "4440c29e-43ea-4ff2-bed3-3b883d6def25",
+      "name": "Kornelis Caps & Closures",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "80d6b008-91d0-4d25-81f7-9102d6f596cf",
+      "name": "Caps & Closures",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "5d2b04ff-ef97-4b6a-90e5-28c6d8a4ee6c",
+      "name": "SmartSeal Closures",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "f95ecf69-b514-4948-9caa-9e84bbabf278",
+      "name": "Viscose Closures Ltd",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "92d2d62a-c3df-47d0-88b1-78c4b49e827f",
+      "name": "Mafo Naval Closures B.V.",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "5b0ff94b-f366-453c-862c-98d4d87a8c6e",
+      "name": "Guala Closures DGS Poland S.A.",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "dc6b0442-83c5-4d74-96dd-45ed502d6520",
+      "name": "METLAC Group",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "9c2c14e1-27fb-4337-b4d4-056ee7b0cd7e",
+      "name": "AptarGroup S.A.",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "e5ffca61-e012-40ff-bfa0-663c4c7b523b",
+      "name": "Karma Automotive",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "647a828f-ce7c-4ed1-86c9-9c1e84e38aa4",
+      "name": "Genova Pipe",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 0,
+      "enrichment_status": "No website found"
+    },
+    {
+      "id": "b8580e4d-4f7c-4e52-bc0e-c38e7799c1f9",
+      "name": "I.E.T",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "409486bb-24b7-4e07-9e74-733431bbceb6",
+      "name": "TEST - Mailchimp Retry Demo",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "e939eaaf-701d-4122-89be-fdba59fa7e6a",
+      "name": "TEST - Atlassian Retry Demo",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "c8049199-abc5-4b6e-8e85-3636a7a0cb73",
+      "name": "Modern Chemcals co",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "b14312cf-4e4a-4fd5-be04-847ecafd5d65",
+      "name": "Sumika Polymer Compounds India",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "5fc6d814-7e94-4e10-b5cf-1eabca3b6ae7",
+      "name": "Pen Tec Co.",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "b3ff1894-2436-4414-9300-d0504bc7415c",
+      "name": "Rovena",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "20d24ced-245b-462e-ab0e-6761819dec66",
+      "name": "Quality Plastics",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "fe827014-027a-a7a4-c7c4-37e6c4ba2c30",
+      "name": "Vanguard Furniture",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 0,
+      "enrichment_status": "No website found"
+    },
+    {
+      "id": "859c5cce-97b8-4000-80a1-a0ff522b3674",
+      "name": "Tobacts",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "4d5a2a1f-5b36-4cbd-b326-368c155e6629",
+      "name": "NA",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "a43380fd-017d-4a6b-a4ad-87a168aeaf63",
+      "name": "Royal Plastic",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "7abd4bca-7a9c-479c-a87f-72b2ce8f93f5",
+      "name": "TOO ALMA PLASTICS",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "116c59e5-f5d7-4622-b1e7-d96e5bbcd6d5",
+      "name": "Al Masryia Group",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "3becb360-a4d7-4ce9-92ed-9151e65c361a",
+      "name": "Ahmed Metwally",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "1a83aa3a-b00c-49bf-8ebf-8cd094ebfcb3",
+      "name": "PLASTIC RECYCLING LIMITED",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "fa1e22bc-f300-4be2-885b-20e300ecd2e5",
+      "name": "MAA COLOR CENTER",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "5ada8c55-3d4d-438d-ab21-467b3fbf751d",
+      "name": "Easypack limited",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "da40fc0b-18dc-419d-9726-c8dff4f4ee2e",
+      "name": "PT Guna Kemas Indah",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "c83fc662-b2d2-40d0-9371-d2d787899e0c",
+      "name": "Hikma",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "6087b943-0a5f-4bf2-9ac3-540786ad3594",
+      "name": "IGAPOL polymer Technology",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "ababa676-643f-424f-b508-abe7c8317067",
+      "name": "Seifigroup",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "f1596b10-22dd-4856-973e-f6b58901e629",
+      "name": "Funny Toys",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 0,
+      "enrichment_status": "No website found"
+    },
+    {
+      "id": "b72a21f2-32d2-4e1e-9395-291d46968153",
+      "name": "Eurl Hilal Semelles",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "5faa7a08-51b2-436e-b909-e796259a0398",
+      "name": "SARL TEPORAX",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "d9cf4470-406e-4d66-affb-972a48af87f2",
+      "name": "rose plastic",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "783660a1-f749-4289-93f9-5a4a787360ae",
+      "name": "DOC PLAST",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "bc881266-ff4e-408c-8927-809c3c5af57c",
+      "name": "GREEN IANES TRADE",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "39560a27-5901-49ac-855d-17a3a99d75d5",
+      "name": "SACCHI PALLETS S.R.L.",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 0,
+      "enrichment_status": "No website found"
+    },
+    {
+      "id": "1a708c00-4fd5-4adf-92ee-1df128ed3573",
+      "name": "BOTTLING PRINTING",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "a90c7930-4109-4f21-a707-f5e491381f65",
+      "name": "J. Alam Enterprise / Ener Plastics LLC",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "d9279e3e-2b26-45c4-a58c-67bfad553831",
+      "name": "pmm plastic",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "a96b6b48-c6ab-4715-9d5a-5e629617fbdb",
+      "name": "HIGHLAND PLASTICS",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "536a86bf-ff92-4f99-a3ce-5d51804a95fc",
+      "name": "GRUPO PRIME",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "6225508d-3688-4199-8e67-3b257052fc3f",
+      "name": "Viking Coca-Cola Bottling Company",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "625514bc-0b20-4cb3-b201-32c5c16707cf",
+      "name": "Brown Bottling Group",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "cd19023a-2551-4fcc-bdf0-fc5e6875583e",
+      "name": "INDUSTRIES PLASTICOS DE MEDELLIN",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "fc0debeb-2d2d-424d-84d1-85c86dd18844",
+      "name": "Hangers PLUS (Bangladesh) Ltd",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "6cea1310-fb4e-4627-ad87-00fefc9da20b",
+      "name": "Heera Roto Compounds",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "660d2202-889b-4df2-b5ec-cd687b57004d",
+      "name": "Coca-Cola Bottling Company of Kokomo",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "4c5db5f6-f8fa-4407-8107-5e0962db3b3f",
+      "name": "FCSPERU",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "7846cee6-4c13-43d0-a016-60974d633a50",
+      "name": "CForce Bottling Company",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "a3ab0248-2ddd-4961-8ad3-3525e8b6b7cf",
+      "name": "INVERSIONES POLMAQ SAS",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "1e8c0133-be46-46ea-92c5-9acbccb8c55d",
+      "name": "Central Bottling Company Israel ltd",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "15174c23-88a9-4280-a4be-2df23256338e",
+      "name": "Extrusion Foaming",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "bd06afb7-0b3a-43fb-8648-a8cd835a4002",
+      "name": "Arrow Juice Factory for Bottling & Production",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "e312f37c-32ef-4dba-b5a5-635414272cbc",
+      "name": "La Sien Bottling Company Limited",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "5d156f35-33aa-4a47-b966-2fe642868f55",
+      "name": "INDELTRO ECUADOR",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "efdb93f3-2bdb-4993-b19e-9497c61f984c",
+      "name": "Harrington Bottling Company",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "fff7236b-0ded-4241-a365-cebc7b4a8e16",
+      "name": "Plastic Energy",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "2ef349f3-5ed8-467d-afe3-cb1fe45437d0",
+      "name": "Brooks' Bottling Co.",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "d388659e-094b-4c06-9423-18502f8da0bc",
+      "name": "BIO SU",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "64e9db40-623c-4ca3-b70a-308ff5d23efb",
+      "name": "AMBITEX",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "9ca0b1b2-8103-49db-b795-9402d830ea61",
+      "name": "Continental Plastics",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "569dec5c-f262-47a6-8190-c0e28fb03fcb",
+      "name": "ELECTRONICA PLASTIC MACHINES LIMITED",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "e5111b57-5360-49b0-b5cd-75d061221543",
+      "name": "Grande Cosmetics",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "bda91cc1-035e-4709-80fe-543ce974a017",
+      "name": "M International",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "295b2b39-4c51-49f1-a4dd-05ff710102c2",
+      "name": "100% Bottling Company",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "b5ffa0c2-4ead-47c2-a5bb-462d5897ee30",
+      "name": "Abbey Masterbatches Ltd",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "19c8b3ae-285e-4cbb-96f2-dfd14b5e8c96",
+      "name": "Fino Plast",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "3598c9e3-6c02-4b8e-8583-ef5b48e0361c",
+      "name": "LoDiPlast",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "1fc40af7-be44-4418-8c63-16aceb09a5b9",
+      "name": "Galway Plastic Surgery",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "535ff6ef-879a-4d26-910a-6709dbfff292",
+      "name": "Solar Express LLC",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "f7c2962a-e533-4700-b103-e04b81dbcd90",
+      "name": "TPK Alliance Technology",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "8ae4a1f0-721a-40ea-ae09-3c174b0ccdca",
+      "name": "Artel Group",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "1e5a5023-1916-4884-8483-5f07b303b0c2",
+      "name": "ARG BOTTLING S.L",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "6ff243bc-ed50-4fe8-bf73-e772fa2e2fa0",
+      "name": "Tailored Bottling Solutions",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "cc9c0deb-fecc-47e8-b183-c8cc48c09d64",
+      "name": "Mathan Print pack",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "cd703bad-495c-4c8c-bfd5-93bfd70e124d",
+      "name": "Sri Raammaji Poly pack",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "4107e6d3-b546-47be-a192-c680150a61d7",
+      "name": "Lingam Pantone",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "36b1df6a-d3e4-4a0b-b3ee-0c2111716b23",
+      "name": "Sri Sapthagiri Hitech Polymers",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "44a5aca1-9e2a-4768-ae88-4713c5522215",
+      "name": "Cooperative Dar Elidrissi For Moroccan Products",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "c0c57012-8af2-469a-baae-ef55c1344f63",
+      "name": "Nabi Serge SOUMAH",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "8f439b56-bcaa-467f-81cd-a300cd2323ab",
+      "name": "AMM PLAS",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "14a929c5-ef9e-4a06-a772-b4e5828de0aa",
+      "name": "Mario Masterpack Lebanon",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "be680fbd-5603-4cfd-9512-7b97051d0d8c",
+      "name": "MMPI Plasturgle & Sous-fraitanca",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "b999bb7b-7ecf-49c6-a771-3e4ac8527d72",
+      "name": "CREST",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "7c5aa143-b61e-4a2f-a384-81aa2222381e",
+      "name": "Q Trade Link",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "53c23b4f-e8a5-42dd-9a3f-f1d8e338baea",
+      "name": "Rana Metal Industries",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "abce42c9-0353-4022-864c-9f56890cca3f",
+      "name": "ARABA MUSTAPHA",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "2676c770-4a5f-4f22-b424-e7f7e29318f3",
+      "name": "ATTOUGPLAST",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "5812b7ca-5458-45b5-8476-e11b15bdcb05",
+      "name": "K3M (Empowering Sustainable Solutions)",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "824715f0-fad3-4398-9032-29f220f262e3",
+      "name": "SAM-A C&I CO., LTD",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "c8e7b03c-60c1-41c1-88aa-f1ed47df4d1f",
+      "name": "ANWAR TRADERS",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "219d5251-fc9c-438b-b0fa-4b9b00da6724",
+      "name": "Neel Nagar Industries Ltd",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "46d77640-e5ee-41f9-a1b3-b4f30f5e51cf",
+      "name": "Marketing Executive Officer",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "9f46a1a7-0afe-4a5c-ab9a-ab89ec1470b1",
+      "name": "SETIF TUBE",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "8800ec00-ed6e-42a9-8041-7951e6204d9f",
+      "name": "SARL ITP OVAN",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "3103b475-e7d6-470a-a06e-eea9705bf0e0",
+      "name": "Ohdo plast",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "1e5f9374-07d3-4375-aedd-312356b588b4",
+      "name": "RED Emballage",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "39af2b15-5ae5-4fcb-b2ff-ae0465ade8fb",
+      "name": "ISO TECHNIQUE MACHINE",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "a856c9b2-0487-4ce9-ac81-7dac93f946ba",
+      "name": "F",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "9545d984-a4ad-4073-bd37-22b7224d9f12",
+      "name": "eURL iNES sAC",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "e109c4ae-c1ec-4e9a-8928-e33fbae7f81f",
+      "name": "COMETAMEX",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "bd33ab02-21eb-4035-993d-b6353d4b6c3d",
+      "name": "Evaplus industriales",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "34478def-f9d6-4ba9-83c3-bf39f8de09e0",
+      "name": "ADVANCED POLYMERS",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "dd12a38c-b022-416f-a5d2-f3cf3812ce3d",
+      "name": "REAL MASTER",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "8def4ee0-5b9e-4019-b261-8e18ffca263a",
+      "name": "Korea Plastic Corporation",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "18d48004-eb43-460a-a024-4e974a34530e",
+      "name": "HVF PLASTICOS",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "2c1d91e3-d0e2-4699-a7d6-91c316399c17",
+      "name": "CONECTIVOS",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "76db06ae-e987-4b0f-8cdc-7cf82ab56817",
+      "name": "ACMA",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "9c7e40a7-f76a-43eb-a94a-27b13294d706",
+      "name": "A.P Plastic (SHUBROTO)",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "b82bf633-30a3-4154-a9e3-fbc494eb5cb7",
+      "name": "Nahid Group",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "b4c793ca-d2b0-48aa-9d9f-3aa4601e79ed",
+      "name": "RR PLASTICOS",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "1b60c8ab-7df8-40d9-848a-dfeba8219abb",
+      "name": "TORIS POLYFAB LLP",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "42430b41-b12f-df26-fd6f-5e9cebd6a58b",
+      "name": "Greiner Bio-One Americas",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 0,
+      "enrichment_status": "No website found"
+    },
+    {
+      "id": "e06e8356-cf04-431b-b661-aa0cde0925cd",
+      "name": "Company (Name unclear)",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "2eaf502d-16bb-4553-8fb8-ea16cd365411",
+      "name": "Ulysses",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "322e224e-8aac-46fb-8008-c80be99ae32c",
+      "name": "Regal",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "752d5eb0-9423-42c9-8029-14f25e1a847f",
+      "name": "Celplas",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "29f203eb-fcae-4a20-ba8b-6e2caa2bee04",
+      "name": "Everbright (Plaska)",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "ccd6e8f2-ed63-4a76-a0e6-8692512b5468",
+      "name": "All Time Packaging",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "73c4b5a6-87cd-4a69-a628-1264e78d0e67",
+      "name": "Aron Chemical Ltd",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "3448bdc7-a0d3-4c27-8fc1-3389a8a6eff0",
+      "name": "ARS Nig Ltd. (Aftrade)",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "de7c22c1-791f-42c1-9eb0-248ee41ec25a",
+      "name": "DIS Empallage (Bags Producer)",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "a6e8c7fb-27da-459d-970d-69696386a26b",
+      "name": "Akij Assets Ltd",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "317d7cc3-df16-4b27-97bc-ff0fddbd03a6",
+      "name": "Shree Plastics - India",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "719b7845-1763-40dc-8900-a269eb343a25",
+      "name": "RFL Plastics Ltd",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "ad2ec5d0-cf55-4496-9522-cb47c50c574c",
+      "name": "TEST - Stripe Retry Demo",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "bab30ab4-0cc9-45ee-94c8-df1ac881d66a",
+      "name": "Plastic Printers",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "771ee847-f01e-44d7-b698-6e671201eb09",
+      "name": "Falcon Plastics",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "267ebd1a-c077-4781-b0bd-071fde2b050b",
+      "name": "Agroha Master Batches India / Colour Capital",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "be92619f-7787-4a84-9d12-454dec7c251b",
+      "name": "AERODRY Plastics Automation Private Ltd",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "cdfdc93b-23d5-930d-8359-54e67c78293a",
+      "name": "KRAMSKI Stamping and Molding India Pvt Ltd",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 0,
+      "enrichment_status": "No website found"
+    },
+    {
+      "id": "959aca35-82e5-7f62-5169-2ae934961fcd",
+      "name": "Britaniacrest Recycling Limited",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 0,
+      "enrichment_status": "No website found"
+    },
+    {
+      "id": "e28edce1-b060-5796-b5b3-a75661b3c8fd",
+      "name": "AGS Automotive",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 0,
+      "enrichment_status": "No website found"
+    },
+    {
+      "id": "19a73e3d-e5c2-4f09-aa12-0d35560f3ca6",
+      "name": "Plastic Fischer",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "81dfed05-7b20-4600-9fa8-a4f20a546927",
+      "name": "Surya Indo Plastic - SIP",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "a8de1245-0013-9ab5-c8c0-58cc28a1b8a3",
+      "name": "Funny Toys",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 0,
+      "enrichment_status": "No website found"
+    },
+    {
+      "id": "6bb88b52-0d90-4dd7-8fa3-2875899e262c",
+      "name": "Future Cosmetics",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "a087191e-7b72-467a-ac83-d4f6334b5684",
+      "name": "Scandinavian Cosmetics",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "0914f54d-1950-47ed-867e-10604ab9a689",
+      "name": "SORA COSMETICS",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "287c84da-7a41-878b-b207-a6f64eb3c4c0",
+      "name": "SACCHI PALLETS S.R.L.",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 0,
+      "enrichment_status": "No website found"
+    },
+    {
+      "id": "95699753-b6fa-4ceb-95b2-834faefd2554",
+      "name": "Thermal Plastic Design Inc.",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "c569395b-c21e-4eb1-8001-95e92874ce4c",
+      "name": "Care Cosmetics",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "2ca2c058-4611-4614-ac4c-1561174e0790",
+      "name": "RevitalTrax Cosmetics",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "8b8194ba-8989-46c6-839f-4dc507e4c48c",
+      "name": "Delicato Family Wines",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "05ad532c-6be4-41ac-99bf-31f07b3f850a",
+      "name": "Fon Cosmetics",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "1b641271-f02b-4adf-b800-02a18c407427",
+      "name": "Matrix Bottling Technology",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "2606096e-4c3c-405f-9b0a-9894e08a183d",
+      "name": "Delarange Cosmetics BV",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "d6c53569-a5bc-4a9c-aacb-f7a748f619a4",
+      "name": "Mallows Bottling & Beverages",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "53f34a6a-7221-427e-a61c-856114e33680",
+      "name": "Kalil Bottling Co.",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "e2f8b791-38c0-4b8a-adf5-ab212baeb500",
+      "name": "The Bardstown Bourbon Company",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "d485e8d9-2579-4ddc-ae38-b3d0e09cdbe5",
+      "name": "Garrison Brothers Distillery",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "4968ebcc-b54f-44cc-b7f7-d61095544ed1",
+      "name": "Coca-Cola Bottling Company of Northern New England (CCNNE)",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "8c27b445-eb05-4aea-a64b-1ddc9c7a2b7d",
+      "name": "Edwin Holden's Bottling Co. Ltd.",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "960e3c82-11a2-4d70-86ac-07228d617c26",
+      "name": "BFF Cosmetics",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "89c00858-ab64-4986-88ce-4d76591a5f5a",
+      "name": "Greenleaf Cosmetics Australia",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "c7a504ef-8e37-40a4-94c5-8c3e0241b828",
+      "name": "GIZ COSMETICS",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "e0827997-32b7-4512-8412-c8e5bef835ce",
+      "name": "McDonald Plastic Molding",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "d8e036c3-c3d5-434a-94bd-0b4f6736bf9c",
+      "name": "Herrco Cosmetics",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "019fdee7-6b0b-4166-bcab-ddc3eb0232a6",
+      "name": "Alexandar Cosmetics",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "cdabc023-5c89-407b-b0ac-b40eed4ca6cb",
+      "name": "Global Cosmetics",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "8927cd5c-744c-4b9c-8cc1-f0367b33e3a4",
+      "name": "Scandinavian Cosmetics",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "d7e9d004-aacc-4f4d-8f10-4af30b70380d",
+      "name": "CAO Cosmetics",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "150d6cce-1bd7-4f01-96e2-a79a9bd7f91e",
+      "name": "Olival Cosmetics",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "96c9c264-a2b1-4b7d-829b-3bbb4c876c2c",
+      "name": "PGS Rodanar Pallets",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 0,
+      "enrichment_status": "No website found"
+    },
+    {
+      "id": "4aebfe10-52be-4290-9855-5822417df441",
+      "name": "MAG COSMETICS",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "990b9f74-a65e-401e-9e31-261776e96579",
+      "name": "JM Cosmetics",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "958e7be4-0fd6-42e7-a9d3-3f733bb3ef68",
+      "name": "New Look Cosmetics, Inc.",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "62310387-fd21-472c-a223-956b36b8ee8f",
+      "name": "Miller Plastic Products",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "a1705528-b3b2-4900-aad5-ae882d2e086d",
+      "name": "Plastic Printers",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "472f4f2c-74a3-41a3-99b5-84b638726799",
+      "name": "Trind Cosmetics",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "14e13da9-fc86-4df1-8886-399ba25b61fa",
+      "name": "Fairway Furniture",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 0,
+      "enrichment_status": "No website found"
+    },
+    {
+      "id": "aca7a08c-1092-402f-9c03-489e58b53e88",
+      "name": "Promise Cosmetics",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "490702b5-1dd2-44d2-aea0-6164e8764e45",
+      "name": "M.O.I Cosmetics",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "74ae2528-25fa-4d50-8f4c-3c34e9c7dbd9",
+      "name": "Christina Cosmetics",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "3f2917c8-4b6a-45ed-bd74-17acd074b796",
+      "name": "OROGOLD Cosmetics",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "a11c4ec0-2f2d-4eb3-babc-e2839d4bd1ea",
+      "name": "Diva Cosmetics",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "02e7b1cd-78fe-4c8a-a0dd-a6fab04c7092",
+      "name": "Plastics News",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "d66da2cc-aee7-48c8-a6b0-cff6a13edc28",
+      "name": "DS Pipe & Steel Supply, LLC",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 0,
+      "enrichment_status": "No website found"
+    },
+    {
+      "id": "2013ce58-aea7-4daf-8ae4-2a75b2640acf",
+      "name": "Sifted",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "cf824bd8-3862-49e3-af63-c3a524e14266",
+      "name": "Hillary Cosmetics",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "e056332b-2fe9-42c1-9dce-de6972577d1a",
+      "name": "CAILYN Cosmetics",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "1df58589-aaa8-431d-9e44-766d3a53da84",
+      "name": "Najafi Cosmetics",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "6ab63178-4109-4a06-883b-1b525dd17b33",
+      "name": "Abana Cosmetics",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "8463199a-1cc1-42da-9d9d-97324250c632",
+      "name": "Fine Cosmetics S.p.A.",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "41a829c4-a37b-4712-9adf-45f44f6018ae",
+      "name": "ciele cosmetics",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "761bfefa-9a74-4966-b2db-6b9f706514c5",
+      "name": "PETTENON COSMETICS",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "1d8b6fc0-bd03-42f0-a0d2-0b2d8ea1b435",
+      "name": "Ametis Cosmetics",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "c72c85c5-5588-4306-a8a5-3056a892d5db",
+      "name": "OFRA Cosmetics",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "6b4086bd-8eed-4348-904a-11995206f062",
+      "name": "Krizma Cosmetics Ltd",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "07960d7f-37e1-43d0-885a-b148689cdbd9",
+      "name": "Honey Cosmetics",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "d653a573-0ff5-4871-b236-15a1a27c25b5",
+      "name": "Paratek Pharmaceuticals",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "06c38584-b51f-4015-bf2a-3e14b7a7e6f6",
+      "name": "Wisconsin Plastics, Inc.",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "b87c6f1c-6754-427b-b508-9eca97047fd8",
+      "name": "Tasnim Chemical Complex Ltd",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "1a62f405-9412-42e0-94c2-f1b3887841df",
+      "name": "MIA Cosmetics",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "8c1a8de9-4981-4363-82a6-3e5dbe55c96d",
+      "name": "ADEX COSMETICS & PHARMA",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "d1a083ed-3ad5-4f43-b683-f5641d09e71e",
+      "name": "Rebul Cosmetics",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "69086874-6f98-4345-9e00-d62cde54358c",
+      "name": "STE Pharmaceuticals",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "6237c0de-9ab2-4387-be47-31b2b01bb0f9",
+      "name": "POLYMERBAZAAR",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "4d18120e-46b1-436d-90f9-b2406b09f4f9",
+      "name": "Catalyst Pharmaceuticals, Inc.",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "9c669793-9399-42fd-8721-87049bb6bb9e",
+      "name": "CANbridge Pharmaceuticals Inc.",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "a80faf24-2bce-40d7-a674-aa50f4e34779",
+      "name": "Voyageur Pharmaceuticals Ltd.",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "c3eaa648-8dc9-47d2-9938-2de94b1c3b86",
+      "name": "Riyadh Plastic Factory KSA",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "0fe4ad17-59c5-4fd8-ba47-fa0d59c0a769",
+      "name": "Rooyan Darou Pharmaceuticals",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "94889c05-e578-401a-a298-0613386fa9e2",
+      "name": "Cardior Pharmaceuticals",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "1da53d39-2499-497e-80fb-07481e9612fc",
+      "name": "Alvion Pharmaceuticals",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "920b92af-4d14-49d9-a8e9-f96b1953105d",
+      "name": "Arrotex Pharmaceuticals",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "b21ae9dc-9985-4977-8883-9fefb916d649",
+      "name": "Olympia Pharmaceuticals",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "039a4769-3aae-4e38-8288-b0a55a604053",
+      "name": "Qubit Pharmaceuticals",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "3ff81f6a-fa5c-45b2-8dd9-ed48aae1bfe4",
+      "name": "Corbus Pharmaceuticals",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "b9625486-1820-4f87-a81d-0dd7a0191ff9",
+      "name": "Máyla Pharmaceuticals",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "960865f7-53a3-4dd4-becb-604b63fe3ee1",
+      "name": "Ironwood Pharmaceuticals",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "f3bf0d7b-20b5-4df2-9009-4dc32c8916ea",
+      "name": "Kye Pharmaceuticals",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "951a5a9d-f198-4754-8323-479f9a682089",
+      "name": "Tonix Pharmaceuticals",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "e25e3c33-d6e5-4c4a-89ae-3b67efe4d1b9",
+      "name": "Ace Pharmaceuticals",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "ad6853d3-9042-426e-a6fc-b7b3aa924f71",
+      "name": "RAW Pharmaceuticals",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "3bf16215-3db6-463a-b884-163cf2846261",
+      "name": "ELSEWEDY POLYMERS",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "aa5bfaf0-efdd-49f6-b4f2-67d373b6f051",
+      "name": "Locust Plastics",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "3ede0b76-05c2-4753-96d4-0e951b5cba01",
+      "name": "Feydom Furniture",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 0,
+      "enrichment_status": "No website found"
+    },
+    {
+      "id": "e90a7485-e677-43eb-9b38-e17b1f6404dc",
+      "name": "ACE Plastic Industry LLC",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "de095e84-4e1d-46d8-bd4f-0cda6305fa29",
+      "name": "Royal Furniture",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 0,
+      "enrichment_status": "No website found"
+    },
+    {
+      "id": "1aebb7b7-401f-4c66-be05-bbeab316eb3a",
+      "name": "RVL Pharmaceuticals",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "e9a39d87-3f35-422b-9638-93aec8f63a37",
+      "name": "Plastic Recycling Hub",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "d6725495-d92a-45b2-88aa-8cc52f75b601",
+      "name": "PTI - Plastic Technology Inc.",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "743c8757-3018-4290-be3d-1082bb6f6b44",
+      "name": "Polyram Plastic Industries Ltd",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "5cc4ebf5-abd4-a298-7295-0add977c6fdd",
+      "name": "SEAWAVES SHIPPING SERVICES",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 0,
+      "enrichment_status": "No website found"
+    },
+    {
+      "id": "a12462b4-f8ed-43ab-8d85-b35c6e8f5658",
+      "name": "JAMES JONES & SONS (PALLETS AND PACKAGING) LIMITED",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 0,
+      "enrichment_status": "No website found"
+    },
+    {
+      "id": "f70418e8-1bb4-46cf-85d3-278094cfcde1",
+      "name": "J Plastics Alloy",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "20e5a2bd-8f17-472e-8278-b3f713cffd3c",
+      "name": "Leo Impex",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "eac5107f-545a-41f1-aee8-06da7b76d991",
+      "name": "S G Plastic",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "be456b7f-e1f3-4e9a-9ccd-73b828eea700",
+      "name": "Egmond Plastic B.V.",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "3f5c3295-16ed-45a8-8d75-3322ae7521f4",
+      "name": "KRAMSKI Stamping and Molding India Pvt Ltd",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 0,
+      "enrichment_status": "No website found"
+    },
+    {
+      "id": "02c9ef8f-dfde-4188-bd9e-f16815e011e6",
+      "name": "KAM Plastics Corp",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "fd180298-ec3f-4787-ad86-26b03f1fdcfe",
+      "name": "PRP-Plastic Oy",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "4de10678-5fdc-4aa6-8635-60405ae74e94",
+      "name": "People in Plastic",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "7203332f-f80f-4c0f-b2cc-c54bbab7d6ff",
+      "name": "Hensel Recycling",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 0,
+      "enrichment_status": "No website found"
+    },
+    {
+      "id": "63971fdc-6249-409b-b0a3-26abb15c84ef",
+      "name": "Britaniacrest Recycling Limited",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 0,
+      "enrichment_status": "No website found"
+    },
+    {
+      "id": "fa6c2f39-a45f-4316-9c45-3f87087f6026",
+      "name": "M.S. China Toys",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "eb2dd0b2-4837-44c3-a42d-0e2f2cd095eb",
+      "name": "CARE Plastic Surgery",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "39dade12-c83c-4bf5-b6d3-0ff858f68bda",
+      "name": "PERMA-PIPE",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 0,
+      "enrichment_status": "No website found"
+    },
+    {
+      "id": "229103dd-bc88-4a8e-82a0-4a2d345f6179",
+      "name": "Teb Plastic",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "4497f6ce-5fd5-4157-867c-1260003211cc",
+      "name": "Rajiv Plastic Industries",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "6433986c-2f43-4b92-8e2b-2ff158fcc700",
+      "name": "Aristo Corporation Ltd / Colorplus Masterbatch",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "b3e361d1-df00-1274-7f52-cb5e4889c889",
+      "name": "SACO Shipping GmbH",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "0c117323-1ae2-4017-bd5a-3df30f9b9320",
+      "name": "Falcon Plastic",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "f74f5ad3-6ece-41e7-9eb6-b87360b33389",
+      "name": "SAMSON PLASTICS CORP.",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "d7327830-6032-49fc-9b05-289c55cb4942",
+      "name": "Plastic Metal Spa",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "6bfb1a14-c231-4587-a095-2edba20fcfa0",
+      "name": "Lopigom SpA",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "75efe807-b609-4418-a26d-36d78b911688",
+      "name": "Plastic Depot",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "08398eea-169e-4055-a75d-64a6efaa3054",
+      "name": "Poly Print, Inc. - Flexible Packaging | Printer | Laminator | Pouch | Perforation | Converters",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "cee51fe9-3b08-4f67-8d62-0f1448b7beaf",
+      "name": "Polymer Plastic",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "fc43403f-4e57-4716-90f5-40a9b5f99c06",
+      "name": "Markdom Plastic Products Ltd",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "12a140cd-e2d4-4294-bc3a-6f86861ebb6e",
+      "name": "Peel Plastic Products Ltd.",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "536ea4d3-bf79-4159-b632-48435480c368",
+      "name": "CS PLASTIC S.R.L.",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "3a46f92b-c9ad-41fe-833b-b5ec3264f4c6",
+      "name": "united plastic corporation s.a.",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "83de0672-04cf-40c1-bfc3-805f1f6cf0fb",
+      "name": "Plastic Free",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "b143c5ea-b8e9-48db-8164-b6d0dce12c21",
+      "name": "Fair Technology Ltd",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "eb4a7caf-9aeb-4224-a4a0-1a889b9a0790",
+      "name": "Plastic Package, Inc.",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "df8698ab-733f-40f0-8ac8-590c164ff564",
+      "name": "SEAWAVES SHIPPING SERVICES",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 0,
+      "enrichment_status": "No website found"
+    },
+    {
+      "id": "972a5a51-f8dd-4c28-b55f-e14b6f416a4b",
+      "name": "Plastic Union",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "ff15f517-6518-40fb-8955-0337119581b8",
+      "name": "Vodafone Automotive",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 0,
+      "enrichment_status": "No website found"
+    },
+    {
+      "id": "7378ef32-d40e-4c8e-abf3-86b1b0affd2e",
+      "name": "Teknopack Plastic",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "f410cd2a-a221-4b3a-b277-29a21b781a25",
+      "name": "Plastic Mouldings Northern Ltd",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "242e419b-615b-4bae-ad61-24b0f1b8397c",
+      "name": "King Mould (台州市黄岩川惠模具有限公司)",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "72f6c33c-5539-436c-b215-edf9b44dfa07",
+      "name": "Mitchell Plastic Welding",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "a826547d-ed67-4015-8cea-6d6944ee40f0",
+      "name": "TMF Plastic Solutions",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "bfe142c7-6756-4729-b219-a9a8fb403f70",
+      "name": "Tiger Shipping Agencies Limited",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 0,
+      "enrichment_status": "No website found"
+    },
+    {
+      "id": "3ae7443a-2978-4922-bad5-41972926ca2e",
+      "name": "AKEI PLASTIC-MACHINE",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "7b774158-2c67-47e2-8bd2-072d9c3dbc46",
+      "name": "Vogt-Plastic GmbH",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "95f0c62d-da59-4d0b-883d-9cb8cca17100",
+      "name": "Buy Food with Plastic®",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "71e93c8a-c07b-46a6-aac8-2bc1bf901921",
+      "name": "Plastic Engineering Solution",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "b7abf4a3-cdc9-4c9d-91bc-8056c847e307",
+      "name": "Narendra Plastic Pvt. Ltd.",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "bda646c7-b313-4b30-975c-d507514d1f62",
+      "name": "Gamma Plastic",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "e1842956-fd4a-41c7-b96a-a3577f802e58",
+      "name": "Plastic Pollution Coalition",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "b283d2a1-2d99-4287-b4a3-043c300923fc",
+      "name": "Gpi Tanks Poland",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "3e4965b0-9313-49d5-b7a8-4225017b947c",
+      "name": "Arrowhead Plastic Engineering, Inc.",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "7babfeef-42eb-4918-ae7b-838bfe0f48ed",
+      "name": "Plastic Products Company Inc",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "b257384e-8475-48bb-8462-6e3d7430fc12",
+      "name": "Chase Plastic Services, Inc.",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "544f0999-3f4e-4b21-ac90-dcf6d5d28ea3",
+      "name": "North Texas Plastic Surgery",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "2862254a-3b1a-42fc-96e7-9bba8d8b22fa",
+      "name": "Afacan Plastic",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "b2498306-9f00-4478-b7e9-78eb08b65bad",
+      "name": "Kwazulu Natal Department of Agriculture, Environment and Rural Development",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 0,
+      "enrichment_status": "No website found"
+    },
+    {
+      "id": "6bc2e09e-cd57-4348-a804-c666693e5f08",
+      "name": "Vanguard Furniture",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 0,
+      "enrichment_status": "No website found"
+    },
+    {
+      "id": "5015b73b-1e39-4f8e-99e0-db0d5a3cc067",
+      "name": "Salsha Metal Industries Ltd (SMI)",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "3ce3196e-be51-4049-a5b1-8269bc4d14a6",
+      "name": "MEP GROUP",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "a920a31f-3eca-4b8c-9d14-6f294d2bb5db",
+      "name": "Akij Food & Beverage Ltd",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "d501b0f6-53ae-49b5-a8ee-3c57c9036ade",
+      "name": "Reliant Worldwide Plastics",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "f28ff4c4-f6ea-4b62-ae4a-e49a184a62d5",
+      "name": "Vista Plastic Solutions inc.",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "d9197ed3-fa2e-4783-be02-2b8b9128bb32",
+      "name": "Else Plastic",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "71e9d1a3-71b1-4039-b529-b57f3df43e50",
+      "name": "The Plastic Bottles Company",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "e8cf7779-19e0-4bd3-9e97-d70197bc8d0c",
+      "name": "SALCAN PLASTIC",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "863074e7-79c5-4ac6-b969-536c6f9020e2",
+      "name": "Walton Hi-Tech Industries PLC",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "f4a722df-37c6-4dcc-b70a-4f21767c9c31",
+      "name": "Taizhou Huangyan JTP Mould Co., Ltd",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "030ea505-c85b-43b0-8aeb-e641389b3e34",
+      "name": "Majestic Plastics, Inc.",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "6614fa7d-9534-4cd6-8829-948914db79fd",
+      "name": "Paragon Group",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "b431bec0-eb21-44da-8e18-da155760ea85",
+      "name": "British Recycled Plastic",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "42700305-8f4f-467e-9e55-22cff8a0f51d",
+      "name": "Riha Plastic GmbH",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "1a113a91-360b-4cc0-94d9-c226dbee8a1e",
+      "name": "McNeely Plastics",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "a4a66c29-685e-4a1e-91d3-2f212981a799",
+      "name": "Jeco Plastic Products",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "0d9ec890-b968-4113-bb32-160443898580",
+      "name": "SACO Shipping GmbH",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "7624b830-5311-4453-aa8e-cdf781e5349c",
+      "name": "Plastic Pictures",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "0d2a2f0b-3ed3-4801-a020-ca55ae664d58",
+      "name": "Plastic Express",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "053fc703-583e-4faa-b71b-ae041adab522",
+      "name": "Mpact Plastic Containers",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "41d80707-7dd3-4bd9-863e-f35d14c1008e",
+      "name": "PG PLASTIC",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "8ff616a7-aee8-4c73-b48a-8ca579f2a10b",
+      "name": "Esen Plastic Industries",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "e51a852d-9de5-4e29-8fe5-8f871842ba15",
+      "name": "Crystal Finishing Systems, Inc.",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "857ab77d-cbf2-427e-9e5d-13ad2731884f",
+      "name": "Plastic Ingenuity",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "f45acd37-4b15-45e3-9e9c-36a760bc988d",
+      "name": "Plastic Bank",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "da710c5b-697b-413f-b46a-d9de13878a2f",
+      "name": "The Shakti Plastic Industries",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "ffba6f56-6bbb-466a-a6e3-76e1a604e5f0",
+      "name": "Aesthetic Center for Plastic Surgery",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "0bf50e8c-9e90-4dec-976d-713e16a814c3",
+      "name": "Dominion Plastic Surgery",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "4821f9b8-d8ab-4c5a-bc82-e1d3a8676b30",
+      "name": "Plastic Labs",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_EMAILED_LEADS"
+    },
+    {
+      "id": "62225d92-617f-447c-be1f-d34fdc25de7d",
+      "name": "Greiner Bio-One Americas",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 0,
+      "enrichment_status": "No website found"
+    },
+    {
+      "id": "68d9da03-e41f-4714-880d-f02a2a00cf88",
+      "name": "Greystone Pallets by Greystone",
+      "company_id": "00000000-0000-0000-0000-00000000000a",
+      "enrichment_attempts": 0,
+      "enrichment_status": "No website found"
+    },
+    {
+      "id": "6fbd6410-2b0a-42c6-a4c0-7017dd8ba957",
+      "name": "Muthu food films",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "e89d1e55-79a4-b352-cf19-258f47f97d10",
+      "name": "Greystone Pallets by Greystone",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 0,
+      "enrichment_status": "No website found"
+    },
+    {
+      "id": "4b6b6793-31b2-4829-aeb2-5d4f44a20bc0",
+      "name": "Moldeado  Indootrial",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "5d22abfa-0ad6-40c1-bcff-929818d04dbf",
+      "name": "BRITANIA",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "eab5e6c7-c6fc-b6c2-7d5f-f993948b08ff",
+      "name": "Vodafone Automotive",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 0,
+      "enrichment_status": "No website found"
+    },
+    {
+      "id": "a76cfb16-9c9c-40d2-9e77-4774c95c6a4d",
+      "name": "INDUSTRIAS PLASTICS MEDELLIN",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "fe8e2160-c33a-4f4c-b293-f73db215a859",
+      "name": "Expert National Assermenté prés les Tribunaux en Incendie Inscrit à l'ordre des Experts Internationaux à Genėve",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "9d142b5a-4302-4c8d-b1d3-167481d6c22e",
+      "name": "LES CÂBLERIES DE TÉLÉCOMMUNICATIONS D’ALGÉRIE",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "b000d62e-99fd-4669-bb54-0e6bade88f4a",
+      "name": "Awxap",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "4d37a328-2444-4be8-aedd-ed2badf5f126",
+      "name": "Serir Packaging Solution Company",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "11cbab6e-ca6b-48e3-a3e2-24975dd6fcc8",
+      "name": "Layal pachagings",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "1732b8e6-ecd5-41da-b6f8-166aeeccf084",
+      "name": "Kinangop Dairy LTD",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 0,
+      "enrichment_status": "No website found"
+    },
+    {
+      "id": "ea773336-6f7f-4ea8-973f-d2c4fcfe4b3f",
+      "name": "SOLUCIONES PLASTICAS SA",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "92c3a15f-1e2c-452b-aed4-b5ebc7425a42",
+      "name": "Sr . Jorse dela Piva",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "558bfab3-60ab-477d-8d1b-45ee85bba7ec",
+      "name": "Novilla Pharmaceuticals",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "c9d81d2d-c20a-483e-8c0c-c2b810a21e8d",
+      "name": "Secarna Pharmaceuticals",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "a2758f69-1a43-4dfa-9d63-397044dd1c58",
+      "name": "Navesta Pharmaceuticals",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "c9e4c4e9-41db-4b61-bc58-9eeb8fa003a5",
+      "name": "Sabaa Pharmaceuticals",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "679ccb3c-56cb-4ecc-adc6-825117121f7c",
+      "name": "Apertus Pharmaceuticals",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "4f413c98-4a96-4a3e-9cc5-c0934cfa4455",
+      "name": "Healol Pharmaceuticals",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "a736b4ba-5646-4081-921b-4fe848f4249e",
+      "name": "SD Pharmaceuticals",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "363e950f-b7a0-4bac-9fa3-6dbd4de29f77",
+      "name": "Artemis Closures",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "d41c5b50-426b-4566-887e-6eb0cbcbe809",
+      "name": "Apholos Labels & Closures",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "477266fb-1efe-4d61-a7d9-29b4674cc28e",
+      "name": "Eton Pharmaceuticals",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "64135e15-c3c1-4606-87d2-ae75cecc7eb1",
+      "name": "ENG LUAY A. MAHDI",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "c59db859-f9c0-4b8d-9f13-67a3f15bb0e2",
+      "name": "OUKA FILAMENT",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "0706799f-425a-4e6a-8f0a-738259286886",
+      "name": "Xeris Pharmaceuticals, Inc.",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 1,
+      "enrichment_status": "NO_DOMAIN"
+    },
+    {
+      "id": "a2480b30-aa2e-409b-bc74-02fbd7d021cc",
+      "name": "Yang Ming Shipping Egypt S.A.E",
+      "company_id": "00000000-0000-0000-0000-00000000000b",
+      "enrichment_attempts": 0,
+      "enrichment_status": "No website found"
+    }
+  ]
+}
