@@ -3,6 +3,7 @@ import { verifyAccessToken } from "@/lib/auth/verify-jwt";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { AppRole } from "@/lib/auth/roles";
 import { SERVICE_ROLE_USER_ID } from "@/lib/constants";
+import { checkRateLimit, tierFor } from "@/lib/auth/rate-limit";
 
 const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
 
@@ -24,6 +25,20 @@ function unauthorized(message: string) {
   return Response.json(
     { success: false, data: null, error: { code: "UNAUTHORIZED", message } },
     { status: 401 },
+  );
+}
+
+function tooManyRequests(retryAfterSeconds: number, limit: number) {
+  return Response.json(
+    {
+      success: false,
+      data: null,
+      error: {
+        code: "RATE_LIMITED",
+        message: `Too many requests — the limit is ${limit} per minute. Try again in ${retryAfterSeconds}s.`,
+      },
+    },
+    { status: 429, headers: { "Retry-After": String(retryAfterSeconds) } },
   );
 }
 
@@ -53,6 +68,17 @@ export async function requireAuth(request: NextRequest): Promise<AuthedUser> {
   const verified = await verifyAccessToken(token);
   if (!verified) {
     throw unauthorized("Invalid or expired token");
+  }
+
+  // Only real user sessions are limited. The service-role bearer returned
+  // above, and every cron job and self-chain authenticates with INTERNAL_SECRET
+  // and so never reaches this function at all — which is exactly why drafting a
+  // 100-lead campaign (a long sequence of internal calls) cannot be throttled
+  // half way through. See lib/auth/rate-limit.ts.
+  const url = new URL(request.url);
+  const limited = checkRateLimit(verified.id, tierFor(url.pathname, request.method));
+  if (!limited.allowed) {
+    throw tooManyRequests(limited.retryAfterSeconds, limited.limit);
   }
 
   const db = createAdminClient();

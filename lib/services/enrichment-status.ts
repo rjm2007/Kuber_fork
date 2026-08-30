@@ -17,6 +17,12 @@
  * An org whose DATA later improves is still picked up: auto-retry-failed-orgs
  * requeues a failed org once it has a usable lead, which is the only signal
  * that actually changes the answer.
+ *
+ * That claim was WRONG when first written here on 30 Aug 2026. The route
+ * existed, but nothing scheduled it — not vercel.json, not pg_cron, and no
+ * caller anywhere — so the safety net had never run once. It is now a pg_cron
+ * job (`auto-retry-failed-orgs`, every 6 hours). Recorded because the mistake
+ * is easy to repeat: a route existing is not the same as a route running.
  */
 export const TERMINAL_ENRICHMENT_STATUSES = [
   "NO_DOMAIN",
