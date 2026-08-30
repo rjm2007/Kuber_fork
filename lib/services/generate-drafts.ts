@@ -809,7 +809,14 @@ export async function generateOneDraft(
       // differ. An instruction-led revision stays at the low default: "remove
       // the last paragraph" wants precision, not imagination.
       ...(isPlainRegeneration ? { temperature: 0.8 } : {}),
-    }, companyId);
+    }, companyId, {
+      // stepNumber 1 is the opening email; anything above is a follow-up. Split
+      // here so the bill can answer "what did follow-ups cost" on its own.
+      purpose: stepNumber > 1 ? "followup" : "draft",
+      campaignId,
+      leadId: lead.id,
+      draftId: existingDraftId ?? null,
+    });
 
     const validated = isRevision
       ? RevisionDraftSchema.safeParse(json)

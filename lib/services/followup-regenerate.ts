@@ -40,7 +40,7 @@ export async function regenerateFollowUpText(opts: {
     `Instruction: ${opts.instruction}`,
   ].join("\n");
 
-  const { json } = await complete<{ body: string }>({ system, user }, opts.companyId);
+  const { json } = await complete<{ body: string }>({ system, user }, opts.companyId, { purpose: "followup" });
   const validated = FollowUpRewriteSchema.safeParse(json);
   if (!validated.success) throw new Error("Follow-up rewrite shape mismatch");
 
@@ -76,7 +76,7 @@ export async function regenerateFollowUpTemplateText(opts: {
     `Instruction: ${opts.instruction}`,
   ].join("\n");
 
-  const { json } = await complete<{ body: string }>({ system, user }, opts.companyId);
+  const { json } = await complete<{ body: string }>({ system, user }, opts.companyId, { purpose: "followup" });
   const validated = FollowUpRewriteSchema.safeParse(json);
   if (!validated.success) throw new Error("Follow-up template rewrite shape mismatch");
 

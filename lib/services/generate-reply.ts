@@ -173,7 +173,7 @@ export async function generateReplyDraft(
           args.customInstruction ? `Additional instruction: ${args.customInstruction}` : "",
         ].filter(Boolean).join("\n");
 
-    const { json } = await complete<{ subject: string; body: string; signature?: string }>({ system, user }, args.companyId);
+    const { json } = await complete<{ subject: string; body: string; signature?: string }>({ system, user }, args.companyId, { purpose: "reply", leadId: null });
     const parsed = isRevision ? RevisionReplySchema.safeParse(json) : ReplySchema.safeParse(json);
     if (!parsed.success) throw new Error("Reply shape mismatch");
 
