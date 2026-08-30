@@ -15,6 +15,7 @@ import {
 import { resolveModel } from "@/lib/services/provider-keys";
 import { PROVIDER_META, resolveLlmTierOrder, type LlmProviderId } from "@/lib/services/providers/registry";
 import { safeSecretEqual } from "@/lib/auth/secret";
+import { TERMINAL_ENRICHMENT_STATUSES } from "@/lib/services/enrichment-status";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 const LLM_CREDIT_CHECKS: Record<LlmProviderId, (db: SupabaseClient, scope: string) => Promise<CreditCheck>> = {
@@ -60,6 +61,7 @@ const RETRYABLE_STATUSES = new Set([
  * "No usable Firecrawl key configured". They were never reached.
  */
 const PROVIDER_FAULT_STATUSES = new Set(["SCRAPE_PROVIDER_UNAVAILABLE"]);
+
 
 /**
  * Firecrawl could not reach the site at all — DNS failure, dead domain.
