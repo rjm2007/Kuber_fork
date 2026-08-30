@@ -33,7 +33,7 @@ export async function classifyReply(db: SupabaseClient, args: ClassifyArgs): Pro
     const { json } = await complete<ReplyClassification>({
       system: classifier,
       user,
-    }, args.companyId);
+    }, args.companyId, { purpose: "classify" });
     const parsed = ClassificationSchema.safeParse(json);
     if (parsed.success) return parsed.data;
   } catch { /* fall through to safe default */ }

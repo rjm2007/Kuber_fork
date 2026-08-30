@@ -5,6 +5,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { fetchWithRetry } from "@/lib/http";
 import type { CompletionOpts, ProviderCallConfig, ProviderCategory, ProviderId } from "@/lib/services/providers/types";
+import type { TokenUsage } from "@/lib/services/llm-pricing";
 
 export interface ProviderMeta {
   id: ProviderId;
@@ -141,6 +142,13 @@ export async function resolveLlmTierOrder(db: SupabaseClient): Promise<LlmProvid
   return ordered;
 }
 
+/** What a provider call returns: the parsed JSON, plus what it cost us in
+ *  tokens. Every provider already reports usage; it used to be discarded. */
+export interface LlmCallResult {
+  json: object;
+  usage: TokenUsage;
+}
+
 const DEFAULT_MAX_TOKENS = 2048;
 
 // Drafting is a rule-following task, not a creative one: the same lead and the
@@ -164,6 +172,18 @@ async function parseJsonResponse(text: string): Promise<object> {
     }
     throw new Error(`No parseable JSON in LLM response: ${cleaned.slice(0, 120)}`);
   }
+}
+
+/** OpenAI-compatible wire format (OpenAI, OpenRouter, Mistral, Groq).
+ *  OpenRouter additionally returns `usage.cost` in USD, which is authoritative
+ *  for that provider because it includes their routing and margin. */
+function extractOpenAIStyleUsage(data: unknown): TokenUsage {
+  const u = (data as { usage?: { prompt_tokens?: number; completion_tokens?: number; cost?: number } }).usage;
+  return {
+    inputTokens: u?.prompt_tokens ?? 0,
+    outputTokens: u?.completion_tokens ?? 0,
+    costUsd: typeof u?.cost === "number" ? u.cost : null,
+  };
 }
 
 function extractOpenAIStyleContent(data: unknown): string {
@@ -196,7 +216,7 @@ function supportsJsonResponseFormat(model: string): boolean {
 }
 
 // ── OpenRouter ───────────────────────────────────────────────────────────
-async function callOpenRouter(secret: string, model: string, opts: CompletionOpts): Promise<object> {
+async function callOpenRouter(secret: string, model: string, opts: CompletionOpts): Promise<LlmCallResult> {
   const payload: Record<string, unknown> = {
     model,
     max_tokens: opts.maxTokens ?? DEFAULT_MAX_TOKENS,
@@ -219,11 +239,12 @@ async function callOpenRouter(secret: string, model: string, opts: CompletionOpt
     body: JSON.stringify(payload),
   });
   if (!res.ok) throwHttpError("OpenRouter", res.status, await res.text());
-  return parseJsonResponse(extractOpenAIStyleContent(await res.json()));
+  const data = await res.json();
+  return { json: await parseJsonResponse(extractOpenAIStyleContent(data)), usage: extractOpenAIStyleUsage(data) };
 }
 
 // ── OpenAI-compatible (OpenAI itself, Mistral, Groq all share this shape) ──
-async function callOpenAICompatible(baseUrl: string, providerLabel: string, secret: string, model: string, opts: CompletionOpts): Promise<object> {
+async function callOpenAICompatible(baseUrl: string, providerLabel: string, secret: string, model: string, opts: CompletionOpts): Promise<LlmCallResult> {
   const res = await fetchWithRetry("llm", baseUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${secret}` },
@@ -243,7 +264,8 @@ async function callOpenAICompatible(baseUrl: string, providerLabel: string, secr
     }),
   });
   if (!res.ok) throwHttpError(providerLabel, res.status, await res.text());
-  return parseJsonResponse(extractOpenAIStyleContent(await res.json()));
+  const data = await res.json();
+  return { json: await parseJsonResponse(extractOpenAIStyleContent(data)), usage: extractOpenAIStyleUsage(data) };
 }
 
 const callOpenAI = (secret: string, model: string, opts: CompletionOpts) =>
@@ -285,7 +307,7 @@ export function anthropicRejectsTemperature(model: string): boolean {
   return ANTHROPIC_NO_SAMPLING.some((p) => m.startsWith(p));
 }
 
-async function callAnthropic(secret: string, model: string, opts: CompletionOpts, config?: ProviderCallConfig): Promise<object> {
+async function callAnthropic(secret: string, model: string, opts: CompletionOpts, config?: ProviderCallConfig): Promise<LlmCallResult> {
   const thinkingModel = anthropicRejectsTemperature(model);
 
   const body: Record<string, unknown> = {
@@ -330,13 +352,27 @@ async function callAnthropic(secret: string, model: string, opts: CompletionOpts
     body: JSON.stringify(body),
   });
   if (!res.ok) throwHttpError("Anthropic", res.status, await res.text());
-  const data = await res.json() as { content?: Array<{ type: string; text?: string }> };
+  const data = await res.json() as {
+    content?: Array<{ type: string; text?: string }>;
+    usage?: {
+      input_tokens?: number; output_tokens?: number;
+      cache_creation_input_tokens?: number; cache_read_input_tokens?: number;
+    };
+  };
   const text = (data.content ?? []).filter((b) => b.type === "text").map((b) => b.text ?? "").join("");
-  return parseJsonResponse(text);
+  return {
+    json: await parseJsonResponse(text),
+    usage: {
+      inputTokens: data.usage?.input_tokens ?? 0,
+      outputTokens: data.usage?.output_tokens ?? 0,
+      cacheWriteTokens: data.usage?.cache_creation_input_tokens ?? 0,
+      cacheReadTokens: data.usage?.cache_read_input_tokens ?? 0,
+    },
+  };
 }
 
 // ── Gemini (different request/response shape entirely) ────────────────────
-async function callGemini(secret: string, model: string, opts: CompletionOpts): Promise<object> {
+async function callGemini(secret: string, model: string, opts: CompletionOpts): Promise<LlmCallResult> {
   const res = await fetchWithRetry(
     "llm",
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
@@ -355,9 +391,18 @@ async function callGemini(secret: string, model: string, opts: CompletionOpts): 
     },
   );
   if (!res.ok) throwHttpError("Gemini", res.status, await res.text());
-  const data = await res.json() as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> };
+  const data = await res.json() as {
+    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+    usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number };
+  };
   const text = (data.candidates?.[0]?.content?.parts ?? []).map((p) => p.text ?? "").join("");
-  return parseJsonResponse(text);
+  return {
+    json: await parseJsonResponse(text),
+    usage: {
+      inputTokens: data.usageMetadata?.promptTokenCount ?? 0,
+      outputTokens: data.usageMetadata?.candidatesTokenCount ?? 0,
+    },
+  };
 }
 
 export type LlmCallFn = (
@@ -365,7 +410,7 @@ export type LlmCallFn = (
   model: string,
   opts: CompletionOpts,
   config?: ProviderCallConfig,
-) => Promise<object>;
+) => Promise<LlmCallResult>;
 
 export const LLM_CALL_REGISTRY: Record<LlmProviderId, LlmCallFn> = {
   openrouter: callOpenRouter,

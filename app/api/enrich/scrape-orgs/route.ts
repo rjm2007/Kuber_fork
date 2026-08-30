@@ -581,7 +581,7 @@ Rules:
 - If you cannot find real evidence for a field in the provided content, return null for that field. Never invent facts. Never describe yourself or any third party — only describe the company whose website you are reading.`,
       user: `Company name: ${org.name}\nWebsite domain: ${org.domain ?? "unknown"}\n\nWebsite content:\n${markdown.slice(0, 8000)}`,
       maxTokens: 1024, // output is a tiny JSON object; keeps cost + credit floor low
-    }, org.company_id);
+    }, org.company_id, { purpose: "enrichment" });
 
     const llmDuration = Date.now() - llmStart;
     // Normalise BEFORE anything reads it, so the "did we get data" test, the
