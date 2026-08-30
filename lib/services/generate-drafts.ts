@@ -13,6 +13,7 @@ import { logLeadEvent } from "@/lib/services/lead-events";
 import { splitInstruction, customerProducts } from "@/lib/services/revision-input";
 import { PROVIDER_UNAVAILABLE, isProviderOutage } from "@/lib/services/provider-errors";
 import { classifyRevisionIntent, revisionRulesFor } from "@/lib/services/revision-intent";
+import { resolveFollowupTemplate } from "@/lib/services/followup-template";
 
 /** Activity-timeline wording for a finished draft. */
 function draftCreatedDetail(stepNumber: number, status: string): string {
@@ -24,11 +25,10 @@ function draftCreatedDetail(stepNumber: number, status: string): string {
   return status === "approved" ? `${what} and auto-approved` : what;
 }
 
-// Short generic nudge used for follow-up steps (step > 1) on un-enriched leads,
-// mirroring the "brief low-pressure nudge" rule the AI follow-ups also follow.
-const GENERIC_FOLLOWUP_BODY =
-  "Just following up on my earlier note about Kuber Polyplast's masterbatch and polymer compounds. " +
-  "If it is worth a quick look, I would be glad to share details suited to your requirements.";
+// The follow-up nudge for a lead with no company data now comes from
+// resolveFollowupTemplate(): this campaign's own text for this step, else the
+// Settings default, else a built-in. It used to be a constant here that no one
+// could edit and that named "Kuber Polyplast" in the source.
 
 // Fills {{first_name}} / {{name}} / {{company}} placeholders in a template.
 function fillTemplate(text: string, vars: { first_name: string; company: string }): string {
@@ -40,6 +40,24 @@ function fillTemplate(text: string, vars: { first_name: string; company: string 
 // The LLM writes the full email body from the Email Template system prompt
 // (subject patterns, openings, offerings, closings, etc. live there as options).
 // Code only adds greeting + signature and turns "brochure" into a download link.
+
+/**
+ * Remove a greeting the template author wrote themselves.
+ *
+ * Code always prepends "Dear <first name>," - so a template starting with
+ * "Hi {{first_name}}," reaches the customer as "Dear Steve, Hi Steve, ...".
+ * Seen live the first time a per-step template was used.
+ *
+ * Telling people "do not write a greeting" in placeholder text does not work;
+ * they write one because every email they have ever sent has one. So strip it,
+ * and only when it is unmistakably a greeting: a Hi/Hello/Dear/Hey opener, a
+ * few words at most, ending in a comma, at the very start.
+ */
+function stripLeadingGreeting(text: string): string {
+  const [first, ...rest] = text.split("\n");
+  const withoutGreeting = first.replace(/^\s*(?:hi|hello|dear|hey)\b[^,]{0,40},\s*/i, "");
+  return [withoutGreeting, ...rest].join("\n").trimStart();
+}
 
 /**
  * Shortest plausible real email body, in plain-text characters — per step.
@@ -698,9 +716,16 @@ export async function generateOneDraft(
       const firstName = lead.first_name?.trim() ?? "";
       const vars = { first_name: firstName, company: org?.name?.trim() || "your company" };
 
+      // A follow-up takes the campaign's own fallback for this step; an opening
+      // email keeps the generic template from Settings. Two different jobs.
+      const followupFallback = stepNumber > 1
+        ? await resolveFollowupTemplate(db, campaignId, stepNumber)
+        : "";
+
       const greeting = firstName ? `Dear ${firstName},` : "Dear Sir/Ma'am,";
-      let genericBody =
-        (stepNumber > 1 ? fillTemplate(GENERIC_FOLLOWUP_BODY, vars) : fillTemplate(template.body, vars)).trim();
+      let genericBody = (stepNumber > 1
+        ? stripLeadingGreeting(fillTemplate(followupFallback, vars))
+        : fillTemplate(template.body, vars)).trim();
 
       // Defense in depth: never mention a brochure on follow-ups or when none is attached.
       if (stepNumber > 1 || !effectiveAttachmentName) {
@@ -732,6 +757,11 @@ export async function generateOneDraft(
         subject: finalSubject,
         body: finalBody,
         status: finalStatus,
+        // This branch never set `source`, so a TEMPLATE draft was stored as
+        // 'ai' and the Sequences tab's "N personalised / N template" count -
+        // the number telling the client how many got the personalisation they
+        // paid for - was wrong, in the flattering direction.
+        source: "template",
         ...(finalStatus === "approved" ? { approved_at: now, reviewed_by: userId ?? null } : {}),
         updated_at: now,
       }).eq("id", activeDraftId);
