@@ -34,15 +34,20 @@ export const BUILT_IN_FOLLOWUP_FALLBACK =
   "Just following up on my earlier note. If it is worth a quick look, " +
   "I would be glad to share details suited to your requirements.";
 
-/** Fills {{first_name}} / {{name}} / {{company}}. Same placeholders the
- *  opening-email template already uses, so there is one syntax to learn. */
+/** Fills {{first_name}} / {{last_name}} / {{name}} / {{company}}. Same
+ *  placeholders the opening-email template already uses, so there is one
+ *  syntax to learn. `name` is an alias for `first_name` — the greeting only
+ *  ever uses the first name, so a "full name" placeholder would be misleading. */
 export function fillFollowupTemplate(
   text: string,
-  vars: { first_name: string; company: string },
+  vars: { first_name: string; last_name?: string; company: string },
 ): string {
-  return text.replace(/\{\{\s*(first_name|name|company)\s*\}\}/gi, (_m, key: string) =>
-    key.toLowerCase() === "company" ? vars.company : vars.first_name,
-  );
+  return text.replace(/\{\{\s*(first_name|last_name|name|company)\s*\}\}/gi, (_m, key: string) => {
+    const k = key.toLowerCase();
+    if (k === "company") return vars.company;
+    if (k === "last_name") return vars.last_name ?? "";
+    return vars.first_name;
+  });
 }
 
 /**
