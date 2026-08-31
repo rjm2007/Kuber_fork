@@ -14,6 +14,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { AvailabilityToggle } from "@/components/ui/availability-toggle";
+import { LEAD_TEMPLATE_VARS } from "@/components/ui/template-var-textarea";
+import { InfoTooltip } from "@/components/ui/info-tooltip";
+// Aliased: this file also declares its own local RichTextEditor further down
+// (a plain-text-output contentEditable wrapper, correct for prompt fields fed
+// to an LLM). followup_fallback_body is genuinely HTML — campaign-fanout.ts's
+// renderFollowupFallback assigns it straight to an Instantly custom variable
+// with no newline-to-<br> conversion — so it needs the real, HTML-output
+// shared editor instead, or a manager's line breaks silently vanish in the
+// sent email.
+import { RichTextEditor as HtmlRichTextEditor, type TemplateVar } from "@/components/ui/rich-text-editor";
 import { fetchLogo, fetchSettings, patchSettings, fetchMySettings, patchMySettings, removeLogo, uploadLogo, fetchMyAvailability, setMyAvailability, type AvailabilityStatus } from "@/lib/api-client";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
@@ -48,6 +58,14 @@ type AiSection = "my-writing" | "my-signature" | "template" | "default" | "follo
 type KnowledgeSection = "company" | "products";
 type KeysSection = "credentials" | "usage";
 type ProductOffering = { name: string; description: string };
+
+// Only first_name — lib/services/settings.ts's renderFollowupFallback (the
+// function that actually fills this field at send time) supports nothing
+// else. LEAD_TEMPLATE_VARS' extra company/last_name pills would look right
+// here but ship as literal "{{...}}" text.
+const FOLLOWUP_FALLBACK_TEMPLATE_VARS: TemplateVar[] = [
+  { token: "first_name", label: "first_name", description: "Lead's first name", example: "John" },
+];
 
 // Knowledge Sources is open to everyone — employees work with the company
 // context and product library more than managers do. Prompt-shaped company
@@ -935,20 +953,14 @@ export function SettingsView() {
                     <section className="space-y-4">
                       <div className="flex items-center gap-2 border-b border-border pb-4">
                         <FileText className="size-4 text-muted-foreground" />
-                        <div>
-                          <p className="eyebrow">Fallback</p>
-                          <h3 className="font-display text-base font-semibold mt-0.5">Default draft</h3>
+                        <div className="flex items-center gap-1.5">
+                          <div>
+                            <p className="eyebrow">Fallback</p>
+                            <h3 className="font-display text-base font-semibold mt-0.5">Default draft</h3>
+                          </div>
+                          <InfoTooltip text="Exact subject and body sent to unenriched / Input Required leads (no company profile to personalise). Enriched leads still use AI Writing Instructions. A greeting and signature are added automatically." />
                         </div>
                       </div>
-                      <p className="text-xs text-muted-foreground">
-                        Exact subject and body sent to unenriched / Input Required leads (no company profile to personalise). Enriched leads still use AI Writing Instructions. Placeholders are filled per lead:{" "}
-                        <code className="rounded bg-secondary px-1 py-0.5 text-[11px] font-mono">{"{{first_name}}"}</code>
-                        {", "}
-                        <code className="rounded bg-secondary px-1 py-0.5 text-[11px] font-mono">{"{{name}}"}</code>
-                        {", "}
-                        <code className="rounded bg-secondary px-1 py-0.5 text-[11px] font-mono">{"{{company}}"}</code>
-                        . A greeting and signature are added automatically.
-                      </p>
                       <SettingsRow label="Subject">
                         <Input
                           value={genericSubject}
@@ -958,14 +970,16 @@ export function SettingsView() {
                           className="max-w-md"
                         />
                       </SettingsRow>
-                      <RichTextEditor
-                        label="Body"
-                        value={genericBody}
-                        onChange={setGenericBody}
-                        minHeight={280}
-                        placeholder="Write the exact email body. Use {{first_name}} and {{company}} where you want them filled in."
-                        helper="This text is sent as-is after variable substitution — the AI does not rewrite it."
-                      />
+                      <div className="space-y-2">
+                        <Label>Body</Label>
+                        <HtmlRichTextEditor
+                          value={genericBody}
+                          onChange={setGenericBody}
+                          templateVars={LEAD_TEMPLATE_VARS}
+                          minHeight={220}
+                          placeholder="Write the exact email body"
+                        />
+                      </div>
                     </section>
                   )}
 
@@ -988,14 +1002,17 @@ export function SettingsView() {
                         reply to the opening email. Placeholder:{" "}
                         <code className="rounded bg-secondary px-1 py-0.5 text-[11px] font-mono">{"{{first_name}}"}</code>.
                       </p>
-                      <RichTextEditor
-                        label="Body"
-                        value={followupFallbackBody}
-                        onChange={setFollowupFallbackBody}
-                        minHeight={200}
-                        placeholder={'Hi {{first_name}}, Just following up on my previous note — would love your thoughts. Best regards'}
-                        helper="Left blank, this default text is used. This text is sent as-is — the AI does not rewrite it."
-                      />
+                      <div className="space-y-2">
+                        <Label>Body</Label>
+                        <HtmlRichTextEditor
+                          value={followupFallbackBody}
+                          onChange={setFollowupFallbackBody}
+                          minHeight={200}
+                          templateVars={FOLLOWUP_FALLBACK_TEMPLATE_VARS}
+                          placeholder="Hi {{first_name}}, Just following up on my previous note — would love your thoughts. Best regards"
+                        />
+                        <p className="text-xs text-muted-foreground">Left blank, this default text is used. This text is sent as-is — the AI does not rewrite it.</p>
+                      </div>
                     </section>
                   )}
 

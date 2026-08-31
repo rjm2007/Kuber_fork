@@ -25,6 +25,8 @@ import { SegmentedTabs } from "@/components/ui/segmented-tabs";
 import { AppCheckbox } from "@/components/ui/app-checkbox";
 import { Label } from "@/components/ui/label";
 import { RichTextEditor } from "@/components/ui/rich-text-editor";
+import { LEAD_TEMPLATE_VARS } from "@/components/ui/template-var-textarea";
+import { InfoTooltip } from "@/components/ui/info-tooltip";
 import {
   fetchCampaignLeads,
   fetchDraftProgress,
@@ -467,6 +469,7 @@ function hasReceivedFollowup(cl: DeliveryLeadLike): boolean {
 function sequenceDisplayStep(stepOrder: number): number {
   return stepOrder - 1;
 }
+
 
 function getSidebarBadge(cl: CampaignLead, isGenerating: boolean): string {
   const ds = cl.email_drafts?.status;
@@ -4697,17 +4700,25 @@ export function CampaignDetail({
           <div className="flex-1 min-w-0 overflow-y-auto p-6">
             <div className="max-w-2xl mx-auto space-y-4">
               <div className="flex items-start justify-between gap-3 flex-wrap">
-                <div className="min-w-0">
-                  <p className="font-display text-sm font-semibold truncate">
-                    {seqActiveLeadRow
-                      ? [seqActiveLeadRow.cl.leads?.first_name, seqActiveLeadRow.cl.leads?.last_name].filter(Boolean).join(" ") || "Lead"
-                      : "No lead selected"}
-                  </p>
-                  <p className="text-xs text-muted-foreground truncate">
-                    {seqActiveLeadRow?.cl.leads?.title ? `${seqActiveLeadRow.cl.leads.title} · ` : ""}
-                    {seqActiveLeadRow?.cl.leads?.company_name ?? ""}
-                  </p>
-                </div>
+                {/* The lead's name/title only matters as orientation for the
+                    Steps pane ("whose page am I on"), since that pane is
+                    campaign-wide, not about this one person — see the note
+                    below. On the "lead" pane the same identity is the Lead
+                    card just underneath, so showing it twice here would be
+                    redundant. */}
+                {seqPane === "template" && (
+                  <div className="min-w-0">
+                    <p className="font-display text-sm font-semibold truncate">
+                      {seqActiveLeadRow
+                        ? [seqActiveLeadRow.cl.leads?.first_name, seqActiveLeadRow.cl.leads?.last_name].filter(Boolean).join(" ") || "Lead"
+                        : "No lead selected"}
+                    </p>
+                    <p className="text-xs text-muted-foreground truncate">
+                      {seqActiveLeadRow?.cl.leads?.title ? `${seqActiveLeadRow.cl.leads.title} · ` : ""}
+                      {seqActiveLeadRow?.cl.leads?.company_name ?? ""}
+                    </p>
+                  </div>
+                )}
                 <SegmentedTabs
                   size="sm"
                   value={seqPane}
@@ -4716,6 +4727,7 @@ export function CampaignDetail({
                     { value: "lead", label: "This lead" },
                     { value: "template", label: "Steps" },
                   ]}
+                  className={seqPane === "lead" ? "ml-auto" : undefined}
                 />
               </div>
 
@@ -4724,7 +4736,121 @@ export function CampaignDetail({
                   <p className="text-sm text-muted-foreground py-10 text-center">
                     Pick a lead to read every follow-up written for them.
                   </p>
-                ) : seqActiveLeadRow.finished ? (
+                ) : (
+                <>
+                {/* Lead + org cards — same clickable pattern as Outbox. */}
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="flex w-full items-center gap-3 rounded-xl border border-border bg-field px-4 py-3 shadow-sm transition-colors hover:border-primary/40 hover:bg-field">
+                    <button
+                      type="button"
+                      onClick={() => setDrawerLead(campaignLeadToDrawerLead(seqActiveLeadRow.cl))}
+                      className="shrink-0 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      title="Open lead details"
+                      aria-label="Open lead details"
+                    >
+                      <Avatar name={[seqActiveLeadRow.cl.leads?.first_name, seqActiveLeadRow.cl.leads?.last_name].filter(Boolean).join(" ") || "?"} size="sm" />
+                    </button>
+                    <div className="min-w-0 flex-1">
+                      <button
+                        type="button"
+                        onClick={() => setDrawerLead(campaignLeadToDrawerLead(seqActiveLeadRow.cl))}
+                        className="block w-full min-w-0 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+                        title="Open lead details"
+                      >
+                        <p className="eyebrow text-muted-foreground">Lead</p>
+                        <p className="font-display text-sm font-semibold text-foreground truncate">
+                          {[seqActiveLeadRow.cl.leads?.first_name, seqActiveLeadRow.cl.leads?.last_name].filter(Boolean).join(" ") || "Unknown"}
+                        </p>
+                      </button>
+                      {seqActiveLeadRow.cl.leads?.email ? (
+                        <a
+                          href={`mailto:${seqActiveLeadRow.cl.leads.email}`}
+                          className="font-mono text-xs text-blue-500 hover:text-blue-600 hover:underline truncate block max-w-full"
+                          title={`Email ${seqActiveLeadRow.cl.leads.email}`}
+                        >
+                          {seqActiveLeadRow.cl.leads.email}
+                        </a>
+                      ) : (
+                        <p className="font-mono text-xs text-muted-foreground truncate">No email</p>
+                      )}
+                      {seqActiveLeadRow.cl.leads?.title && (
+                        <p className="text-xs text-muted-foreground truncate">{seqActiveLeadRow.cl.leads.title}</p>
+                      )}
+                    </div>
+                    {(seqActiveLeadRow.cl.email_drafts || getDraftActivity(seqActiveLeadRow.cl)) && (
+                      <button
+                        type="button"
+                        onClick={() => setDrawerLead(campaignLeadToDrawerLead(seqActiveLeadRow.cl))}
+                        className="shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+                        title="Open lead details"
+                      >
+                        <DraftStatusBadge
+                          label={getDisplayStatus(seqActiveLeadRow.cl)}
+                          styleClass={getStatusStyle(seqActiveLeadRow.cl)}
+                        />
+                      </button>
+                    )}
+                  </div>
+
+                  {seqActiveLeadRow.cl.leads?.org_id ? (() => {
+                    const org = seqActiveLeadRow.cl.leads!;
+                    const websiteRaw = (org.company_website || org.company_domain || "").trim();
+                    const websiteHref = websiteRaw
+                      ? (/^https?:\/\//i.test(websiteRaw) ? websiteRaw : `https://${websiteRaw}`)
+                      : null;
+                    const websiteLabel = websiteRaw.replace(/^https?:\/\//i, "").replace(/\/$/, "") || null;
+                    const location = [org.company_city, org.company_country].filter(Boolean).join(", ");
+                    return (
+                      <div className="flex w-full items-center gap-3 rounded-xl border border-border bg-field px-4 py-3 shadow-sm transition-colors hover:border-primary/40 hover:bg-field">
+                        <button
+                          type="button"
+                          onClick={() => setDrawerOrgId(org.org_id!)}
+                          className="flex size-8 shrink-0 items-center justify-center rounded-md bg-secondary text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          title="Open organization details"
+                          aria-label="Open organization details"
+                        >
+                          <Building2 className="size-4" />
+                        </button>
+                        <div className="min-w-0 flex-1">
+                          <button
+                            type="button"
+                            onClick={() => setDrawerOrgId(org.org_id!)}
+                            className="block w-full min-w-0 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+                            title="Open organization details"
+                          >
+                            <p className="eyebrow text-muted-foreground">Organization</p>
+                            <p className="font-display text-sm font-semibold text-foreground truncate">
+                              {org.company_name || "Untitled organization"}
+                            </p>
+                          </button>
+                          {websiteHref && websiteLabel ? (
+                            <a
+                              href={websiteHref}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="font-mono text-xs text-blue-500 hover:text-blue-600 hover:underline truncate block max-w-full"
+                              title={websiteHref}
+                            >
+                              {websiteLabel}
+                            </a>
+                          ) : null}
+                          {location && (
+                            <p className="flex items-center gap-1 text-[11px] text-muted-foreground truncate">
+                              <MapPin className="size-3 shrink-0" aria-hidden />
+                              <span className="truncate">{location}</span>
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })() : (
+                    <div className="flex w-full items-center gap-3 rounded-xl border border-border bg-field px-4 py-3 shadow-sm text-muted-foreground">
+                      <Building2 className="size-4 shrink-0" />
+                      <p className="text-xs">No organization on record</p>
+                    </div>
+                  )}
+                </div>
+                {seqActiveLeadRow.finished ? (
                   <div className="rounded-lg border border-border bg-field p-6 text-center space-y-2">
                     <p className="text-sm font-medium capitalize">{seqActiveLeadRow.finished}</p>
                     <p className="text-xs text-muted-foreground max-w-sm mx-auto">
@@ -4971,6 +5097,8 @@ export function CampaignDetail({
                       </div>
                     ))}
                   </div>
+                )}
+                </>
                 )
               ) : (
                 /* Steps pane: the timing of every step, and adding one. This
@@ -4980,28 +5108,24 @@ export function CampaignDetail({
                   {/* Said plainly, because the pane sits under a lead's name and
                       everything in it is campaign-wide. Editing here changes the
                       schedule for everyone, not for the person on screen. */}
-                  <div className="rounded-lg border border-border bg-secondary/30 px-3 py-2">
-                    <p className="text-xs font-medium">{campaign.name}</p>
-                    <p className="text-[11px] text-muted-foreground">
-                      Timing and instructions for all {campaignLeads.length} leads in this campaign — not just this one.
-                    </p>
+                  <div className="flex items-center gap-1.5 rounded-lg border border-border bg-secondary/30 px-3 py-2">
+                    <p className="text-xs font-medium truncate">{campaign.name}</p>
+                    <InfoTooltip text={`Timing and instructions for all ${campaignLeads.length} leads in this campaign — not just the one you're viewing.`} />
                   </div>
 
                   <div className="space-y-1.5">
-                    <Label className="eyebrow">Applies to every follow-up</Label>
+                    <div className="flex items-center gap-1.5">
+                      <Label className="eyebrow">Applies to every follow-up</Label>
+                      <InfoTooltip text="Extra guidance the AI applies to every future follow-up in this campaign, e.g. 'Mention our new Dubai warehouse.'" />
+                    </div>
                     <Textarea
                       value={seqCampaignInstruction}
                       disabled={!canEditSettings}
                       onChange={(e) => setSeqCampaignInstruction(e.target.value)}
-                      placeholder="e.g. Mention that we now hold stock in a Dubai warehouse, so Gulf customers get two-week delivery."
+                      placeholder="Optional"
                       className="text-sm min-h-16"
                     />
                   </div>
-
-                  <p className="text-xs text-muted-foreground">
-                    Each wait is counted from the previous email, so they add up — the day
-                    shown is when that follow-up actually goes out.
-                  </p>
                   {seqStepEdits.map((st, idx) => (
                     <div key={idx} className="rounded-lg border border-border bg-field px-3 py-2 space-y-2">
                       <div className="flex items-center gap-2">
@@ -5021,8 +5145,11 @@ export function CampaignDetail({
                         className="h-7 w-14 px-1 py-0 text-center text-sm font-mono tabular-nums"
                       />
                       <span className="text-xs text-muted-foreground">days</span>
-                      <span className="font-mono text-[10px] tabular-nums text-muted-foreground ml-auto shrink-0">
-                        {dayLabel(seqStepEditDays[idx] ?? 0)}
+                      <span className="ml-auto flex shrink-0 items-center gap-1">
+                        <span className="font-mono text-[10px] tabular-nums text-muted-foreground">
+                          {dayLabel(seqStepEditDays[idx] ?? 0)}
+                        </span>
+                        <InfoTooltip text="Waits stack from the previous email — this is the actual day this follow-up goes out, not just its own gap." />
                       </span>
                       {canEditSettings && seqStepEdits.length > 1 && (
                         <Button
@@ -5057,10 +5184,9 @@ export function CampaignDetail({
 
                         if (stillToWrite === 0) {
                           return (
-                            <p className="text-[11px] text-muted-foreground">
-                              {alreadySent > 0
-                                ? <>Already written for everyone{alreadySent > 0 ? ` (${alreadySent} sent)` : ""} — an instruction here would not change any of them. Use Regenerate on the step or on a lead instead.</>
-                                : "Already written for every lead. Use Regenerate to change them."}
+                            <p className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                              Already written for everyone{alreadySent > 0 ? ` (${alreadySent} sent)` : ""}
+                              <InfoTooltip text="An instruction here would not change any of them. Use Regenerate on the step or on a lead instead." />
                             </p>
                           );
                         }
@@ -5074,8 +5200,7 @@ export function CampaignDetail({
                               className="text-xs min-h-12"
                             />
                             <p className="text-[10px] text-muted-foreground">
-                              Will be used for {stillToWrite} lead{stillToWrite === 1 ? "" : "s"} not yet written
-                              {alreadySent > 0 ? ` · ${alreadySent} already sent and unaffected` : ""}.
+                              {stillToWrite} unwritten{alreadySent > 0 ? ` · ${alreadySent} sent` : ""}
                             </p>
                           </>
                         );
@@ -5085,25 +5210,28 @@ export function CampaignDetail({
                           the lead has no company data, or the AI failed. Separate
                           from the instruction above, which only guides the AI. */}
                       <div className="space-y-1.5 pt-2 border-t border-border">
-                        <Label className="eyebrow">If it can&apos;t be personalised</Label>
-                        <Textarea
+                        <div className="flex items-center gap-1.5">
+                          <Label className="eyebrow">If it can&apos;t be personalised</Label>
+                          <InfoTooltip text="Sent when the lead has no company details, or the AI cannot write. Leave empty to use the company default from Settings." />
+                        </div>
+                        <RichTextEditor
                           value={st.fallback_body ?? ""}
                           disabled={!canEditSettings}
-                          onChange={(e) => setSeqStepEdits((prev) => prev.map((x, i) => (i === idx ? { ...x, fallback_body: e.target.value } : x)))}
-                          placeholder="Leave empty to use the company default. Supports {{first_name}}."
-                          className="text-xs min-h-14"
+                          onChange={(v) => setSeqStepEdits((prev) => prev.map((x, i) => (i === idx ? { ...x, fallback_body: v } : x)))}
+                          templateVars={LEAD_TEMPLATE_VARS}
+                          minHeight={90}
+                          placeholder="Leave empty for the company default"
                         />
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <p className="flex-1 text-[10px] text-muted-foreground">
-                            Sent when the lead has no company details, or the AI cannot write.
-                            {!st.fallback_body?.trim() && " Currently using the company default."}
-                          </p>
+                        <div className="flex items-center justify-between gap-2 flex-wrap">
+                          {!st.fallback_body?.trim() && (
+                            <p className="text-[10px] text-muted-foreground">Using the company default</p>
+                          )}
                           {canEditSettings && (
                             <Button
                               type="button"
                               variant="outline"
                               size="sm"
-                              className="h-7 gap-1.5 text-[11px]"
+                              className="h-7 gap-1.5 text-[11px] ml-auto"
                               disabled={seqFallbackRegenerating !== null}
                               onClick={() => void handleRegenerateFallback(idx, "Make it shorter and more natural.")}
                             >

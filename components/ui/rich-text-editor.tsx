@@ -13,12 +13,31 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { markdownInlineToHtml, convertResidualMarkdownInHtml } from "@/lib/utils/email-html";
 
+export interface TemplateVar {
+  /** Inserted as {{token}} — must match what the reading code substitutes
+   *  (see e.g. lib/services/followup-template.ts's fillFollowupTemplate),
+   *  not a display convention chosen here. Get this wrong and the pill looks
+   *  right in the editor but sends the literal "{{token}}" text. */
+  token: string;
+  /** Shown on the toolbar pill itself. */
+  label: string;
+  /** Shown in the hover tooltip, above the example. */
+  description: string;
+  example?: string;
+}
+
+// Generic tooltip text for any {{token}} the highlighter finds, even one a
+// caller didn't declare via templateVars (e.g. typed by hand, or left over
+// from a different field's convention) — better than no explanation at all.
 const TEMPLATE_VAR_TOOLTIPS: Record<string, string> = {
+  first_name: "Lead's first name · e.g. \"John\"",
+  last_name:  "Lead's last name · e.g. \"Doe\"",
+  name:       "Lead's first name · e.g. \"John\"",
+  company:    "Lead's company · e.g. \"Acme Inc.\"",
   firstName:  "Lead's first name · e.g. \"John\"",
   lastName:   "Lead's last name · e.g. \"Doe\"",
   senderName: "Your name · e.g. \"Kavish\"",
   email:      "Lead's email · e.g. \"john@acme.com\"",
-  company:    "Lead's company · e.g. \"Acme Inc.\"",
 };
 
 const TemplateVarHighlight = Extension.create({
@@ -85,7 +104,10 @@ interface RichTextEditorProps {
   placeholder?: string;
   className?: string;
   minHeight?: number;
-  showTemplateVars?: boolean;
+  /** Toolbar pills for inserting {{token}} placeholders — e.g. a lead's first
+   *  name or company. Omit for no pills; pass the tokens the reading code on
+   *  the other end actually substitutes (see the TemplateVar doc comment). */
+  templateVars?: TemplateVar[];
 }
 
 function ToolbarButton({
@@ -128,7 +150,7 @@ export function RichTextEditor({
   placeholder = "Write your email…",
   className,
   minHeight = 280,
-  showTemplateVars = false,
+  templateVars,
 }: RichTextEditorProps) {
   const editor = useEditor({
     extensions: [
@@ -260,31 +282,33 @@ export function RichTextEditor({
           </ToolbarButton>
         )}
 
-        {showTemplateVars && (
+        {templateVars && templateVars.length > 0 && (
           <>
             <div className="w-px h-4 bg-border mx-1" />
 
-            <div className="relative group">
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                disabled={disabled}
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  editor.chain().focus().insertContent("{{firstName}}").run();
-                }}
-                className="h-6 gap-1 rounded px-1.5 py-0.5 bg-primary/15 text-primary text-[11px] font-mono font-semibold border border-primary/25 hover:bg-primary/25 hover:text-primary"
-              >
-                firstName
-                <Copy className="size-2.5 opacity-60" />
-              </Button>
-              <div className="pointer-events-none absolute top-full left-0 mt-1.5 z-50 w-48 rounded-md bg-popover border border-border shadow-lg px-3 py-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                <p className="text-xs font-semibold text-foreground">Lead&apos;s first name</p>
-                <p className="text-[11px] text-muted-foreground mt-0.5">e.g. &quot;John&quot;</p>
-                <p className="text-[11px] text-muted-foreground mt-1">Type <span className="font-mono bg-muted px-0.5 rounded">{"{{firstName}}"}</span> or click to insert</p>
+            {templateVars.map((v) => (
+              <div key={v.token} className="relative group">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  disabled={disabled}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    editor.chain().focus().insertContent(`{{${v.token}}}`).run();
+                  }}
+                  className="h-6 gap-1 rounded px-1.5 py-0.5 bg-primary/15 text-primary text-[11px] font-mono font-semibold border border-primary/25 hover:bg-primary/25 hover:text-primary"
+                >
+                  {v.label}
+                  <Copy className="size-2.5 opacity-60" />
+                </Button>
+                <div className="pointer-events-none absolute top-full left-0 mt-1.5 z-50 w-48 rounded-md bg-popover border border-border shadow-lg px-3 py-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <p className="text-xs font-semibold text-foreground">{v.description}</p>
+                  {v.example && <p className="text-[11px] text-muted-foreground mt-0.5">e.g. &quot;{v.example}&quot;</p>}
+                  <p className="text-[11px] text-muted-foreground mt-1">Type <span className="font-mono bg-muted px-0.5 rounded">{`{{${v.token}}}`}</span> or click to insert</p>
+                </div>
               </div>
-            </div>
+            ))}
           </>
         )}
       </div>

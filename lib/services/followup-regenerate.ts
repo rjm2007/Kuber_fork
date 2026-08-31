@@ -63,8 +63,8 @@ export async function regenerateFollowUpTemplateText(opts: {
     "- 2-4 short sentences, casual \"just checking in\" tone.",
     "- Do not reintroduce a company pitch, product list, or bullet points.",
     "- Do not write a subject line — follow-ups always thread as a reply.",
-    "- Greet the recipient with the literal placeholder {{firstName}} (exact spelling, with double braces) — never substitute a real name.",
-    "- Keep any other {{variable}} placeholders from the current text unchanged.",
+    "- Greet the recipient with the literal placeholder {{first_name}} (exact spelling, snake_case, with double braces) — never substitute a real name.",
+    "- Keep any other {{variable}} placeholders from the current text unchanged (e.g. {{last_name}}, {{company}}) — these are snake_case, not camelCase.",
     "- Apply the user's instruction to the CURRENT follow-up text below; rewrite it, don't start over from scratch.",
     "Return strict JSON: {\"body\": \"...\"}",
   ].join("\n");
