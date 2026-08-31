@@ -1,0 +1,160 @@
+{
+  "schema_version": 1,
+  "diagram_type": "dataflow",
+  "meta": {
+    "title": "How a Lead Becomes an Email",
+    "output": "kuber-dataflow.html",
+    "quality_profile": "showcase",
+    "viewBox": [
+      1080,
+      360
+    ],
+    "views": [
+      {
+        "id": "research",
+        "label": "Research once per company",
+        "focus": [
+          "import",
+          "scrape",
+          "extract"
+        ],
+        "note": "5,269 leads sit on 4,412 organizations. The scrape and the extraction run per company, never per lead."
+      },
+      {
+        "id": "writing",
+        "label": "Writing the email",
+        "focus": [
+          "extract",
+          "draft"
+        ],
+        "note": "A company description means a personalised email. No description means the generic template, and no LLM call at all."
+      },
+      {
+        "id": "costs",
+        "label": "Where credits are spent",
+        "focus": [
+          "import",
+          "scrape",
+          "draft"
+        ],
+        "note": "Apollo per revealed contact, Firecrawl per reachable site, LLM per draft. Roughly Rs 1.50 an email."
+      }
+    ]
+  },
+  "stages": [
+    {
+      "label": "Import"
+    },
+    {
+      "label": "Scrape"
+    },
+    {
+      "label": "Extract"
+    },
+    {
+      "label": "Draft"
+    },
+    {
+      "label": "Deliver"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "import",
+      "type": "external",
+      "label": "Apollo or Excel",
+      "sublabel": "lead + org rows",
+      "stage": 0,
+      "row": 0
+    },
+    {
+      "id": "scrape",
+      "type": "cloud",
+      "label": "Firecrawl",
+      "sublabel": "1 credit a site",
+      "stage": 1,
+      "row": 0
+    },
+    {
+      "id": "extract",
+      "type": "backend",
+      "label": "LLM extraction",
+      "sublabel": "reads the page",
+      "stage": 2,
+      "row": 0
+    },
+    {
+      "id": "draft",
+      "type": "backend",
+      "label": "Draft",
+      "sublabel": "ai or template",
+      "stage": 3,
+      "row": 0
+    },
+    {
+      "id": "instantly",
+      "type": "external",
+      "label": "Instantly",
+      "sublabel": "renders at send",
+      "stage": 4,
+      "row": 0
+    }
+  ],
+  "flows": [
+    {
+      "id": "has-domain",
+      "from": "import",
+      "to": "scrape",
+      "label": "has a domain"
+    },
+    {
+      "id": "page-text",
+      "from": "scrape",
+      "to": "extract",
+      "label": "page text"
+    },
+    {
+      "id": "description",
+      "from": "extract",
+      "to": "draft",
+      "label": "company_description"
+    },
+    {
+      "id": "approved",
+      "from": "draft",
+      "to": "instantly",
+      "label": "once approved"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Two ways a lead skips a step",
+      "items": [
+        "No domain at all goes to unenrichable_leads and never reaches Firecrawl",
+        "A dead domain is free at Firecrawl; a reachable 404 still costs a credit",
+        "Nothing usable on the page leaves the lead as input_required"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "input_required is not a failure",
+      "items": [
+        "It means we could not learn anything about the company",
+        "Those leads still join campaigns and still get sent to",
+        "They get the generic template and its per-step follow-up fallback",
+        "That path makes no LLM call, so it costs nothing"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "What it costs, measured",
+      "items": [
+        "Apollo: search is free, revealing a contact costs a credit",
+        "Firecrawl: bills for reaching a site, not for useful content",
+        "LLM: about Rs 1.50 an email, one llm_usage row per call",
+        "A 4-lead test run on 31 Aug came to Rs 6.50 across 7 calls"
+      ]
+    }
+  ]
+}

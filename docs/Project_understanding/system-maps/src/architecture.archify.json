@@ -1,0 +1,330 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Kuber — What Runs Under the Hood",
+    "output": "kuber-architecture.html",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "request-path",
+        "label": "A person clicks something",
+        "focus": [
+          "users",
+          "guard",
+          "api",
+          "db"
+        ],
+        "note": "Every browser call carries a JWT, passes the auth and rate-limit guard, and reaches Postgres already scoped to one company."
+      },
+      {
+        "id": "long-jobs",
+        "label": "Work longer than 55 seconds",
+        "focus": [
+          "api",
+          "workers",
+          "llm"
+        ],
+        "note": "A serverless function dies at 55s. A worker does about ten items, then calls its own URL for the next ten. No queue service."
+      },
+      {
+        "id": "the-clock",
+        "label": "The database is the scheduler",
+        "focus": [
+          "cron",
+          "workers",
+          "db"
+        ],
+        "note": "pg_cron fires eight jobs and pg_net POSTs back into the app. The clock lives in Postgres, not in Vercel."
+      },
+      {
+        "id": "money",
+        "label": "Everything that costs money",
+        "focus": [
+          "workers",
+          "llm",
+          "leaddata",
+          "vault"
+        ],
+        "note": "Apollo credits, Firecrawl credits, LLM tokens. Every LLM call writes a row to llm_usage. Keys are vault rows, never env vars."
+      },
+      {
+        "id": "mail-loop",
+        "label": "Mail out, replies back",
+        "focus": [
+          "api",
+          "instantly",
+          "db"
+        ],
+        "note": "Drafts go to Instantly as custom variables and render at SEND time, not queue time. A webhook reports every send and reply."
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "vault",
+      "type": "security",
+      "label": "supabase_vault",
+      "sublabel": "keys, encrypted",
+      "pos": [
+        360,
+        40
+      ],
+      "size": [
+        180,
+        60
+      ]
+    },
+    {
+      "id": "db",
+      "type": "database",
+      "label": "Supabase Postgres",
+      "sublabel": "42 tables",
+      "pos": [
+        680,
+        40
+      ],
+      "size": [
+        180,
+        60
+      ]
+    },
+    {
+      "id": "instantly",
+      "type": "external",
+      "label": "Instantly",
+      "sublabel": "sends the mail",
+      "pos": [
+        1000,
+        40
+      ],
+      "size": [
+        180,
+        60
+      ]
+    },
+    {
+      "id": "users",
+      "type": "external",
+      "label": "Sales team",
+      "sublabel": "browser",
+      "pos": [
+        40,
+        190
+      ],
+      "size": [
+        180,
+        60
+      ]
+    },
+    {
+      "id": "guard",
+      "type": "security",
+      "label": "requireAuth",
+      "sublabel": "JWT + rate limit",
+      "pos": [
+        360,
+        190
+      ],
+      "size": [
+        180,
+        60
+      ]
+    },
+    {
+      "id": "api",
+      "type": "backend",
+      "label": "API routes",
+      "sublabel": "/api/v1 · 96",
+      "pos": [
+        680,
+        190
+      ],
+      "size": [
+        180,
+        60
+      ]
+    },
+    {
+      "id": "llm",
+      "type": "external",
+      "label": "LLM",
+      "sublabel": "writes the email",
+      "pos": [
+        1000,
+        190
+      ],
+      "size": [
+        180,
+        60
+      ]
+    },
+    {
+      "id": "cron",
+      "type": "messagebus",
+      "label": "pg_cron",
+      "sublabel": "8 jobs, in Postgres",
+      "pos": [
+        360,
+        340
+      ],
+      "size": [
+        180,
+        60
+      ]
+    },
+    {
+      "id": "workers",
+      "type": "backend",
+      "label": "Internal routes",
+      "sublabel": "self-chaining",
+      "pos": [
+        680,
+        340
+      ],
+      "size": [
+        180,
+        60
+      ]
+    },
+    {
+      "id": "leaddata",
+      "type": "external",
+      "label": "Apollo + Firecrawl",
+      "sublabel": "credits per lookup",
+      "pos": [
+        1000,
+        340
+      ],
+      "size": [
+        180,
+        60
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Supabase",
+      "wraps": [
+        "db",
+        "vault"
+      ]
+    },
+    {
+      "kind": "region",
+      "label": "Vercel — serverless, nothing stays alive",
+      "wraps": [
+        "api",
+        "workers"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "browser-in",
+      "from": "users",
+      "to": "guard",
+      "label": "HTTPS + JWT",
+      "variant": "emphasis"
+    },
+    {
+      "id": "guard-to-api",
+      "from": "guard",
+      "to": "api",
+      "label": "scoped to company",
+      "variant": "security"
+    },
+    {
+      "id": "api-sql",
+      "from": "api",
+      "to": "db",
+      "label": "SQL",
+      "labelDy": -22
+    },
+    {
+      "id": "secrets",
+      "from": "db",
+      "to": "vault",
+      "label": "read key",
+      "variant": "security"
+    },
+    {
+      "id": "kickoff",
+      "from": "api",
+      "to": "workers",
+      "label": "kick off batch",
+      "variant": "dashed",
+      "labelDy": 40
+    },
+    {
+      "id": "cron-fires",
+      "from": "cron",
+      "to": "workers",
+      "label": "POST every 10 min",
+      "variant": "dashed"
+    },
+    {
+      "id": "push-mail",
+      "from": "api",
+      "to": "instantly",
+      "label": "push drafts",
+      "labelDy": -10,
+      "labelDx": -60
+    },
+    {
+      "id": "webhook-back",
+      "from": "instantly",
+      "to": "api",
+      "label": "sent / replied",
+      "variant": "dashed",
+      "labelDy": 30,
+      "labelDx": 60
+    },
+    {
+      "id": "write-email",
+      "from": "workers",
+      "to": "llm",
+      "label": "every email",
+      "variant": "emphasis",
+      "labelDy": -20
+    },
+    {
+      "id": "buy-data",
+      "from": "workers",
+      "to": "leaddata",
+      "label": "1 credit each",
+      "labelDy": 20
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "The one idea to hold on to",
+      "items": [
+        "Nothing stays alive between requests",
+        "Long jobs are chopped into batches that call the next batch",
+        "The database is the queue, the lock table and the clock"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Two API surfaces, three doors",
+      "items": [
+        "/api/v1/** — a person with a JWT, limited 300/120/20 per minute",
+        "/api/enrich + /api/internal — workers and cron, shared secret",
+        "Internal traffic never reaches requireAuth, so limits cannot throttle it"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Where the money goes",
+      "items": [
+        "Apollo: search is free, revealing a contact costs a credit",
+        "Firecrawl: bills for reaching a site, not for useful content",
+        "Every LLM call writes tokens and cost to llm_usage",
+        "Unknown model pricing records NULL, never 0"
+      ]
+    }
+  ]
+}

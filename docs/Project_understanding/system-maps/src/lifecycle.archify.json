@@ -1,0 +1,224 @@
+{
+  "schema_version": 1,
+  "diagram_type": "lifecycle",
+  "meta": {
+    "title": "The Life of One Lead",
+    "output": "kuber-lifecycle.html",
+    "quality_profile": "showcase",
+    "viewBox": [
+      1080,
+      600
+    ],
+    "views": [
+      {
+        "id": "main",
+        "label": "The ordinary path",
+        "focus": [
+          "new",
+          "enriching",
+          "approved",
+          "sent",
+          "replied"
+        ],
+        "note": "Imported, researched, written, certified by a human, sent by Instantly, and answered by a person."
+      },
+      {
+        "id": "no-data",
+        "label": "When research fails",
+        "focus": [
+          "enriching",
+          "inputreq",
+          "approved"
+        ],
+        "note": "input_required is not a dead end. The lead rejoins the same path and gets the generic template instead."
+      },
+      {
+        "id": "ends",
+        "label": "How it ends",
+        "focus": [
+          "sent",
+          "replied",
+          "won",
+          "closed"
+        ],
+        "note": "A reply hands the thread to a salesperson. Silence after the last follow-up simply closes the lead."
+      }
+    ]
+  },
+  "lanes": [
+    {
+      "id": "main",
+      "label": "The path a lead follows"
+    },
+    {
+      "id": "off",
+      "label": "Detours and endings"
+    }
+  ],
+  "states": [
+    {
+      "id": "new",
+      "type": "start",
+      "label": "new",
+      "sublabel": "imported",
+      "lane": "main",
+      "col": 0,
+      "step": "01"
+    },
+    {
+      "id": "enriching",
+      "type": "active",
+      "label": "enriching",
+      "sublabel": "scrape + extract",
+      "lane": "main",
+      "col": 1,
+      "step": "02"
+    },
+    {
+      "id": "approved",
+      "type": "decision",
+      "label": "approved",
+      "sublabel": "a human certified it",
+      "lane": "main",
+      "col": 2,
+      "step": "03"
+    },
+    {
+      "id": "sent",
+      "type": "active",
+      "label": "sent",
+      "sublabel": "Instantly has it",
+      "lane": "main",
+      "col": 3,
+      "step": "04"
+    },
+    {
+      "id": "replied",
+      "type": "success",
+      "label": "replied",
+      "sublabel": "a person takes over",
+      "lane": "main",
+      "col": 4,
+      "step": "05"
+    },
+    {
+      "id": "inputreq",
+      "type": "failure",
+      "label": "input_required",
+      "sublabel": "nothing usable",
+      "lane": "off",
+      "col": 0,
+      "tag": "still sendable"
+    },
+    {
+      "id": "won",
+      "type": "success",
+      "label": "won",
+      "sublabel": "a real customer",
+      "lane": "off",
+      "col": 2
+    },
+    {
+      "id": "closed",
+      "type": "neutral",
+      "label": "closed",
+      "sublabel": "no answer",
+      "lane": "off",
+      "col": 1
+    }
+  ],
+  "transitions": [
+    {
+      "id": "t1",
+      "from": "new",
+      "to": "enriching",
+      "label": "domain",
+      "labelDy": 66
+    },
+    {
+      "id": "t2",
+      "from": "enriching",
+      "to": "approved",
+      "label": "found",
+      "labelDy": 66
+    },
+    {
+      "id": "t3",
+      "from": "enriching",
+      "to": "inputreq",
+      "label": "no data",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "left",
+      "labelDy": 0
+    },
+    {
+      "id": "t4",
+      "from": "inputreq",
+      "to": "approved",
+      "label": "template",
+      "variant": "dashed",
+      "fromSide": "top",
+      "toSide": "bottom",
+      "labelDx": 30
+    },
+    {
+      "id": "t5",
+      "from": "approved",
+      "to": "sent",
+      "label": "per country",
+      "labelDy": 66
+    },
+    {
+      "id": "t6",
+      "from": "sent",
+      "to": "replied",
+      "label": "webhook",
+      "labelDy": 66
+    },
+    {
+      "id": "t7",
+      "from": "replied",
+      "to": "won",
+      "label": "deal",
+      "labelDy": 35
+    },
+    {
+      "id": "t8",
+      "from": "sent",
+      "to": "closed",
+      "label": "no reply",
+      "variant": "dashed",
+      "labelDy": 35
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Two state machines, not one",
+      "items": [
+        "leads.status: new, enriching, enriched, input_required, open, closed",
+        "campaign_leads.crm_status carries the send side, through to won",
+        "Approving a draft does not move the lead: they are separate transitions"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "What sets each step",
+      "items": [
+        "enriching is driven by the scrape worker and its watchdog",
+        "approved is a person clicking certify, not the system",
+        "first_sent_at comes from the Instantly webhook, and dates every follow-up"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Nothing here is a dead end",
+      "items": [
+        "input_required rejoins the same path with the generic template",
+        "A failed scrape is retried 3 times, a failed extraction twice",
+        "No domain at all is parked in unenrichable_leads, never retried"
+      ]
+    }
+  ]
+}

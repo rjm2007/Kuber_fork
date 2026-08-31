@@ -741,7 +741,13 @@ export async function generateOneDraft(
       const linkBrochure = stepNumber === 1 && !!effectiveAttachmentName && !!effectiveAttachmentUrl && /brochure/i.test(genericBody);
       if (linkBrochure) genericBody = genericBody.replace(/brochure/i, BROCHURE_TOKEN);
 
-      let finalBody = plainToHtml([greeting, genericBody, signatureBlock].filter(Boolean).join("\n\n"));
+      // Same rule the AI path applies below: a follow-up threads as a reply, so
+      // the signature is already sitting in the message directly above it. This
+      // branch appended it regardless, so a TEMPLATE follow-up carried a full
+      // signature block while an AI one correctly did not - on a ~90 character
+      // nudge that is more footer than email.
+      const templateSignature = stepNumber > 1 ? "" : signatureBlock;
+      let finalBody = plainToHtml([greeting, genericBody, templateSignature].filter(Boolean).join("\n\n"));
       if (linkBrochure) {
         finalBody = finalBody.replace(
           BROCHURE_TOKEN,
