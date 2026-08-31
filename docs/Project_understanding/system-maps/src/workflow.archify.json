@@ -1,0 +1,253 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "How One Email Gets Written",
+    "output": "kuber-workflow.html",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "happy",
+        "label": "The model writes it",
+        "focus": [
+          "lead",
+          "prompt",
+          "model",
+          "guards",
+          "saved"
+        ],
+        "note": "A lead with a company description gets a prompt built from four sources, one model call, and two guards before anything is saved."
+      },
+      {
+        "id": "guards",
+        "label": "What we refuse to send",
+        "focus": [
+          "model",
+          "guards",
+          "template"
+        ],
+        "note": "An empty body and a model refusal both used to reach real inboxes. Two attempts, then the template safety net."
+      },
+      {
+        "id": "fallback",
+        "label": "The fallback ladder",
+        "focus": [
+          "nodata",
+          "template",
+          "ladder",
+          "saved"
+        ],
+        "note": "Opening emails take the generic template. Follow-ups take this campaign's own text, then Settings, then the built-in."
+      }
+    ]
+  },
+  "lanes": [
+    {
+      "id": "writing",
+      "label": "Writing the email"
+    },
+    {
+      "id": "checks",
+      "label": "Guards",
+      "variant": "exception"
+    },
+    {
+      "id": "fallback",
+      "label": "Fallback ladder"
+    }
+  ],
+  "phases": [
+    {
+      "id": "assemble",
+      "label": "Assemble",
+      "fromCol": 0,
+      "toCol": 1
+    },
+    {
+      "id": "generate",
+      "label": "Generate",
+      "fromCol": 2,
+      "toCol": 3,
+      "variant": "emphasis"
+    },
+    {
+      "id": "commit",
+      "label": "Save",
+      "fromCol": 4,
+      "toCol": 5
+    }
+  ],
+  "mainPath": [
+    "lead",
+    "prompt",
+    "model",
+    "guards",
+    "saved"
+  ],
+  "nodes": [
+    {
+      "id": "lead",
+      "lane": "writing",
+      "col": 0,
+      "type": "external",
+      "label": "Lead + company",
+      "sublabel": "what we know"
+    },
+    {
+      "id": "prompt",
+      "lane": "writing",
+      "col": 1,
+      "type": "backend",
+      "label": "Prompt",
+      "sublabel": "four sources"
+    },
+    {
+      "id": "model",
+      "lane": "writing",
+      "col": 2,
+      "type": "backend",
+      "label": "The model",
+      "sublabel": "Sonnet 4.6"
+    },
+    {
+      "id": "guards",
+      "lane": "checks",
+      "col": 3,
+      "type": "security",
+      "label": "Guards",
+      "sublabel": "empty, refusal",
+      "tag": "2 attempts"
+    },
+    {
+      "id": "saved",
+      "lane": "writing",
+      "col": 5,
+      "type": "database",
+      "label": "Draft saved",
+      "sublabel": "versioned"
+    },
+    {
+      "id": "nodata",
+      "lane": "fallback",
+      "col": 1,
+      "type": "database",
+      "label": "No description",
+      "sublabel": "input_required"
+    },
+    {
+      "id": "template",
+      "lane": "fallback",
+      "col": 3,
+      "type": "messagebus",
+      "label": "Template",
+      "sublabel": "opening email"
+    },
+    {
+      "id": "ladder",
+      "lane": "fallback",
+      "col": 4,
+      "type": "messagebus",
+      "label": "Follow-up text",
+      "sublabel": "step, then Settings"
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "from": "lead",
+      "to": "prompt",
+      "label": "company data",
+      "variant": "emphasis"
+    },
+    {
+      "id": "e2",
+      "from": "prompt",
+      "to": "model",
+      "label": "one call"
+    },
+    {
+      "id": "e3",
+      "from": "model",
+      "to": "guards",
+      "label": "body + subject"
+    },
+    {
+      "id": "e4",
+      "from": "guards",
+      "to": "saved",
+      "label": "source = ai",
+      "variant": "emphasis"
+    },
+    {
+      "id": "e5",
+      "from": "guards",
+      "to": "template",
+      "label": "failed twice",
+      "variant": "dashed"
+    },
+    {
+      "id": "e6",
+      "from": "lead",
+      "to": "nodata",
+      "label": "nothing learned",
+      "variant": "dashed"
+    },
+    {
+      "id": "e7",
+      "from": "nodata",
+      "to": "template",
+      "label": "step 1"
+    },
+    {
+      "id": "e8",
+      "from": "template",
+      "to": "ladder",
+      "label": "then step 2+"
+    },
+    {
+      "id": "e9",
+      "from": "template",
+      "to": "saved",
+      "label": "source = template",
+      "variant": "dashed"
+    },
+    {
+      "id": "e10",
+      "from": "ladder",
+      "to": "saved",
+      "variant": "dashed"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "rose",
+      "title": "The two guards, and why they exist",
+      "items": [
+        "An empty body once saved as sendable: \"Dear X,\" and a signature",
+        "A refusal once shipped as an approved follow-up",
+        "Openings need 120 characters, follow-ups 60 — measured",
+        "Two attempts first, so a one-second blip does not fall back"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "The prompt is four things stacked",
+      "items": [
+        "system prompt, company block, products, then the lead",
+        "A rep's personal prompt REPLACES the company one",
+        "So truthfulness rules live in code, appended to every tier",
+        "The \"sir\" fix went there, not into Settings"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "Fallbacks are recorded, not hidden",
+      "items": [
+        "source = template is stored, so the AI count stays honest",
+        "A follow-up carries no signature; one is already above it",
+        "The template greeting is stripped, never doubled",
+        "When credits return, unsent template drafts upgrade to AI"
+      ]
+    }
+  ]
+}

@@ -74,3 +74,18 @@ assert.equal(fill("A note for {{company}}.", { first_name: "", company: "Shimmer
 assert.equal(fill(BUILT_IN, { first_name: "X", company: "Y" }), BUILT_IN);
 
 console.log("ok — per-step template wins, empty inherits, step 1 is untouched");
+
+// ── A template follow-up gets no signature ───────────────────────────────────
+// The AI path already omitted it; the template path appended it regardless, so
+// the same lead's follow-up carried a full signature block if it fell back and
+// none if it did not. On a ~200 character nudge that is more footer than email,
+// and it threads directly under a message whose signature is already visible.
+// Both paths in generate-drafts.ts now use this rule.
+const signatureFor = (stepNumber, signatureBlock) => (stepNumber > 1 ? "" : signatureBlock);
+const SIG = "Ankit Singh\nBusiness Head";
+
+assert.equal(signatureFor(1, SIG), SIG, "the opening email keeps its signature");
+assert.equal(signatureFor(2, SIG), "", "a follow-up threads as a reply — no second signature");
+assert.equal(signatureFor(3, SIG), "");
+
+console.log("ok — a template follow-up carries no signature, the opening still does");

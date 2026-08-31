@@ -13,7 +13,7 @@ import { logLeadEvent } from "@/lib/services/lead-events";
 import { splitInstruction, customerProducts } from "@/lib/services/revision-input";
 import { PROVIDER_UNAVAILABLE, isProviderOutage } from "@/lib/services/provider-errors";
 import { classifyRevisionIntent, revisionRulesFor } from "@/lib/services/revision-intent";
-import { resolveFollowupTemplate } from "@/lib/services/followup-template";
+import { resolveFollowupTemplate, fillFollowupTemplate } from "@/lib/services/followup-template";
 
 /** Activity-timeline wording for a finished draft. */
 function draftCreatedDetail(stepNumber: number, status: string): string {
@@ -30,12 +30,9 @@ function draftCreatedDetail(stepNumber: number, status: string): string {
 // Settings default, else a built-in. It used to be a constant here that no one
 // could edit and that named "Kuber Polyplast" in the source.
 
-// Fills {{first_name}} / {{name}} / {{company}} placeholders in a template.
-function fillTemplate(text: string, vars: { first_name: string; company: string }): string {
-  return text.replace(/\{\{\s*(first_name|name|company)\s*\}\}/gi, (_m, key: string) =>
-    key.toLowerCase() === "company" ? vars.company : vars.first_name,
-  );
-}
+// Filling is shared with the follow-up fallback template (same placeholder
+// syntax) — see fillFollowupTemplate in lib/services/followup-template.ts.
+const fillTemplate = fillFollowupTemplate;
 
 // The LLM writes the full email body from the Email Template system prompt
 // (subject patterns, openings, offerings, closings, etc. live there as options).
@@ -714,18 +711,27 @@ export async function generateOneDraft(
     try {
       const template = await getGenericTemplate(db);
       const firstName = lead.first_name?.trim() ?? "";
-      const vars = { first_name: firstName, company: org?.name?.trim() || "your company" };
+      const vars = { first_name: firstName, last_name: lead.last_name?.trim() ?? "", company: org?.name?.trim() || "your company" };
 
       // A follow-up takes the campaign's own fallback for this step; an opening
       // email keeps the generic template from Settings. Two different jobs.
+      //
+      // Both are now edited as real HTML (RichTextEditor, so bold/italic/
+      // underline survive) but everything below this line is plain-text
+      // string surgery (brochure stripping, greeting/signature assembly by
+      // \n\n). htmlToPlainText round-trips formatting through the same
+      // markdown markers the AI path already produces (**bold**, *italic*),
+      // so plainToHtml at the end restores it — without this the manager's
+      // formatting would either break the regexes below or vanish outright.
       const followupFallback = stepNumber > 1
-        ? await resolveFollowupTemplate(db, campaignId, stepNumber)
+        ? htmlToPlainText(await resolveFollowupTemplate(db, campaignId, stepNumber))
         : "";
+      const templateBody = htmlToPlainText(template.body);
 
       const greeting = firstName ? `Dear ${firstName},` : "Dear Sir/Ma'am,";
       let genericBody = (stepNumber > 1
         ? stripLeadingGreeting(fillTemplate(followupFallback, vars))
-        : fillTemplate(template.body, vars)).trim();
+        : fillTemplate(templateBody, vars)).trim();
 
       // Defense in depth: never mention a brochure on follow-ups or when none is attached.
       if (stepNumber > 1 || !effectiveAttachmentName) {
@@ -741,7 +747,13 @@ export async function generateOneDraft(
       const linkBrochure = stepNumber === 1 && !!effectiveAttachmentName && !!effectiveAttachmentUrl && /brochure/i.test(genericBody);
       if (linkBrochure) genericBody = genericBody.replace(/brochure/i, BROCHURE_TOKEN);
 
-      let finalBody = plainToHtml([greeting, genericBody, signatureBlock].filter(Boolean).join("\n\n"));
+      // Same rule the AI path applies below: a follow-up threads as a reply, so
+      // the signature is already sitting in the message directly above it. This
+      // branch appended it regardless, so a TEMPLATE follow-up carried a full
+      // signature block while an AI one correctly did not - on a ~90 character
+      // nudge that is more footer than email.
+      const templateSignature = stepNumber > 1 ? "" : signatureBlock;
+      let finalBody = plainToHtml([greeting, genericBody, templateSignature].filter(Boolean).join("\n\n"));
       if (linkBrochure) {
         finalBody = finalBody.replace(
           BROCHURE_TOKEN,
