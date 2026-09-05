@@ -39,7 +39,10 @@ assert.equal(resolveApolloKeyword("some custom term"), "some custom term");
 
 // The five that caused the complaint must now resolve to a process term.
 const fixed: [string, string][] = [
-  ["Milk Pouch & Food Films", "blown film"],
+  // "Blown Film" is now its own labelled entry in the section, so Milk Pouch
+  // points at the broader process term. Still a process, never a market.
+  ["Milk Pouch & Food Films", "plastic film"],
+  ["Blown Film", "blown film"],
   ["Courier Bags & Industrial Bags", "plastic bags"],
   ["Agricultural Films (Mulch/Silage/Greenhouse)", "agricultural film"],
   ["Beverage Bottles (Water/Juice/CSD)", "pet bottles"],
@@ -48,5 +51,13 @@ const fixed: [string, string][] = [
 for (const [label, expected] of fixed) {
   assert.equal(resolveApolloKeyword(label), expected, `${label} should now send "${expected}"`);
 }
+
+// The client asks for this section by name; a 2026-09-04 rename removed the
+// words "Blown Film" from the UI without removing any keyword, and nobody
+// noticed until they did.
+assert.ok(
+  INDUSTRY_KEYWORD_CATEGORIES.some((c) => /blown film/i.test(c.label)),
+  'a category label must still contain "Blown Film" — the client looks for it by name',
+);
 
 console.log(`keyword-catalog: ${queries.length} queries, none are bare end-market terms — all checks passed`);
