@@ -33,20 +33,15 @@ export function Pill({
     <span
       {...rest}
       className={cn(
-        "inline-flex items-center gap-1.5 border text-xs leading-none font-medium whitespace-nowrap",
-        shape === "full" ? "rounded-full px-2.5 py-1" : "rounded-sm px-1.5 py-0.5",
+        "inline-flex items-center justify-center gap-1 border leading-none font-medium whitespace-nowrap",
+        shape === "full" ? "rounded-full px-2 py-0.5 text-[11px]" : "rounded-sm px-1.5 py-0.5 text-[10px]",
         c.pill,
         className,
       )}
     >
       {dot && <span className={cn("size-1.5 rounded-full shrink-0", c.bg)} />}
       {icon}
-      {/* leading-none removes the extra line-height, but the line box still
-          centers on font ascent+descent rather than the glyphs' visual ink,
-          so text reads as sitting high — nudge to its optical center. The
-          bias is smaller at text-xs (shape="full") than at text-[10px]
-          (shape="sm"), so the correction scales with it. */}
-      <span className={shape === "full" ? "translate-y-[0.5px]" : "translate-y-px"}>{children}</span>
+      {children}
     </span>
   );
 }

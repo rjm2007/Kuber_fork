@@ -241,9 +241,13 @@ export function LocationsPicker({
       {showPills && selected.length > 0 && (
         <div className="flex flex-wrap gap-1 pt-1">
           {selected.map((c) => (
-            <span key={c} className={cn(badgeVariants({ variant: "selected" }), "gap-1 px-2")}>
+            <span key={c} className={badgeVariants({ variant: "selected" })}>
               {c}
-              <button type="button" onClick={() => toggleCountry(c)} className="hover:text-destructive transition-colors">
+              <button
+                type="button"
+                onClick={() => toggleCountry(c)}
+                className="inline-flex size-3 items-center justify-center hover:text-destructive transition-colors"
+              >
                 <X className="size-2.5" />
               </button>
             </span>

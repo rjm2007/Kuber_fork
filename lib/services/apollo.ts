@@ -147,11 +147,16 @@ export async function searchPeople(opts: {
   if (rosterMode) {
     body.organization_ids = opts.organizationIds;
   } else {
-    body.person_titles = a.titles?.length ? a.titles : (opts.titles ?? APOLLO_TITLES);
+    // Explicit advanced arrays (including []) win over catalog defaults — the
+    // pill UI can clear every title/seniority, and that must turn the filter
+    // off rather than silently re-applying APOLLO_*.
+    if (a.titles !== undefined) setList("person_titles", a.titles);
+    else body.person_titles = opts.titles ?? APOLLO_TITLES;
     // Measured inert as a default: removing person_seniorities changed the
     // result count by exactly 0 because person_titles already implies the
     // seniority. Still sent (costs nothing) unless Advanced overrides it.
-    body.person_seniorities = a.seniorities?.length ? a.seniorities : (opts.seniorities ?? APOLLO_SENIORITIES);
+    if (a.seniorities !== undefined) setList("person_seniorities", a.seniorities);
+    else body.person_seniorities = opts.seniorities ?? APOLLO_SENIORITIES;
     // The keyword describes the COMPANY we want ("blown film", "masterbatch"),
     // so it belongs on the company's keyword tags, not q_keywords.
     //
@@ -175,7 +180,11 @@ export async function searchPeople(opts: {
     // none. The catalog's short `query` values were tuned for q_keywords and
     // work at least as well here, so no catalog change is needed.
     if (opts.keyword) body.q_organization_keyword_tags = [opts.keyword];
-    body.organization_num_employees_ranges = employeeRanges(a.employeeRanges) ?? EMPLOYEE_RANGES;
+    if (a.employeeRanges !== undefined) {
+      setList("organization_num_employees_ranges", employeeRanges(a.employeeRanges));
+    } else {
+      body.organization_num_employees_ranges = EMPLOYEE_RANGES;
+    }
     body.include_similar_titles = a.includeSimilarTitles ?? true;
     setList("organization_locations", mapLocations(a.organizationLocations));
     // Verified live on 2026-09-04 against the free search endpoint: each of
