@@ -141,12 +141,23 @@ export const INDUSTRY_KEYWORD_CATEGORIES: IndustryKeywordCategory[] = [
     ],
   },
   {
+    // Restored 2026-09-05. The 2026-09-04 rewrite renamed this section to
+    // "Flexible Packaging", which quietly removed "Blown Film" from the UI — the
+    // client asked for it back by name. Nothing was deleted from the catalog,
+    // but the heading they look for had gone.
     id: "blown-film",
-    label: "Flexible Packaging",
+    label: "Blown Film & Flexible Packaging",
     emoji: "📦",
     keywords: [
       { label: "Packaging Films (Pouches/Lamination)", query: "flexible packaging", starred: true },
-      { label: "Milk Pouch & Food Films", query: "blown film" },
+      { label: "Blown Film", query: "blown film", starred: true },
+      { label: "Packaging Film", query: "packaging film", starred: true },
+      // Measured 2026-09-05: 227 results at 0% noise in Europe. Not in the
+      // client's own list and not an obvious guess, but it is exactly what a
+      // multilayer/food-grade blown-film line is tagged with.
+      { label: "Barrier & Multilayer Film", query: "barrier film" },
+      { label: "Shrink Film", query: "shrink film" },
+      { label: "Milk Pouch & Food Films", query: "plastic film" },
       { label: "Agricultural Films (Mulch/Silage/Greenhouse)", query: "agricultural film" },
       { label: "Courier Bags & Industrial Bags", query: "plastic bags" },
     ],
