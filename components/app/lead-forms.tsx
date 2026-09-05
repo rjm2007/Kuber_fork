@@ -18,7 +18,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
-import { LOCATION_MAP, APOLLO_TITLES, INDUSTRY_KEYWORD_CATEGORIES, BATCH_COLORS, getBatchColor, resolveApolloKeyword, type BatchColorName } from "@/lib/constants";
+import { LOCATION_MAP, APOLLO_TITLES, APOLLO_SENIORITIES, EMPLOYEE_RANGES, INDUSTRY_KEYWORD_CATEGORIES, BATCH_COLORS, getBatchColor, resolveApolloKeyword, type BatchColorName } from "@/lib/constants";
 import { LocationsPicker } from "@/components/ui/locations-picker";
 import { InfoTip } from "@/components/ui/info-tip";
 import { ApolloPeopleAdvanced, buildPeopleAdvanced } from "@/components/app/apollo-people-advanced";
@@ -568,7 +568,24 @@ export function ApolloForm({ onImport }: { onImport: (n: number) => void }) {
   const [error,         setError        ] = useState("");
   const [assignTo,      setAssignTo     ] = useState("");
   const [assignMode,    setAssignMode   ] = useState<ImportAssignMode>("manual");
-  const [advancedRaw,   setAdvancedRaw  ] = useState<Record<string, string>>({});
+  // Pre-filled with the values every search already uses. These three were
+  // ALWAYS applied — they just lived in the backend where nobody could see them,
+  // so an empty Advanced panel looked like "no filters" when it meant "our
+  // defaults, hidden". Showing them changes no results; it lets the client see
+  // what they are getting and tune it.
+  //
+  // Deliberately NOT pre-filled: HQ locations. Measured 2026-09-05 with the real
+  // title/size defaults applied, mirroring HQ to the person's countries removed
+  // 2-12% of results while noise stayed flat (0.09% -> 0.10%) — i.e. it deletes
+  // real prospects, not junk. A plant manager in Mexico at a Spanish-headquartered
+  // converter is exactly the buyer Kuber wants, and that filter drops them.
+  // Everything else (domains, revenue, technologies, hiring signals, exclusions)
+  // is left blank because no measurement supports a default for it.
+  const [advancedRaw,   setAdvancedRaw  ] = useState<Record<string, string>>({
+    titles: APOLLO_TITLES.join(", "),
+    seniorities: APOLLO_SENIORITIES.join(", "),
+    employeeRanges: EMPLOYEE_RANGES.join("   "),
+  });
   const [includeSimilarTitles, setIncludeSimilarTitles] = useState(true);
   const employees = useAssignableEmployees(true);
 
