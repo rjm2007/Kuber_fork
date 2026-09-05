@@ -74,7 +74,10 @@ export const LeadListQuerySchema = z.object({
 // Imports can distribute leads as they land (planning.md Phase 4 / Q5):
 // `assigned_to` = manual target (legacy, still supported); `assignment_strategy`
 // = spread the batch round-robin or by territory instead.
-const ImportAssignmentStrategy = z.enum(["round_robin", "territory"]).optional();
+// "manual" with no assigned_to is the wire form of "leave in pool" — the UI's
+// Leave-in-pool option sends it explicitly so the request can never be read as
+// "no preference" and fall back to the company default. See buildImportAssignment.
+const ImportAssignmentStrategy = z.enum(["manual", "round_robin", "territory"]).optional();
 
 export const ApolloSearchSchema = z.object({
   keywords: z.array(z.string().min(1)).min(1),

@@ -188,12 +188,23 @@ const ASSIGN_MODE_OPTIONS: { value: ImportAssignMode; label: string; hint: strin
   { value: "territory",   label: "By territory",       hint: "India → India reps, everything else → Foreign reps. Leads without a country stay in the pool." },
 ];
 
-/** Request fields for the chosen mode — matches the import APIs. */
+/** Request fields for the chosen mode — matches the import APIs.
+ *
+ * "pool" MUST send an explicit strategy. It used to return {}, and an absent
+ * assignment_strategy does not mean "leave alone" — importChoiceFor() reads it
+ * as "no preference" and falls through to the company-wide default, which on
+ * the live account is round_robin. So the one option whose entire purpose is
+ * "assign nobody" silently assigned the whole batch to everybody. Reported by
+ * the client on 2026-09-04 after a 400-lead import scattered across the team.
+ *
+ * 'manual' with no target is exactly "leave in pool" in resolveAssignee, and is
+ * already permitted by imports_assignment_strategy_check — so this needs no
+ * migration and no new enum value. */
 export function buildImportAssignment(mode: ImportAssignMode, assignTo: string):
-  { assigned_to?: string; assignment_strategy?: "round_robin" | "territory" } {
+  { assigned_to?: string; assignment_strategy?: "manual" | "round_robin" | "territory" } {
   if (mode === "manual" && assignTo) return { assigned_to: assignTo };
   if (mode === "round_robin" || mode === "territory") return { assignment_strategy: mode };
-  return {};
+  return { assignment_strategy: "manual" };
 }
 
 export function AssignStrategyPicker({

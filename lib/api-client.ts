@@ -822,7 +822,7 @@ export async function createLead(token: string, body: {
 // neither (pool). The server treats them independently; callers set at most one.
 export type ImportAssignment = {
   assigned_to?: string;
-  assignment_strategy?: "round_robin" | "territory";
+  assignment_strategy?: "manual" | "round_robin" | "territory";
 };
 
 // A duplicate skipped on import, with who already owns it — so the importer
@@ -875,7 +875,7 @@ export async function apolloPreview(token: string, body: {
 export async function apolloSearch(token: string, body: {
   keywords: string[]; locations: string[];
   titles?: string[]; seniorities?: string[]; batch_name: string; color?: string;
-  assigned_to?: string; assignment_strategy?: "round_robin" | "territory";
+  assigned_to?: string; assignment_strategy?: "manual" | "round_robin" | "territory";
   advanced?: ApolloPeopleAdvanced;
 }): Promise<{ inserted: number; skipped: number; orgs_created: number; assignment_skipped?: number; duplicate_owners?: DuplicateOwner[] }> {
   return apiFetch("/api/v1/leads/apollo-search", { method: "POST", body: JSON.stringify(body) }, token);
