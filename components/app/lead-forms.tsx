@@ -526,9 +526,13 @@ function IndustryKeywordsDropdown({
       {selected.length > 0 && (
         <div className="flex flex-wrap gap-1 pt-1">
           {selected.map((kw) => (
-            <span key={kw} className={cn(badgeVariants({ variant: "selected" }), "gap-1 px-2")}>
+            <span key={kw} className={badgeVariants({ variant: "selected" })}>
               {kw}
-              <button type="button" onClick={() => toggleKw(kw)} className="hover:text-destructive transition-colors">
+              <button
+                type="button"
+                onClick={() => toggleKw(kw)}
+                className="inline-flex size-3 items-center justify-center hover:text-destructive transition-colors"
+              >
                 <X className="size-2.5" />
               </button>
             </span>

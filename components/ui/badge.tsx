@@ -2,22 +2,22 @@ import * as React from "react"
 import { cva, type VariantProps } from "class-variance-authority"
 
 import { cn } from "@/lib/utils"
-import { Pill } from "@/components/ui/pill"
 
-// Colour/state only — shape, padding, text size and vertical centering all
-// come from Pill so every badge/pill in the app shares one implementation.
+// Compact rounded chip — used both via <Badge> and via badgeVariants() on
+// removable filter tokens (countries, keywords, titles). Shape + centering
+// live here so every selected-filter pill matches.
 const badgeVariants = cva(
-  "font-semibold tracking-wide transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
+  "inline-flex items-center justify-center gap-0.5 rounded-full border px-1.5 py-0.5 text-[10px] leading-none font-medium whitespace-nowrap transition-colors",
   {
     variants: {
       variant: {
         default:
-          "border-transparent bg-primary text-primary-foreground hover:bg-primary/80",
+          "border-transparent bg-primary text-primary-foreground hover:bg-primary/80 font-semibold tracking-wide",
         secondary:
-          "border-transparent bg-secondary text-secondary-foreground hover:bg-secondary/80",
+          "border-transparent bg-secondary text-secondary-foreground hover:bg-secondary/80 font-semibold tracking-wide",
         destructive:
-          "border-transparent bg-destructive text-destructive-foreground hover:bg-destructive/80",
-        outline: "text-foreground",
+          "border-transparent bg-destructive text-destructive-foreground hover:bg-destructive/80 font-semibold tracking-wide",
+        outline: "border-border text-foreground font-semibold tracking-wide",
         /** A chosen value — selected filter chips, removable tokens, active toggles. */
         selected: "border-primary/30 bg-primary/15 text-primary",
         /** The unselected half of a toggle pair; pairs with `selected`. */
@@ -32,16 +32,14 @@ const badgeVariants = cva(
 )
 
 export interface BadgeProps
-  // omit the non-standard HTML `color` attribute — it collides with Pill's
-  // own `color` (a BatchColorName), which Badge doesn't use.
-  extends Omit<React.HTMLAttributes<HTMLSpanElement>, "color">,
+  extends React.HTMLAttributes<HTMLSpanElement>,
     VariantProps<typeof badgeVariants> {}
 
 function Badge({ className, variant, children, ...props }: BadgeProps) {
   return (
-    <Pill className={cn("py-0.5", badgeVariants({ variant }), className)} {...props}>
+    <span className={cn(badgeVariants({ variant }), className)} {...props}>
       {children}
-    </Pill>
+    </span>
   )
 }
 
