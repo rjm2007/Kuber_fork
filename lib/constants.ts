@@ -78,28 +78,77 @@ export type AllowedKeyword = (typeof ALLOWED_KEYWORDS)[number];
 export type IndustryKeyword = { label: string; query: string; starred?: boolean };
 export type IndustryKeywordCategory = { id: string; label: string; emoji: string; keywords: IndustryKeyword[] };
 
+// Every `query` below is the term actually sent to Apollo as
+// q_organization_keyword_tags. It must describe what the company MAKES, not the
+// market it sells into — that distinction is the whole reason this list was
+// rewritten on 2026-09-04.
+//
+// The old list sent end-market words, so it found the customer's customer:
+//   "Milk Pouch & Food Films"        -> dairy        -> dairies
+//   "Courier Bags & Industrial Bags" -> shipping     -> shipping lines, ports
+//   "Agricultural Films"             -> agriculture  -> farms
+//   "Solar Film Manufacturers"       -> solar        -> solar developers
+//   "Beverage Bottles"               -> bottling     -> drinks brands
+// The client listed exactly those industries — maritime, logistics, food
+// production, farming, renewables — as irrelevant. Kuber sells masterbatch, so
+// the buyer is the converter who extrudes the film, never the brand that fills it.
+//
+// Replacements are measured, not guessed. Free people-search probes (0 credits,
+// saved under Kuber-Apollo-Keyword-Research/), scoring each term by how much of
+// its result set falls into industries that can never buy masterbatch:
+//   dairy       7,045 @ 1.48% noise -> blown film          180 @ 0%
+//   shipping   39,329 @ 4.57%       -> plastic bags        244 @ 0%
+//   agriculture 31,313 @ 5.37%      -> agricultural film    44 @ 0%
+//   solar      23,859 @ 3.58%       -> plastic film        389 @ 0%
+//   automotive 71,201 @ 12.24%      -> automotive components 4,380 @ 1.76%
+//   pharmaceuticals 28,126 @ 6.31%  -> pharmaceutical packaging 1,903 @ 0.16%
+//   cosmetics  14,833 @ 2.53%       -> cosmetic packaging    934 @ 0.11%
+//   containers 15,065 @ 1.35%       -> industrial packaging 2,412 @ 0.12%
+//   recycling  38,351 @ 4.28%       -> plastic recycling   1,043 @ 1.63%
+//
+// Terms already clean are deliberately left alone (masterbatch 0.7%,
+// engineering plastics 0.39%, flexible packaging 0.58%, polymers 0.79%).
+// And precision is not free: a term with almost no results starves the import,
+// which is the August failure ("asked for 25, got 8"). Anything measured under
+// ~150 results was NOT adopted even where it scored 0% — plastic furniture (49),
+// plastic toys (12), pipe extrusion (44), multifilament yarn (0).
 export const INDUSTRY_KEYWORD_CATEGORIES: IndustryKeywordCategory[] = [
+  {
+    id: "film",
+    label: "Film Extrusion (client's priority list)",
+    emoji: "🎞️",
+    keywords: [
+      { label: "Stretch & Cling Film", query: "stretch film", starred: true },
+      { label: "Shrink Film", query: "shrink film", starred: true },
+      { label: "Plastic Film (general)", query: "plastic film", starred: true },
+      { label: "Film Extrusion", query: "film extrusion", starred: true },
+      { label: "Blown Film", query: "blown film", starred: true },
+      { label: "Packaging Film", query: "packaging film" },
+      { label: "Polyethylene (PE) Film", query: "polyethylene film" },
+      { label: "Cast Film", query: "cast film" },
+    ],
+  },
   {
     id: "pet-bottles",
     label: "PET Bottles & Closures",
     emoji: "🧴",
     keywords: [
-      { label: "Beverage Bottles (Water/Juice/CSD)", query: "bottling", starred: true },
-      { label: "Cosmetic & Personal Care Bottles", query: "cosmetics", starred: true },
-      { label: "Pharma & Agrochemical Bottles", query: "pharmaceuticals" },
-      { label: "Caps & Closures", query: "closures" },
+      { label: "Beverage Bottles (Water/Juice/CSD)", query: "pet bottles", starred: true },
+      { label: "PET Preforms", query: "pet preform" },
+      { label: "Cosmetic & Personal Care Bottles", query: "cosmetic packaging", starred: true },
+      { label: "Pharma & Agrochemical Bottles", query: "pharmaceutical packaging" },
+      { label: "Caps & Closures", query: "caps and closures" },
     ],
   },
   {
     id: "blown-film",
-    label: "Blown Film & Flexible Packaging",
+    label: "Flexible Packaging",
     emoji: "📦",
     keywords: [
       { label: "Packaging Films (Pouches/Lamination)", query: "flexible packaging", starred: true },
-      { label: "Stretch & Cling Films", query: "flexible packaging" },
-      { label: "Agricultural Films (Mulch/Silage/Greenhouse)", query: "agriculture" },
-      { label: "Milk Pouch & Food Films", query: "dairy" },
-      { label: "Courier Bags & Industrial Bags", query: "shipping" },
+      { label: "Milk Pouch & Food Films", query: "blown film" },
+      { label: "Agricultural Films (Mulch/Silage/Greenhouse)", query: "agricultural film" },
+      { label: "Courier Bags & Industrial Bags", query: "plastic bags" },
     ],
   },
   {
@@ -107,27 +156,19 @@ export const INDUSTRY_KEYWORD_CATEGORIES: IndustryKeywordCategory[] = [
     label: "Blow Molding",
     emoji: "🪣",
     keywords: [
-      { label: "Industrial Drums & IBCs", query: "containers" },
-      { label: "Water Tanks & Storage", query: "tanks" },
-      { label: "Automotive Blow Molded Parts", query: "automotive" },
+      { label: "Industrial Drums & IBCs", query: "industrial packaging" },
+      { label: "Water Tanks & Storage", query: "rotomoulding" },
+      { label: "Automotive Blow Molded Parts", query: "automotive components" },
     ],
   },
   {
     id: "injection-molding",
-    label: "Injection Molding",
+    label: "Injection & Roto Molding",
     emoji: "🔧",
     keywords: [
-      { label: "Household Goods & Furniture", query: "furniture", starred: true },
-      { label: "Toy Manufacturers", query: "toys" },
-      { label: "Industrial Parts (Crates/Pallets)", query: "pallets" },
-    ],
-  },
-  {
-    id: "roto-molding",
-    label: "Roto Molding",
-    emoji: "🔄",
-    keywords: [
-      { label: "Roto Molding Tanks & Equipment", query: "molding" },
+      { label: "Injection Molding (general)", query: "injection molding", starred: true },
+      { label: "Thermoforming", query: "thermoforming" },
+      { label: "Industrial Parts (Crates/Pallets)", query: "plastic pallets" },
     ],
   },
   {
@@ -137,7 +178,7 @@ export const INDUSTRY_KEYWORD_CATEGORIES: IndustryKeywordCategory[] = [
     keywords: [
       { label: "PE/PP Commodity Compounders (PE100)", query: "polymers", starred: true },
       { label: "Engineering Plastic Compounders (ABS/PC/Nylon)", query: "engineering plastics", starred: true },
-      { label: "Recycled Plastic Compounders", query: "recycling" },
+      { label: "Compounding (general)", query: "compounding" },
     ],
   },
   {
@@ -145,8 +186,7 @@ export const INDUSTRY_KEYWORD_CATEGORIES: IndustryKeywordCategory[] = [
     label: "Recyclers",
     emoji: "♻️",
     keywords: [
-      { label: "PE/PP Recyclers & Reclaimers", query: "recycling", starred: true },
-      { label: "PET Recyclers & rPET Processors", query: "recycling" },
+      { label: "PE/PP Recyclers & Reclaimers", query: "plastic recycling", starred: true },
     ],
   },
   {
@@ -154,13 +194,10 @@ export const INDUSTRY_KEYWORD_CATEGORIES: IndustryKeywordCategory[] = [
     label: "Specialty",
     emoji: "⭐",
     keywords: [
-      { label: "Mono Concentrate Users (Europe/Americas)", query: "masterbatch", starred: true },
-      { label: "Black Masterbatch Buyers (General)", query: "masterbatch" },
-      { label: "Pipe Manufacturers (HDPE/PPR/PVC)", query: "pipe", starred: true },
+      { label: "Masterbatch Buyers & Users", query: "masterbatch", starred: true },
       { label: "Masterbatch Distributors", query: "masterbatch" },
-      { label: "Masterbatch Manufacturers", query: "masterbatch" },
-      { label: "Solar Film Manufacturers", query: "solar" },
-      { label: "Textile & Fiber Manufacturers", query: "textile" },
+      { label: "Pipe Manufacturers (HDPE/PPR/PVC)", query: "pipe", starred: true },
+      { label: "Extrusion (any process)", query: "extrusion" },
     ],
   },
 ];
