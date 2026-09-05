@@ -127,11 +127,29 @@ export async function POST(req: NextRequest) {
   const importAssignmentStrategy = assigned_to ? "manual" : (assignment_strategy ?? null);
   const importAssignmentTarget = assigned_to ?? null;
 
+  // Keep what was actually asked for. Without this an import is unauditable the
+  // moment its HTTP response closes — which is how "the client typed 500 and got
+  // 400" became unanswerable on 4 Sep 2026. Written once, never updated.
+  const searchCriteria = {
+    keywords,
+    locations,
+    titles: titles ?? null,
+    seniorities: seniorities ?? null,
+    advanced: advanced ?? null,
+    max_total_leads: parsed.data.max_total_leads,
+    max_leads_per_keyword,
+    // The ceiling that actually binds: keywords x max_leads_per_keyword. It is
+    // what silently turned 500 into 400, so record it next to the number asked for.
+    reachable_ceiling: keywords.length * max_leads_per_keyword,
+    requested_at: new Date().toISOString(),
+  };
+
   const { data: importRow } = await db.from("imports")
     .insert({
       label: batch_name, source: "apollo", created_by: user.id, lead_count: 0, color,
       assignment_strategy: importAssignmentStrategy,
       assignment_target: importAssignmentTarget,
+      search_criteria: searchCriteria,
     })
     .select("id").single();
   const importId = importRow?.id ?? null;
@@ -440,8 +458,13 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  if (importId && inserted > 0) {
-    await db.from("imports").update({ lead_count: inserted }).eq("id", importId);
+  if (importId) {
+    // warnings explain exactly why a keyword stopped short. They were returned to
+    // the browser and lost; now they outlive the request that produced them.
+    await db.from("imports").update({
+      lead_count: inserted,
+      search_warnings: warnings.length > 0 ? warnings : null,
+    }).eq("id", importId);
   }
 
   // Assignment is deferred to autoAssignEnrichedLeads (runs per-lead once each

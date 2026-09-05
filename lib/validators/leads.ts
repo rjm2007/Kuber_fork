@@ -95,6 +95,14 @@ export const ApolloSearchSchema = z.object({
     titles: z.array(z.string().trim().min(1)).optional(),
     includeSimilarTitles: z.boolean().optional(),
     seniorities: z.array(z.string().trim().min(1)).optional(),
+    // Added 2026-09-04 after auditing our request against Apollo's documented
+    // parameter list — every one below was verified to change the result count
+    // on the free search endpoint before being exposed.
+    industryTagIds: z.array(z.string().trim().min(1)).optional(),
+    notTitles: z.array(z.string().trim().min(1)).optional(),
+    organizationNotLocations: z.array(z.string().trim().min(1)).optional(),
+    organizationName: z.string().trim().min(1).optional(),
+    personName: z.string().trim().min(1).optional(),
     organizationLocations: z.array(z.string().trim().min(1)).optional(),
     domains: z.array(z.string().trim().min(1)).optional(),
     employeeRanges: z.array(z.string().trim().min(1)).optional(),
