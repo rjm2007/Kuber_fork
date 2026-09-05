@@ -74,7 +74,10 @@ export const LeadListQuerySchema = z.object({
 // Imports can distribute leads as they land (planning.md Phase 4 / Q5):
 // `assigned_to` = manual target (legacy, still supported); `assignment_strategy`
 // = spread the batch round-robin or by territory instead.
-const ImportAssignmentStrategy = z.enum(["round_robin", "territory"]).optional();
+// "manual" with no assigned_to is the wire form of "leave in pool" — the UI's
+// Leave-in-pool option sends it explicitly so the request can never be read as
+// "no preference" and fall back to the company default. See buildImportAssignment.
+const ImportAssignmentStrategy = z.enum(["manual", "round_robin", "territory"]).optional();
 
 export const ApolloSearchSchema = z.object({
   keywords: z.array(z.string().min(1)).min(1),
@@ -92,6 +95,14 @@ export const ApolloSearchSchema = z.object({
     titles: z.array(z.string().trim().min(1)).optional(),
     includeSimilarTitles: z.boolean().optional(),
     seniorities: z.array(z.string().trim().min(1)).optional(),
+    // Added 2026-09-04 after auditing our request against Apollo's documented
+    // parameter list — every one below was verified to change the result count
+    // on the free search endpoint before being exposed.
+    industryTagIds: z.array(z.string().trim().min(1)).optional(),
+    notTitles: z.array(z.string().trim().min(1)).optional(),
+    organizationNotLocations: z.array(z.string().trim().min(1)).optional(),
+    organizationName: z.string().trim().min(1).optional(),
+    personName: z.string().trim().min(1).optional(),
     organizationLocations: z.array(z.string().trim().min(1)).optional(),
     domains: z.array(z.string().trim().min(1)).optional(),
     employeeRanges: z.array(z.string().trim().min(1)).optional(),
@@ -119,7 +130,15 @@ export const ApolloSearchSchema = z.object({
   // one import is one burst of spend, and 500 is the largest burst worth risking
   // in one go. It is enforced here, server-side, whatever the client sends.
   max_total_leads: z.number().int().min(25).max(500).default(200),
-  max_leads_per_keyword: z.union([z.literal(25), z.literal(50)]).default(50),
+  // OPTIONAL ceiling, not a fixed tier. It used to be exactly 25 or 50, which
+  // silently made `keywords x 50` the real limit of any import: 8 keywords could
+  // never return more than 400 however large max_total_leads was. That is what
+  // turned a client's request for 500 into 400 on 2026-09-04, with nothing
+  // recorded to explain it. Fair-share (ceil(budgetLeft / keywordsLeft)) already
+  // stops one keyword eating the whole budget, which was this cap's stated job,
+  // so when it is absent the fair share governs alone. Supply it only to hold a
+  // keyword BELOW its fair share.
+  max_leads_per_keyword: z.number().int().min(1).max(1000).optional(),
   // Strict mode trades range for safety: only the tightest tiers are allowed.
   strict_cap: z.boolean().default(false),
 }).refine(

@@ -127,11 +127,34 @@ export async function POST(req: NextRequest) {
   const importAssignmentStrategy = assigned_to ? "manual" : (assignment_strategy ?? null);
   const importAssignmentTarget = assigned_to ?? null;
 
+  // Keep what was actually asked for. Without this an import is unauditable the
+  // moment its HTTP response closes — which is how "the client typed 500 and got
+  // 400" became unanswerable on 4 Sep 2026. Written once, never updated.
+  const searchCriteria = {
+    keywords,
+    locations,
+    titles: titles ?? null,
+    seniorities: seniorities ?? null,
+    advanced: advanced ?? null,
+    max_total_leads: parsed.data.max_total_leads,
+    max_leads_per_keyword,
+    // The ceiling that actually binds: keywords x max_leads_per_keyword. It is
+    // what silently turned 500 into 400, so record it next to the number asked for.
+    // What actually binds. Without an explicit per-keyword cap this is just
+    // the requested total; with one it is keywords x cap, which is the number
+    // that quietly overrode the request before this was recorded.
+    reachable_ceiling: max_leads_per_keyword
+      ? keywords.length * max_leads_per_keyword
+      : parsed.data.max_total_leads,
+    requested_at: new Date().toISOString(),
+  };
+
   const { data: importRow } = await db.from("imports")
     .insert({
       label: batch_name, source: "apollo", created_by: user.id, lead_count: 0, color,
       assignment_strategy: importAssignmentStrategy,
       assignment_target: importAssignmentTarget,
+      search_criteria: searchCriteria,
     })
     .select("id").single();
   const importId = importRow?.id ?? null;
@@ -184,7 +207,13 @@ export async function POST(req: NextRequest) {
     const keywordsLeft = resolvedKeywords.length - keywordIndex;
     const budgetLeft = maxTotalLeads - inserted;
     if (budgetLeft <= 0) break;
-    const keywordBudget = Math.min(Math.ceil(budgetLeft / keywordsLeft), max_leads_per_keyword);
+    // No explicit cap => fair share alone. Fair share already bounds a keyword to
+    // its even slice, so an extra fixed ceiling only ever subtracts from what the
+    // manager asked for.
+    const fairShare = Math.ceil(budgetLeft / keywordsLeft);
+    const keywordBudget = max_leads_per_keyword
+      ? Math.min(fairShare, max_leads_per_keyword)
+      : fairShare;
 
     let keywordInserted = 0;
     // Tightened to Apollo's real result count once page 1 tells us what it is.
@@ -440,8 +469,13 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  if (importId && inserted > 0) {
-    await db.from("imports").update({ lead_count: inserted }).eq("id", importId);
+  if (importId) {
+    // warnings explain exactly why a keyword stopped short. They were returned to
+    // the browser and lost; now they outlive the request that produced them.
+    await db.from("imports").update({
+      lead_count: inserted,
+      search_warnings: warnings.length > 0 ? warnings : null,
+    }).eq("id", importId);
   }
 
   // Assignment is deferred to autoAssignEnrichedLeads (runs per-lead once each

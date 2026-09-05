@@ -19,7 +19,7 @@ const GROUPS: {
   fields: {
     key: string;
     label: string;
-    kind: "list" | "num" | "date" | "locations";
+    kind: "list" | "num" | "date" | "locations" | "text";
     placeholder?: string;
     tip: string;
   }[];
@@ -29,17 +29,22 @@ const GROUPS: {
     fields: [
       { key: "titles", label: "Job titles", kind: "list", placeholder: "purchase manager, export manager", tip: "Overrides the default buying-role title list. A person matches if they hold any one of these titles. Leave empty to keep the default list." },
       { key: "seniorities", label: "Seniorities", kind: "list", placeholder: "owner, founder, c_suite, director, manager", tip: "Apollo values: owner, founder, c_suite, partner, vp, head, director, manager, senior, entry, intern. Leave empty to keep the default (owner through manager)." },
+      { key: "notTitles", label: "Exclude job titles", kind: "list", placeholder: "sales, marketing, recruiter", tip: "Drops anyone holding one of these titles. Useful for keeping a procurement search free of sales contacts." },
+      { key: "personName", label: "Person name", kind: "text", placeholder: "Martin", tip: "Find a specific person by name. Normally left empty." },
     ],
   },
   {
     group: "Company",
     fields: [
-      { key: "organizationLocations", label: "HQ locations", kind: "locations", placeholder: "Select company headquarters…", tip: "Filters by the employer's headquarters, not where the person lives. Locations above still filter the person." },
+      { key: "industryTagIds", label: "Industries (Apollo tag IDs)", kind: "list", placeholder: "5567cd4773696439b10b0000", tip: "Apollo's controlled industry list — the only filter that reliably removes off-target companies (shipping lines, universities) that a keyword match still returns. Apollo publishes no id list: filter by industry inside Apollo itself and copy the id out of the URL. Comma-separate several." },
+      { key: "organizationLocations", label: "HQ locations", kind: "locations", placeholder: "Select company headquarters…", tip: "Filters by the employer's headquarters, not where the person lives. Locations above still filter the person. Measured: adding this cut a sample search from 27,066 to 15,552." },
+      { key: "organizationNotLocations", label: "Exclude HQ countries", kind: "locations", placeholder: "Select countries to exclude…", tip: "Removes companies headquartered in these countries." },
+      { key: "organizationName", label: "Company name", kind: "text", placeholder: "ePac", tip: "Find people at one company by its name. Normally left empty." },
       { key: "domains", label: "Company domains", kind: "list", placeholder: "apollo.io, microsoft.com", tip: "Employer domains. No www. or @. Up to 1,000 per search." },
       { key: "employeeRanges", label: "Employee ranges", kind: "list", placeholder: "1,10   11,50   51,200", tip: "Headcount as min,max pairs. Leave empty to keep the default ranges (1–10,000)." },
       { key: "revenueMin", label: "Revenue min", kind: "num", tip: "Minimum employer revenue. No currency symbols or commas." },
       { key: "revenueMax", label: "Revenue max", kind: "num", tip: "Maximum employer revenue. No currency symbols or commas." },
-      { key: "technologyAny", label: "Uses any of these technologies", kind: "list", placeholder: "salesforce, sap", tip: "People whose employer uses at least one of these. Use underscores for spaces (google_analytics)." },
+      { key: "technologyAny", label: "Uses any of these technologies", kind: "list", placeholder: "salesforce, sap", tip: "People whose employer uses at least one of these web technologies. Use underscores for spaces (google_analytics). Rarely useful for manufacturers — most plastics converters carry no tech tags at all, so filling this in can silently drop the result count to near zero." },
       { key: "technologyAll", label: "Uses all of these technologies", kind: "list", placeholder: "shopify, klaviyo", tip: "People whose employer uses every technology listed." },
       { key: "technologyNot", label: "Does not use these technologies", kind: "list", placeholder: "hubspot", tip: "Exclude people whose employer uses any of these technologies." },
     ],

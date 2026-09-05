@@ -57,7 +57,7 @@ async function processRows(
   db: ReturnType<typeof import("@/lib/supabase/admin").createAdminClient>,
   importId?: string | null,
   assignedTo?: string | null,
-  assignmentStrategy?: "round_robin" | "territory",
+  assignmentStrategy?: "manual" | "round_robin" | "territory",
 ) {
   const emailCol = mapping["email"];
   const firstNameCol = mapping["first_name"];
@@ -259,7 +259,7 @@ async function processRows(
 }
 
 /** import-time assignment choice → columns stored on the import row (deferred). */
-function importAssignmentFields(assignedTo?: string | null, strategy?: "round_robin" | "territory" | null) {
+function importAssignmentFields(assignedTo?: string | null, strategy?: "manual" | "round_robin" | "territory" | null) {
   return {
     assignment_strategy: assignedTo ? "manual" : (strategy ?? null),
     assignment_target: assignedTo ?? null,

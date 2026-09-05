@@ -64,11 +64,48 @@ export async function triggerEnrichWatchdog(baseUrl: string, db: Db) {
   const importId = [...new Set((pending ?? []).map((r) => r.import_id as string))][0];
   if (!importId) return;
 
-  void fetch(`${baseUrl}/api/v1/leads/enrich`, {
+  // OVERLAP GUARD. Safe at 15 minutes, mandatory at 30: this job now runs often
+  // enough to fire while the previous pass is still mid-reveal. claim_unenriched_leads
+  // already stops two callers paying for the SAME lead, but nothing stopped two
+  // bulk_match streams running at once on different leads — and concurrent streams
+  // rate-limit each other, which matters because Apollo bills a 429-rejected
+  // request exactly like a served one.
+  //
+  // `enrich_locked_at` is the existing claim marker and self-expires after 10
+  // minutes, so a pass killed by the function timeout unblocks itself rather than
+  // wedging the queue shut. No new table, no new column.
+  const { data: inFlight } = await db
+    .from("leads")
+    .select("id")
+    .not("enrich_locked_at", "is", null)
+    .gt("enrich_locked_at", new Date(Date.now() - 10 * 60_000).toISOString())
+    .is("email", null)
+    .limit(1);
+  if (inFlight && inFlight.length > 0) return;
+
+  // A dropped kick used to vanish: `.catch(() => {})` swallowed it, so a stalled
+  // import looked identical to a finished one and nobody knew until someone
+  // counted the leads by hand. It stays non-throwing (this is a background
+  // nudge, not the caller's problem) but it no longer stays silent.
+  // AWAITED, not fire-and-forget. `void fetch(...)` here meant the kick was
+  // still in flight when the route returned its response — and a serverless
+  // instance is frozen the moment it responds, so the request was killed before
+  // it landed. The job reported {"triggered": true} every single time and
+  // revealed nothing: 200 leads sat unrevealed for 26 hours across ~50 "successful"
+  // passes on 4-5 Sep 2026. The self-chain two files over already got this right
+  // via after(); this one was written with a bare void and never worked from cron.
+  await fetch(`${baseUrl}/api/v1/leads/enrich`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "Authorization": `Bearer ${serviceKey}` },
     body: JSON.stringify({ import_id: importId }),
-  }).catch(() => {});
+  }).catch(async (e) => {
+    console.error("resume-apollo-reveal: kick failed", importId, e);
+    await db.from("enrichment_logs").insert({
+      source: "system",
+      event: "ENRICH_RESUME_KICK_FAILED",
+      payload: { import_id: importId, error: (e as Error)?.message ?? String(e) },
+    }).then(() => {}, () => {});
+  });
 }
 
 /** A running regeneration job is considered stalled once its heartbeat is this old. */

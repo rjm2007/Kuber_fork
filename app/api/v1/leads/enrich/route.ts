@@ -23,7 +23,10 @@ export const maxDuration = 300;
 async function logEnrichFailure(
   db: SupabaseClient,
   companyId: string | null,
-  event: "CREDITS_EXHAUSTED" | "EMAIL_REVEAL_FAILED",
+  // ENRICH_CHAIN_DROPPED is not a paid failure — it means the NEXT batch never
+  // started, so nothing was charged. Logged all the same: it is the difference
+  // between a finished import and one that quietly stopped halfway.
+  event: "CREDITS_EXHAUSTED" | "EMAIL_REVEAL_FAILED" | "ENRICH_CHAIN_DROPPED",
   message: string,
   payload: Record<string, unknown>,
 ) {
@@ -280,12 +283,24 @@ export async function POST(req: NextRequest) {
       .eq("is_deleted", false).is("email", null);
     if ((importRemaining ?? 0) > 0) {
       const authHeader = req.headers.get("authorization") ?? "";
+      // A dropped hop here is why 200 of a 400-lead import sat unrevealed on
+      // 4 Sep 2026 with nothing in any log to say so: the batch finished, the
+      // next one was never started, and `.catch(() => {})` deleted the reason.
+      // The kick still must not throw (the response has already been sent) but
+      // the failure is now recorded, so a half-finished import is visible
+      // instead of looking exactly like a completed one.
       after(() =>
         fetch(`${baseUrl}/api/v1/leads/enrich`, {
           method: "POST",
           headers: { "Content-Type": "application/json", "Authorization": authHeader },
           body: JSON.stringify({ import_id: importId }),
-        }).catch(() => {})
+        }).catch(async (e) => {
+          console.error("enrich self-chain failed", importId, e);
+          await logEnrichFailure(db, companyId, "ENRICH_CHAIN_DROPPED",
+            `Next batch never started: ${(e as Error)?.message ?? String(e)}`,
+            { import_id: importId, stage: "self_chain" },
+          ).catch(() => {});
+        })
       );
     } else if (user.companyId === null) {
       // Import finished, and the caller is the service role — i.e. the daily

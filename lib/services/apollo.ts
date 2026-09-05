@@ -52,6 +52,21 @@ export interface ApolloPeopleAdvancedFilters {
   titles?: string[];
   includeSimilarTitles?: boolean;
   seniorities?: string[];
+  /** Apollo's controlled industry list, as tag ids. The precision filter the
+   *  keyword tags cannot provide: a keyword match on "stretch film" still
+   *  returns shipping lines and universities, an industry id does not. Ids are
+   *  opaque Mongo-style strings and Apollo publishes no list, so they have to be
+   *  read off the account's own Apollo UI (filter by industry, the id appears in
+   *  the URL) — hence a free-text field rather than a dropdown for now. */
+  industryTagIds?: string[];
+  /** Exclude people by title, e.g. drop "sales" from a procurement search. */
+  notTitles?: string[];
+  /** Exclude whole countries at the COMPANY level. */
+  organizationNotLocations?: string[];
+  /** Find one company by name. */
+  organizationName?: string;
+  /** Find one person by name. */
+  personName?: string;
   organizationLocations?: string[];
   domains?: string[];
   employeeRanges?: string[];
@@ -163,6 +178,14 @@ export async function searchPeople(opts: {
     body.organization_num_employees_ranges = employeeRanges(a.employeeRanges) ?? EMPLOYEE_RANGES;
     body.include_similar_titles = a.includeSimilarTitles ?? true;
     setList("organization_locations", mapLocations(a.organizationLocations));
+    // Verified live on 2026-09-04 against the free search endpoint: each of
+    // these changes the result count, so Apollo honours them. `has_direct_phone`
+    // was tested too and is silently IGNORED, so it is deliberately not sent.
+    setList("organization_industry_tag_ids", a.industryTagIds);
+    setList("person_not_titles", a.notTitles);
+    setList("organization_not_locations", mapLocations(a.organizationNotLocations));
+    if (a.organizationName) body.q_organization_name = a.organizationName;
+    if (a.personName) body.q_person_name = a.personName;
     setList("q_organization_domains_list", a.domains);
     setList("currently_using_all_of_technology_uids", techUids(a.technologyAll));
     setList("currently_using_any_of_technology_uids", techUids(a.technologyAny));

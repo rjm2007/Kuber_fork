@@ -188,12 +188,23 @@ const ASSIGN_MODE_OPTIONS: { value: ImportAssignMode; label: string; hint: strin
   { value: "territory",   label: "By territory",       hint: "India → India reps, everything else → Foreign reps. Leads without a country stay in the pool." },
 ];
 
-/** Request fields for the chosen mode — matches the import APIs. */
+/** Request fields for the chosen mode — matches the import APIs.
+ *
+ * "pool" MUST send an explicit strategy. It used to return {}, and an absent
+ * assignment_strategy does not mean "leave alone" — importChoiceFor() reads it
+ * as "no preference" and falls through to the company-wide default, which on
+ * the live account is round_robin. So the one option whose entire purpose is
+ * "assign nobody" silently assigned the whole batch to everybody. Reported by
+ * the client on 2026-09-04 after a 400-lead import scattered across the team.
+ *
+ * 'manual' with no target is exactly "leave in pool" in resolveAssignee, and is
+ * already permitted by imports_assignment_strategy_check — so this needs no
+ * migration and no new enum value. */
 export function buildImportAssignment(mode: ImportAssignMode, assignTo: string):
-  { assigned_to?: string; assignment_strategy?: "round_robin" | "territory" } {
+  { assigned_to?: string; assignment_strategy?: "manual" | "round_robin" | "territory" } {
   if (mode === "manual" && assignTo) return { assigned_to: assignTo };
   if (mode === "round_robin" || mode === "territory") return { assignment_strategy: mode };
-  return {};
+  return { assignment_strategy: "manual" };
 }
 
 export function AssignStrategyPicker({
@@ -544,7 +555,10 @@ export function ApolloForm({ onImport }: { onImport: (n: number) => void }) {
   // until these are met (apollo-search/route.ts). Every lead landed here
   // eventually costs a paid Apollo reveal call, so these bound real spend.
   const [maxTotalLeads, setMaxTotalLeads] = useState(200);
-  const [maxPerKeyword, setMaxPerKeyword] = useState<25 | 50>(50);
+  // null = no per-keyword ceiling; the even split governs alone. Was a fixed 50,
+  // which made `keywords x 50` the real limit of every import (8 keywords could
+  // never exceed 400, whatever the total said).
+  const [maxPerKeyword, setMaxPerKeyword] = useState<number | null>(null);
   const [strictCap,     setStrictCap    ] = useState(false);
   const [apolloRemaining, setApolloRemaining] = useState<number | null>(null);
   const [batchName,     setBatchName    ] = useState("");
@@ -608,8 +622,8 @@ export function ApolloForm({ onImport }: { onImport: (n: number) => void }) {
   // it is SMALLER than this — 100 leads across 9 groups is ~12 each, and picking
   // "25 per keyword" there changes nothing at all.
   const fairSharePerKeyword = Math.ceil(maxTotalLeads / Math.max(1, keywordGroupCount));
-  const perKeywordCapIsMoot = fairSharePerKeyword <= 25;
-  const effectivePerKeyword = Math.min(fairSharePerKeyword, maxPerKeyword);
+  const perKeywordCapIsMoot = false;
+  const effectivePerKeyword = maxPerKeyword ? Math.min(fairSharePerKeyword, maxPerKeyword) : fairSharePerKeyword;
 
   async function handleImport(e: React.SyntheticEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -633,7 +647,7 @@ export function ApolloForm({ onImport }: { onImport: (n: number) => void }) {
           keywords,
           locations: effectiveLocations,
           max_total_leads: maxTotalLeads,
-          max_leads_per_keyword: maxPerKeyword,
+          ...(maxPerKeyword ? { max_leads_per_keyword: maxPerKeyword } : {}),
           strict_cap: strictCap,
           titles: [...APOLLO_TITLES],
           batch_name: batchName,
@@ -754,16 +768,16 @@ export function ApolloForm({ onImport }: { onImport: (n: number) => void }) {
             <div className="space-y-1.5">
               <Label>Max leads per keyword</Label>
               <Select
-                value={String(maxPerKeyword)}
-                onValueChange={(v) => setMaxPerKeyword(Number(v) as 25 | 50)}
-                disabled={perKeywordCapIsMoot}
+                value={maxPerKeyword === null ? "none" : String(maxPerKeyword)}
+                onValueChange={(v) => setMaxPerKeyword(v === "none" ? null : Number(v))}
               >
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {[25, 50].map((n) => (
-                    // An option above the fair share can never bite — the budget
-                    // runs out first — so offering it would be a control that
-                    // silently does nothing.
+                  <SelectItem value="none">No limit — split evenly</SelectItem>
+                  {[25, 50, 100, 250, 500].map((n) => (
+                    // An option at or above the even split can never bite — the
+                    // budget runs out first — so offering it would be a control
+                    // that silently does nothing.
                     <SelectItem key={n} value={String(n)} disabled={n >= fairSharePerKeyword}>
                       {n} leads per keyword
                     </SelectItem>
@@ -782,8 +796,8 @@ export function ApolloForm({ onImport }: { onImport: (n: number) => void }) {
                 ~{effectivePerKeyword.toLocaleString()} per keyword
               </strong>
               {keywordGroupCount > 1 ? ", and whatever one keyword can't fill is passed to the others" : ""}.{" "}
-              {perKeywordCapIsMoot
-                ? "The per-keyword limit is off because the even split is already smaller than it."
+              {maxPerKeyword === null
+                ? "No per-keyword limit is set, so the full total is reachable."
                 : `The per-keyword limit of ${maxPerKeyword} applies on top, so this import can reach at most ${Math.min(maxTotalLeads, maxPerKeyword * keywordGroupCount).toLocaleString()}.`}{" "}
               Apollo is searched as deeply as needed, skipping anyone already in your list.
             </p>
