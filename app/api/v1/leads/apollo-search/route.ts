@@ -140,7 +140,12 @@ export async function POST(req: NextRequest) {
     max_leads_per_keyword,
     // The ceiling that actually binds: keywords x max_leads_per_keyword. It is
     // what silently turned 500 into 400, so record it next to the number asked for.
-    reachable_ceiling: keywords.length * max_leads_per_keyword,
+    // What actually binds. Without an explicit per-keyword cap this is just
+    // the requested total; with one it is keywords x cap, which is the number
+    // that quietly overrode the request before this was recorded.
+    reachable_ceiling: max_leads_per_keyword
+      ? keywords.length * max_leads_per_keyword
+      : parsed.data.max_total_leads,
     requested_at: new Date().toISOString(),
   };
 
@@ -202,7 +207,13 @@ export async function POST(req: NextRequest) {
     const keywordsLeft = resolvedKeywords.length - keywordIndex;
     const budgetLeft = maxTotalLeads - inserted;
     if (budgetLeft <= 0) break;
-    const keywordBudget = Math.min(Math.ceil(budgetLeft / keywordsLeft), max_leads_per_keyword);
+    // No explicit cap => fair share alone. Fair share already bounds a keyword to
+    // its even slice, so an extra fixed ceiling only ever subtracts from what the
+    // manager asked for.
+    const fairShare = Math.ceil(budgetLeft / keywordsLeft);
+    const keywordBudget = max_leads_per_keyword
+      ? Math.min(fairShare, max_leads_per_keyword)
+      : fairShare;
 
     let keywordInserted = 0;
     // Tightened to Apollo's real result count once page 1 tells us what it is.

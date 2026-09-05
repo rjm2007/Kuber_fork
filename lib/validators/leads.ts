@@ -130,7 +130,15 @@ export const ApolloSearchSchema = z.object({
   // one import is one burst of spend, and 500 is the largest burst worth risking
   // in one go. It is enforced here, server-side, whatever the client sends.
   max_total_leads: z.number().int().min(25).max(500).default(200),
-  max_leads_per_keyword: z.union([z.literal(25), z.literal(50)]).default(50),
+  // OPTIONAL ceiling, not a fixed tier. It used to be exactly 25 or 50, which
+  // silently made `keywords x 50` the real limit of any import: 8 keywords could
+  // never return more than 400 however large max_total_leads was. That is what
+  // turned a client's request for 500 into 400 on 2026-09-04, with nothing
+  // recorded to explain it. Fair-share (ceil(budgetLeft / keywordsLeft)) already
+  // stops one keyword eating the whole budget, which was this cap's stated job,
+  // so when it is absent the fair share governs alone. Supply it only to hold a
+  // keyword BELOW its fair share.
+  max_leads_per_keyword: z.number().int().min(1).max(1000).optional(),
   // Strict mode trades range for safety: only the tightest tiers are allowed.
   strict_cap: z.boolean().default(false),
 }).refine(
