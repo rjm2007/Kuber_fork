@@ -75,8 +75,8 @@ export type AllowedKeyword = (typeof ALLOWED_KEYWORDS)[number];
 // while short single/two-word terms return real volume. Picked via live
 // Apollo API testing against the app's actual title/seniority/employee-range
 // filter stack — not guessed.
-export type IndustryKeyword = { label: string; query: string; starred?: boolean };
-export type IndustryKeywordCategory = { id: string; label: string; emoji: string; keywords: IndustryKeyword[] };
+export type IndustryKeyword = { id: string; label: string; query: string; starred?: boolean };
+export type IndustryKeywordGroup = { id: string; label: string; emoji: string; keywords: IndustryKeyword[] };
 
 // Every `query` below is the term actually sent to Apollo as
 // q_organization_keyword_tags. It must describe what the company MAKES, not the
@@ -112,20 +112,20 @@ export type IndustryKeywordCategory = { id: string; label: string; emoji: string
 // which is the August failure ("asked for 25, got 8"). Anything measured under
 // ~150 results was NOT adopted even where it scored 0% — plastic furniture (49),
 // plastic toys (12), pipe extrusion (44), multifilament yarn (0).
-export const INDUSTRY_KEYWORD_CATEGORIES: IndustryKeywordCategory[] = [
+export const DEFAULT_INDUSTRY_KEYWORD_GROUPS: IndustryKeywordGroup[] = [
   {
     id: "film",
     label: "Film Extrusion (client's priority list)",
     emoji: "🎞️",
     keywords: [
-      { label: "Stretch & Cling Film", query: "stretch film", starred: true },
-      { label: "Shrink Film", query: "shrink film", starred: true },
-      { label: "Plastic Film (general)", query: "plastic film", starred: true },
-      { label: "Film Extrusion", query: "film extrusion", starred: true },
-      { label: "Blown Film", query: "blown film", starred: true },
-      { label: "Packaging Film", query: "packaging film" },
-      { label: "Polyethylene (PE) Film", query: "polyethylene film" },
-      { label: "Cast Film", query: "cast film" },
+      { id: "film-stretch-cling-film", label: "Stretch & Cling Film", query: "stretch film", starred: true },
+      { id: "film-shrink-film", label: "Shrink Film", query: "shrink film", starred: true },
+      { id: "film-plastic-film-general", label: "Plastic Film (general)", query: "plastic film", starred: true },
+      { id: "film-film-extrusion", label: "Film Extrusion", query: "film extrusion", starred: true },
+      { id: "film-blown-film", label: "Blown Film", query: "blown film", starred: true },
+      { id: "film-packaging-film", label: "Packaging Film", query: "packaging film" },
+      { id: "film-polyethylene-pe-film", label: "Polyethylene (PE) Film", query: "polyethylene film" },
+      { id: "film-cast-film", label: "Cast Film", query: "cast film" },
     ],
   },
   {
@@ -133,11 +133,11 @@ export const INDUSTRY_KEYWORD_CATEGORIES: IndustryKeywordCategory[] = [
     label: "PET Bottles & Closures",
     emoji: "🧴",
     keywords: [
-      { label: "Beverage Bottles (Water/Juice/CSD)", query: "pet bottles", starred: true },
-      { label: "PET Preforms", query: "pet preform" },
-      { label: "Cosmetic & Personal Care Bottles", query: "cosmetic packaging", starred: true },
-      { label: "Pharma & Agrochemical Bottles", query: "pharmaceutical packaging" },
-      { label: "Caps & Closures", query: "caps and closures" },
+      { id: "pet-bottles-beverage-bottles", label: "Beverage Bottles (Water/Juice/CSD)", query: "pet bottles", starred: true },
+      { id: "pet-bottles-pet-preforms", label: "PET Preforms", query: "pet preform" },
+      { id: "pet-bottles-cosmetic-personal-care-bottles", label: "Cosmetic & Personal Care Bottles", query: "cosmetic packaging", starred: true },
+      { id: "pet-bottles-pharma-agrochemical-bottles", label: "Pharma & Agrochemical Bottles", query: "pharmaceutical packaging" },
+      { id: "pet-bottles-caps-closures", label: "Caps & Closures", query: "caps and closures" },
     ],
   },
   {
@@ -149,17 +149,17 @@ export const INDUSTRY_KEYWORD_CATEGORIES: IndustryKeywordCategory[] = [
     label: "Blown Film & Flexible Packaging",
     emoji: "📦",
     keywords: [
-      { label: "Packaging Films (Pouches/Lamination)", query: "flexible packaging", starred: true },
-      { label: "Blown Film", query: "blown film", starred: true },
-      { label: "Packaging Film", query: "packaging film", starred: true },
+      { id: "blown-film-packaging-films", label: "Packaging Films (Pouches/Lamination)", query: "flexible packaging", starred: true },
+      { id: "blown-film-blown-film", label: "Blown Film", query: "blown film", starred: true },
+      { id: "blown-film-packaging-film", label: "Packaging Film", query: "packaging film", starred: true },
       // Measured 2026-09-05: 227 results at 0% noise in Europe. Not in the
       // client's own list and not an obvious guess, but it is exactly what a
       // multilayer/food-grade blown-film line is tagged with.
-      { label: "Barrier & Multilayer Film", query: "barrier film" },
-      { label: "Shrink Film", query: "shrink film" },
-      { label: "Milk Pouch & Food Films", query: "plastic film" },
-      { label: "Agricultural Films (Mulch/Silage/Greenhouse)", query: "agricultural film" },
-      { label: "Courier Bags & Industrial Bags", query: "plastic bags" },
+      { id: "blown-film-barrier-multilayer-film", label: "Barrier & Multilayer Film", query: "barrier film" },
+      { id: "blown-film-shrink-film", label: "Shrink Film", query: "shrink film" },
+      { id: "blown-film-milk-pouch-food-films", label: "Milk Pouch & Food Films", query: "plastic film" },
+      { id: "blown-film-agricultural-films", label: "Agricultural Films (Mulch/Silage/Greenhouse)", query: "agricultural film" },
+      { id: "blown-film-courier-bags-industrial-bags", label: "Courier Bags & Industrial Bags", query: "plastic bags" },
     ],
   },
   {
@@ -167,9 +167,9 @@ export const INDUSTRY_KEYWORD_CATEGORIES: IndustryKeywordCategory[] = [
     label: "Blow Molding",
     emoji: "🪣",
     keywords: [
-      { label: "Industrial Drums & IBCs", query: "industrial packaging" },
-      { label: "Water Tanks & Storage", query: "rotomoulding" },
-      { label: "Automotive Blow Molded Parts", query: "automotive components" },
+      { id: "blow-molding-industrial-drums-ibcs", label: "Industrial Drums & IBCs", query: "industrial packaging" },
+      { id: "blow-molding-water-tanks-storage", label: "Water Tanks & Storage", query: "rotomoulding" },
+      { id: "blow-molding-automotive-blow-molded-parts", label: "Automotive Blow Molded Parts", query: "automotive components" },
     ],
   },
   {
@@ -177,9 +177,9 @@ export const INDUSTRY_KEYWORD_CATEGORIES: IndustryKeywordCategory[] = [
     label: "Injection & Roto Molding",
     emoji: "🔧",
     keywords: [
-      { label: "Injection Molding (general)", query: "injection molding", starred: true },
-      { label: "Thermoforming", query: "thermoforming" },
-      { label: "Industrial Parts (Crates/Pallets)", query: "plastic pallets" },
+      { id: "injection-molding-injection-molding-general", label: "Injection Molding (general)", query: "injection molding", starred: true },
+      { id: "injection-molding-thermoforming", label: "Thermoforming", query: "thermoforming" },
+      { id: "injection-molding-industrial-parts", label: "Industrial Parts (Crates/Pallets)", query: "plastic pallets" },
     ],
   },
   {
@@ -187,9 +187,9 @@ export const INDUSTRY_KEYWORD_CATEGORIES: IndustryKeywordCategory[] = [
     label: "Compounders",
     emoji: "⚗️",
     keywords: [
-      { label: "PE/PP Commodity Compounders (PE100)", query: "polymers", starred: true },
-      { label: "Engineering Plastic Compounders (ABS/PC/Nylon)", query: "engineering plastics", starred: true },
-      { label: "Compounding (general)", query: "compounding" },
+      { id: "compounders-pe-pp-commodity-compounders", label: "PE/PP Commodity Compounders (PE100)", query: "polymers", starred: true },
+      { id: "compounders-engineering-plastic-compounders", label: "Engineering Plastic Compounders (ABS/PC/Nylon)", query: "engineering plastics", starred: true },
+      { id: "compounders-compounding-general", label: "Compounding (general)", query: "compounding" },
     ],
   },
   {
@@ -197,7 +197,7 @@ export const INDUSTRY_KEYWORD_CATEGORIES: IndustryKeywordCategory[] = [
     label: "Recyclers",
     emoji: "♻️",
     keywords: [
-      { label: "PE/PP Recyclers & Reclaimers", query: "plastic recycling", starred: true },
+      { id: "recyclers-pe-pp-recyclers-reclaimers", label: "PE/PP Recyclers & Reclaimers", query: "plastic recycling", starred: true },
     ],
   },
   {
@@ -205,18 +205,76 @@ export const INDUSTRY_KEYWORD_CATEGORIES: IndustryKeywordCategory[] = [
     label: "Specialty",
     emoji: "⭐",
     keywords: [
-      { label: "Masterbatch Buyers & Users", query: "masterbatch", starred: true },
-      { label: "Masterbatch Distributors", query: "masterbatch" },
-      { label: "Pipe Manufacturers (HDPE/PPR/PVC)", query: "pipe", starred: true },
-      { label: "Extrusion (any process)", query: "extrusion" },
+      { id: "specialty-masterbatch-buyers-users", label: "Masterbatch Buyers & Users", query: "masterbatch", starred: true },
+      { id: "specialty-masterbatch-distributors", label: "Masterbatch Distributors", query: "masterbatch" },
+      { id: "specialty-pipe-manufacturers", label: "Pipe Manufacturers (HDPE/PPR/PVC)", query: "pipe", starred: true },
+      { id: "specialty-extrusion-any-process", label: "Extrusion (any process)", query: "extrusion" },
     ],
   },
 ];
 
+/**
+ * Parse a company's `settings.industry_keyword_groups` JSON value, falling
+ * back to the built-in taxonomy for a company that hasn't customized it yet
+ * (including one created after this setting existed, so there's nothing to
+ * backfill for it).
+ */
+export function parseIndustryKeywordGroups(raw: string | null | undefined): IndustryKeywordGroup[] {
+  if (!raw) return DEFAULT_INDUSTRY_KEYWORD_GROUPS;
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed) || parsed.length === 0) return DEFAULT_INDUSTRY_KEYWORD_GROUPS;
+    const clean = sanitizeKeywordGroups(parsed);
+    return clean.length > 0 ? clean : DEFAULT_INDUSTRY_KEYWORD_GROUPS;
+  } catch {
+    return DEFAULT_INDUSTRY_KEYWORD_GROUPS;
+  }
+}
+
+/**
+ * Keep only what the import can actually use.
+ *
+ * This value is edited by hand from Settings > Industry Segments, so its shape
+ * is not guaranteed by anything at write time. Casting it straight to
+ * IndustryKeywordGroup[] was a live 500 waiting to happen: a group saved
+ * without a `keywords` array makes `group.keywords.find(...)` throw inside
+ * resolveApolloKeyword, and that runs before any Apollo call, so the whole
+ * import fails with no partial result and no useful message.
+ *
+ * Blank rows are dropped for a related reason. The Kuber Polyplast workspace
+ * already held {"id":"2f01df03-...","label":"","query":""} in its Recyclers
+ * group on 2026-09-07 - someone clicked "add keyword" and saved the empty row.
+ * It renders as an empty option and, if picked, sends an empty q_keywords to
+ * Apollo, which matches on everything else in the request rather than nothing.
+ */
+function sanitizeKeywordGroups(parsed: unknown[]): IndustryKeywordGroup[] {
+  const groups: IndustryKeywordGroup[] = [];
+  for (const raw of parsed) {
+    if (!raw || typeof raw !== "object") continue;
+    const g = raw as Partial<IndustryKeywordGroup>;
+    if (!Array.isArray(g.keywords)) continue;
+    const keywords = g.keywords.filter((k): k is IndustryKeyword =>
+      !!k && typeof k === "object"
+      && typeof k.label === "string" && k.label.trim() !== ""
+      && typeof k.query === "string" && k.query.trim() !== "");
+    if (keywords.length === 0) continue;
+    groups.push({
+      id: typeof g.id === "string" && g.id ? g.id : `group-${groups.length}`,
+      label: typeof g.label === "string" && g.label ? g.label : "Untitled",
+      emoji: typeof g.emoji === "string" ? g.emoji : "",
+      keywords,
+    });
+  }
+  return groups;
+}
+
 /** Resolve a UI keyword label (or a free-typed custom keyword) to the term actually sent to Apollo's q_keywords. */
-export function resolveApolloKeyword(label: string): string {
-  for (const category of INDUSTRY_KEYWORD_CATEGORIES) {
-    const match = category.keywords.find((k) => k.label === label);
+export function resolveApolloKeyword(groups: IndustryKeywordGroup[], label: string): string {
+  for (const group of groups) {
+    // Defensive even after sanitizeKeywordGroups: callers may pass a list they
+    // built themselves, and this function must never be the thing that 500s an
+    // import.
+    const match = group?.keywords?.find((k) => k?.label === label);
     if (match) return match.query;
   }
   return label;
