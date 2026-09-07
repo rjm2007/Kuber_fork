@@ -865,7 +865,15 @@ export async function apolloPreview(token: string, body: {
   keywords: string[]; locations: string[];
   titles?: string[]; seniorities?: string[]; batch_name: string; color?: string;
   advanced?: ApolloPeopleAdvanced;
-}): Promise<{ preview: true; leads: PreviewLead[] }> {
+}): Promise<{
+  preview: true;
+  leads: PreviewLead[];
+  /** How many people the term can reach at all. 0 means the wording found
+   *  nothing — see `suggestion`. */
+  total_entries?: number;
+  /** A wording that does work, when the one asked for returned nothing. */
+  suggestion?: { term: string; count: number } | null;
+}> {
   return apiFetch("/api/v1/leads/apollo-search", {
     method: "POST",
     body: JSON.stringify({ ...body, preview: true }),

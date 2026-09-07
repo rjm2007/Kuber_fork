@@ -23,7 +23,7 @@ import { LocationsPicker } from "@/components/ui/locations-picker";
 import { InfoTip } from "@/components/ui/info-tip";
 import { ApolloPeopleAdvanced, buildPeopleAdvanced } from "@/components/app/apollo-people-advanced";
 import { ApolloCostNote } from "@/components/app/apollo-cost-note";
-import { importExcelDirect, createLead, patchLead, patchOrg, fetchUsers, fetchUsage, fetchSettings, patchSettings, type Profile, type PreviewLead, type DuplicateOwner } from "@/lib/api-client";
+import { apolloPreview, importExcelDirect, createLead, patchLead, patchOrg, fetchUsers, fetchUsage, fetchSettings, patchSettings, type Profile, type PreviewLead, type DuplicateOwner } from "@/lib/api-client";
 import { ensureSplitNames } from "@/lib/utils/person-name";
 import { supabase } from "@/lib/supabase";
 import { BatchConfirmModal } from "@/components/app/batch-confirm-modal";
@@ -309,6 +309,21 @@ function IndustryKeywordsDropdown({
   const [customInput, setCustomInput] = useState("");
   const [targetGroupId, setTargetGroupId] = useState("");
   const [adding, setAdding] = useState(false);
+  /** Which keyword's Apollo term is being edited inline, and the draft value.
+   *  Editing lives here rather than only in Settings because the moment a
+   *  manager notices a wrong search word is while they are picking keywords —
+   *  sending them to Settings loses the selection they are halfway through. */
+  const [editingKwId, setEditingKwId] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState("");
+  const [savingKw, setSavingKw] = useState(false);
+  /** Live reachability of the keyword being typed. A term that finds nothing is
+   *  otherwise saved into the company's taxonomy and returns zero on every
+   *  future import — which is exactly what happened on 2026-09-07, when eleven
+   *  hand-typed terms of the shape "Plastic Bag Manufacturer" produced four
+   *  empty batches before anyone realised the wording was the problem.
+   *  Checking costs nothing: people-search is free. */
+  const [kwCheck, setKwCheck] = useState<{ total: number; suggestion: { term: string; count: number } | null } | null>(null);
+  const [checking, setChecking] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const customInputRef = useRef<HTMLInputElement>(null);
 
@@ -331,7 +346,50 @@ function IndustryKeywordsDropdown({
     if (!targetGroupId && groups.length > 0) setTargetGroupId(groups[0].id);
   }, [groups, targetGroupId]);
 
+  // Debounced so a manager typing "shopping bags" does not fire eight searches.
+  useEffect(() => {
+    const term = customInput.trim();
+    if (term.length < 3) { setKwCheck(null); setChecking(false); return; }
+    let cancelled = false;
+    setChecking(true);
+    const t = setTimeout(async () => {
+      try {
+        const token = await getToken();
+        const res = await apolloPreview(token, { keywords: [term], locations: [], batch_name: "keyword check" });
+        if (!cancelled) setKwCheck({ total: res.total_entries ?? 0, suggestion: res.suggestion ?? null });
+      } catch {
+        if (!cancelled) setKwCheck(null); // a failed check must never block adding
+      } finally {
+        if (!cancelled) setChecking(false);
+      }
+    }, 600);
+    return () => { cancelled = true; clearTimeout(t); setChecking(false); };
+  }, [customInput]);
+
   const allKeywordLabels = groups.flatMap((g) => g.keywords.map((k) => k.label));
+
+  /** Persist a changed Apollo term for one keyword. Same setting Settings >
+   *  Industry Segments writes, so the two screens cannot disagree. */
+  async function saveKeywordQuery(groupId: string, kwId: string) {
+    const query = editDraft.trim();
+    if (!query) { toast.error("The search word cannot be empty."); return; }
+    const updated = groups.map((g) => g.id !== groupId ? g : {
+      ...g,
+      keywords: g.keywords.map((k) => k.id === kwId ? { ...k, query } : k),
+    });
+    setSavingKw(true);
+    try {
+      const token = await getToken();
+      await patchSettings(token, { industry_keyword_groups: JSON.stringify(updated) });
+      onGroupsChange(updated);
+      setEditingKwId(null);
+      toast.success(`Now searching "${query}" for this keyword.`);
+    } catch (e) {
+      toast.error((e as Error).message || "Could not save the search word.");
+    } finally {
+      setSavingKw(false);
+    }
+  }
 
   function toggleKw(label: string) {
     onChange(selected.includes(label) ? selected.filter((s) => s !== label) : [...selected, label]);
@@ -359,8 +417,16 @@ function IndustryKeywordsDropdown({
       toast.error(`"${label}" is already in ${targetGroup.label}.`);
       return;
     }
+    // The NAME stays exactly what was typed — that is what the manager
+    // recognises in the list. The QUERY is the wording that actually finds
+    // companies, which is not always the same thing: saving `query: label`
+    // verbatim is how "Plastic Bag Manufacturer" would become a permanent
+    // keyword that returns zero on every future import. The live check above
+    // already knows the working form, so use it.
+    const deadTerm = kwCheck !== null && kwCheck.total === 0;
+    const query = deadTerm && kwCheck?.suggestion ? kwCheck.suggestion.term : label;
     const updatedGroups = groups.map((g) =>
-      g.id === targetGroupId ? { ...g, keywords: [...g.keywords, { id: crypto.randomUUID(), label, query: label }] } : g,
+      g.id === targetGroupId ? { ...g, keywords: [...g.keywords, { id: crypto.randomUUID(), label, query }] } : g,
     );
     setAdding(true);
     try {
@@ -368,6 +434,17 @@ function IndustryKeywordsDropdown({
       await patchSettings(token, { industry_keyword_groups: JSON.stringify(updatedGroups) });
       onGroupsChange(updatedGroups);
       onChange([...selected, label]);
+      if (query !== label) {
+        toast.info(`Added "${label}" — searching "${query}"`, {
+          description: `Apollo finds nothing for "${label}", so the closer term is used. You can change it any time with "Edit word".`,
+          duration: 12000,
+        });
+      } else if (deadTerm) {
+        toast.warning(`Added "${label}", but Apollo finds nothing for it`, {
+          description: `This keyword will return no leads until you change its search word. Use "Edit word" to set one.`,
+          duration: 12000,
+        });
+      }
       setCustomInput("");
       customInputRef.current?.focus();
     } catch {
@@ -480,7 +557,7 @@ function IndustryKeywordsDropdown({
                                 <div
                                   key={kw.id}
                                   className={cn(
-                                    "w-full flex items-center gap-2 px-2 py-1 rounded transition-colors",
+                                    "group/kw w-full flex items-center gap-2 px-2 py-1 rounded transition-colors",
                                     checked ? "bg-primary/10" : "hover:bg-secondary/60",
                                   )}
                                 >
@@ -491,10 +568,54 @@ function IndustryKeywordsDropdown({
                                     className="h-auto flex-1 justify-start gap-2 rounded-none p-0 text-left font-normal min-w-0 hover:bg-transparent"
                                   >
                                     <AppCheckbox size="sm" checked={checked} />
-                                    <span className={cn("text-xs leading-tight truncate", checked ? "text-foreground font-medium" : "text-muted-foreground")}>
-                                      {kw.label}
+                                    <span className="min-w-0 flex flex-col items-start gap-0.5">
+                                      <span className={cn("text-xs leading-tight truncate", checked ? "text-foreground font-medium" : "text-muted-foreground")}>
+                                        {kw.label}
+                                      </span>
+                                      {/* The name and the term Apollo actually receives are often
+                                          different — "Water Tanks & Storage" searches "rotomoulding".
+                                          14 of this company's 35 keywords differ. Hiding that meant a
+                                          client could not question a search word they never saw, and
+                                          they know this industry far better than the catalogue does.
+                                          Only shown when it differs, so identical rows stay quiet. */}
+                                      {kw.query && kw.query.toLowerCase() !== kw.label.toLowerCase() && (
+                                        <span className="text-[10px] leading-tight text-muted-foreground/70 truncate font-mono">
+                                          searches &ldquo;{kw.query}&rdquo;
+                                        </span>
+                                      )}
                                     </span>
                                   </Button>
+                                  {editingKwId === kw.id ? (
+                                    <span className="flex items-center gap-1 shrink-0">
+                                      <Input
+                                        autoFocus
+                                        value={editDraft}
+                                        onChange={(e) => setEditDraft(e.target.value)}
+                                        onKeyDown={(e) => {
+                                          if (e.key === "Enter") { e.preventDefault(); saveKeywordQuery(group.id, kw.id); }
+                                          if (e.key === "Escape") setEditingKwId(null);
+                                        }}
+                                        className="h-6 w-36 text-[11px] font-mono px-1.5"
+                                        placeholder="search word"
+                                      />
+                                      <Button
+                                        type="button" size="sm" variant="ghost" disabled={savingKw}
+                                        onClick={() => saveKeywordQuery(group.id, kw.id)}
+                                        className="h-6 px-1.5 text-[10px]"
+                                      >
+                                        {savingKw ? "…" : "Save"}
+                                      </Button>
+                                    </span>
+                                  ) : (
+                                    <Button
+                                      type="button" size="sm" variant="ghost"
+                                      title="Change the word we search for this keyword"
+                                      onClick={() => { setEditingKwId(kw.id); setEditDraft(kw.query || kw.label); }}
+                                      className="h-6 px-1.5 text-[10px] text-muted-foreground shrink-0 opacity-0 group-hover/kw:opacity-100 focus-visible:opacity-100"
+                                    >
+                                      Edit word
+                                    </Button>
+                                  )}
                                 </div>
                               );
                             })}
@@ -525,7 +646,7 @@ function IndustryKeywordsDropdown({
                     if (e.key === "Enter") { e.preventDefault(); addKeywordToGroup(); }
                     if (e.key === "Escape") setOpen(false);
                   }}
-                  placeholder="e.g. masterbatch manufacturer…"
+                  placeholder="Short trade words, e.g. shopping bags"
                   className="h-auto flex-1 rounded-md px-3 py-1.5 text-xs"
                 />
                 <Select value={targetGroupId} onValueChange={setTargetGroupId}>
@@ -548,6 +669,38 @@ function IndustryKeywordsDropdown({
                   <Plus /> Add
                 </Button>
               </div>
+              {customInput.trim().length >= 3 && (
+                <p className="mt-1.5 text-[11px] leading-tight">
+                  {checking ? (
+                    <span className="text-muted-foreground">Checking &ldquo;{customInput.trim()}&rdquo;…</span>
+                  ) : kwCheck === null ? null : kwCheck.total >= 25 ? (
+                    <span className="text-muted-foreground">
+                      <span className="font-medium text-foreground">{kwCheck.total.toLocaleString()}</span> people found worldwide. Looks good.
+                    </span>
+                  ) : (
+                    <span className="text-destructive">
+                      {kwCheck.total === 0
+                        ? `Apollo finds nothing for "${customInput.trim()}".`
+                        : `Only ${kwCheck.total} people match "${customInput.trim()}" — too few to be useful.`}
+                      {kwCheck.suggestion ? (
+                        <>
+                          {" "}Try{" "}
+                          <button
+                            type="button"
+                            onClick={() => setCustomInput(kwCheck.suggestion!.term)}
+                            className="font-mono underline underline-offset-2 font-medium"
+                          >
+                            {kwCheck.suggestion.term}
+                          </button>
+                          {" "}— {kwCheck.suggestion.count.toLocaleString()} people.
+                        </>
+                      ) : (
+                        <> Try shorter words, and drop &ldquo;Manufacturer&rdquo;.</>
+                      )}
+                    </span>
+                  )}
+                </p>
+              )}
             </div>
 
             {/* Footer */}

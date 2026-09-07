@@ -6,7 +6,7 @@ import { searchPeople } from "@/lib/services/apollo";
 import { getServiceSecret } from "@/lib/services/service-keys";
 import { resolveApolloKeyword, parseIndustryKeywordGroups } from "@/lib/constants";
 import { orgKey, pickBestContact } from "@/lib/services/lead-ranking";
-import { keywordVariants, pickBestVariant } from "@/lib/services/keyword-fallback";
+import { keywordVariants, pickBestVariant, MIN_USEFUL_RESULTS } from "@/lib/services/keyword-fallback";
 // Only used here for counting/ids (the actual enrich pass re-queries its own
 // full target shape) — deliberately a narrower local type, not EnrichTarget.
 type NewLeadTarget = { id: string; apollo_id: string; first_name: string | null; organization_id: string | null; org_name: string | null };
@@ -125,6 +125,12 @@ export async function POST(req: NextRequest) {
   // different search than the one that will actually run.
   if (preview) {
     let previewPeople: Array<{ firstName: string; lastName: string; email: string; company: string; jobTitle: string }> = [];
+    /** How many people this term can reach at all, and — when that is zero — a
+     *  wording that does work. The picker uses these to stop a manager saving a
+     *  keyword that can never return anything, which is how eleven dead terms
+     *  reached a live import on 2026-09-07. */
+    let previewTotal = 0;
+    let previewSuggestion: { term: string; count: number } | null = null;
     try {
       const blockedKeys = new Set<string>();
       const { data: blocked } = await db.rpc("blocked_org_names", { p_company: user.companyId });
@@ -140,15 +146,41 @@ export async function POST(req: NextRequest) {
       // working filter.
       const seen = new Set<string>();
       const chosen: Array<{ first_name: string | null; title: string | null; org: string | null }> = [];
+      let previewQuery = resolveApolloKeyword(industryKeywordGroups, keywords[0]);
       for (let page = 1; page <= 3 && chosen.length < 5; page++) {
         const result = await searchPeople({
-          keyword: resolveApolloKeyword(industryKeywordGroups, keywords[0]),
+          keyword: previewQuery,
           locations,
           page,
           titles: titles ?? undefined,
           seniorities: seniorities ?? undefined,
           advanced,
         });
+        if (page === 1) {
+          previewTotal = result.total_entries ?? 0;
+          // Offer a better wording whenever the term is effectively unusable —
+          // not only at exactly zero. "Plastic Bag Manufacturer" returns 5,
+          // which is not zero but is not a keyword either, and reporting it as
+          // fine would let it be saved and quietly contribute nothing forever.
+          if (previewTotal < MIN_USEFUL_RESULTS) {
+            const tried: Array<{ term: string; count: number }> = [];
+            for (const variant of keywordVariants(previewQuery)) {
+              try {
+                const probe = await searchPeople({
+                  keyword: variant, locations, page: 1, perPage: 1,
+                  titles: titles ?? undefined,
+                  seniorities: seniorities ?? undefined,
+                  advanced,
+                });
+                tried.push({ term: variant, count: probe.total_entries ?? 0 });
+              } catch { /* a dud variant must not fail the preview */ }
+            }
+            // Only worth surfacing if it genuinely beats what was typed.
+            const best = pickBestVariant(tried);
+            previewSuggestion = best && best.count > previewTotal ? best : null;
+            if (previewTotal === 0) break;
+          }
+        }
         const people = (result.people ?? []).filter((p) => p.has_email);
         if (people.length === 0) break;
 
@@ -178,7 +210,7 @@ export async function POST(req: NextRequest) {
     } catch {
       previewPeople = [];
     }
-    return Response.json({ success: true, data: { preview: true, leads: previewPeople } });
+    return Response.json({ success: true, data: { preview: true, leads: previewPeople, total_entries: previewTotal, suggestion: previewSuggestion } });
   }
 
   // ── Phase 1: Search all keywords/pages, batch-insert leads ───────────────
