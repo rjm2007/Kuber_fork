@@ -4,7 +4,7 @@ import { fail, ok } from "@/lib/api-response";
 import { ApolloSearchSchema } from "@/lib/validators/leads";
 import { searchPeople } from "@/lib/services/apollo";
 import { getServiceSecret } from "@/lib/services/service-keys";
-import { resolveApolloKeyword } from "@/lib/constants";
+import { resolveApolloKeyword, parseIndustryKeywordGroups } from "@/lib/constants";
 import { orgKey, pickBestContact } from "@/lib/services/lead-ranking";
 import { keywordVariants, pickBestVariant } from "@/lib/services/keyword-fallback";
 // Only used here for counting/ids (the actual enrich pass re-queries its own
@@ -108,7 +108,12 @@ export async function POST(req: NextRequest) {
   const apolloKey = await getServiceSecret("apollo", "any" /* one shared Apollo account */);
   if (!apolloKey) return fail(503, "UPSTREAM_APOLLO", "Apollo API key not configured — add one in Settings > Keys");
 
+  // Dropdown labels resolve to Apollo query terms through the company's own
+  // industry_keyword_groups setting (Settings > Industry Segments) rather than
+  // a compile-time constant — every company can retune its own taxonomy.
   const db = dbForUser(user);
+  const { data: keywordSetting } = await db.from("settings").select("value").eq("key", "industry_keyword_groups").maybeSingle();
+  const industryKeywordGroups = parseIndustryKeywordGroups(keywordSetting?.value);
 
   // ── Preview mode ──────────────────────────────────────────────────────────
   // Runs the SAME one-lead-per-company rule as the real import. It used to show
@@ -137,7 +142,7 @@ export async function POST(req: NextRequest) {
       const chosen: Array<{ first_name: string | null; title: string | null; org: string | null }> = [];
       for (let page = 1; page <= 3 && chosen.length < 5; page++) {
         const result = await searchPeople({
-          keyword: resolveApolloKeyword(keywords[0]),
+          keyword: resolveApolloKeyword(industryKeywordGroups, keywords[0]),
           locations,
           page,
           titles: titles ?? undefined,
@@ -263,7 +268,7 @@ export async function POST(req: NextRequest) {
   // and returns 0 results for punctuation-heavy phrases, so resolve to the
   // validated short term (lib/constants.ts) and dedup so two labels that
   // resolve to the same query don't search Apollo twice.
-  const resolvedKeywords = [...new Map(keywords.map((label) => [resolveApolloKeyword(label), label])).entries()]
+  const resolvedKeywords = [...new Map(keywords.map((label) => [resolveApolloKeyword(industryKeywordGroups, label), label])).entries()]
     .map(([query, label]) => ({ query, label }));
 
   // Every lead inserted below eventually costs a paid Apollo bulk_match call —

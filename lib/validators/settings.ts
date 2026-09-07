@@ -19,6 +19,7 @@ export const PatchSettingsSchema = z.object({
   signature_company:     z.string().max(200).optional(),
   email_subject_template:  z.string().max(300).optional(), // supports {product} and {company}
   product_offerings:       z.string().optional(), // JSON: [{name, description}]
+  industry_keyword_groups: z.string().optional(), // JSON: IndustryKeywordGroup[] (lib/constants.ts)
   reply_classifier_prompt: z.string().optional(),
   reply_drafter_prompt:    z.string().optional(),
   // Default (name-swap) draft for unenriched / Input Required leads.
@@ -34,13 +35,16 @@ export const PatchSettingsSchema = z.object({
 });
 
 // The subset of company settings an employee may edit: the Product Offerings
-// library only. Company Details (sender name, industry, company context, brand
-// logo) is company identity — one employee editing it rewrites every user's
-// outreach — so it is manager/super-admin only, same as the prompts. An
-// employee did exactly that on 21 Aug 2026: pasted their own prospecting email
-// into company_context and set default_sender_name to their own name.
+// library and the Industry Segments taxonomy used by the Apollo import
+// dropdown — both are material employees curate day to day. Company Details
+// (sender name, industry, company context, brand logo) is company identity —
+// one employee editing it rewrites every user's outreach — so it is
+// manager/super-admin only, same as the prompts. An employee did exactly that
+// on 21 Aug 2026: pasted their own prospecting email into company_context and
+// set default_sender_name to their own name.
 export const KNOWLEDGE_SETTINGS_KEYS = [
   "product_offerings",
+  "industry_keyword_groups",
 ] as const;
 
 export const SETTINGS_KEYS = [
@@ -56,6 +60,7 @@ export const SETTINGS_KEYS = [
   "signature_company",
   "email_subject_template",
   "product_offerings",
+  "industry_keyword_groups",
   "reply_classifier_prompt",
   "reply_drafter_prompt",
   "generic_email_subject",

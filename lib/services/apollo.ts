@@ -175,7 +175,7 @@ export async function searchPeople(opts: {
     // the client reported on 13 Aug, and it survived the 14 Aug widening of
     // titles and employee ranges because neither was ever the bottleneck.
     //
-    // Checked for regression across all 22 terms in INDUSTRY_KEYWORD_CATEGORIES
+    // Checked for regression across all 22 terms in DEFAULT_INDUSTRY_KEYWORD_GROUPS
     // before switching: org tags returned more on 12 of 12 sampled, fewer on
     // none. The catalog's short `query` values were tuned for q_keywords and
     // work at least as well here, so no catalog change is needed.

@@ -9,7 +9,7 @@
  * Run: npx tsx lib/keyword-catalog.test.mts
  */
 import { strict as assert } from "assert";
-import { INDUSTRY_KEYWORD_CATEGORIES, resolveApolloKeyword } from "./constants";
+import { DEFAULT_INDUSTRY_KEYWORD_GROUPS, resolveApolloKeyword } from "./constants";
 
 /** Bare end-market words. Each one shipped, and each one produced a complaint. */
 const BANNED = new Set([
@@ -18,7 +18,7 @@ const BANNED = new Set([
   "toys", "textile", "tanks", "closures", "molding", "pallets",
 ]);
 
-const queries = INDUSTRY_KEYWORD_CATEGORIES.flatMap((c) => c.keywords.map((k) => k.query));
+const queries = DEFAULT_INDUSTRY_KEYWORD_GROUPS.flatMap((c) => c.keywords.map((k) => k.query));
 assert.ok(queries.length > 0, "catalog must not be empty");
 
 for (const q of queries) {
@@ -27,15 +27,15 @@ for (const q of queries) {
 }
 
 // Labels are what the user picks; they must resolve to the query, not to themselves.
-for (const cat of INDUSTRY_KEYWORD_CATEGORIES) {
+for (const cat of DEFAULT_INDUSTRY_KEYWORD_GROUPS) {
   for (const k of cat.keywords) {
-    assert.equal(resolveApolloKeyword(k.label), k.query,
+    assert.equal(resolveApolloKeyword(DEFAULT_INDUSTRY_KEYWORD_GROUPS, k.label), k.query,
       `label "${k.label}" does not resolve to its query`);
   }
 }
 
 // A term nobody selected must fall through unchanged (free-typed custom keyword).
-assert.equal(resolveApolloKeyword("some custom term"), "some custom term");
+assert.equal(resolveApolloKeyword(DEFAULT_INDUSTRY_KEYWORD_GROUPS, "some custom term"), "some custom term");
 
 // The five that caused the complaint must now resolve to a process term.
 const fixed: [string, string][] = [
@@ -49,14 +49,14 @@ const fixed: [string, string][] = [
   ["Automotive Blow Molded Parts", "automotive components"],
 ];
 for (const [label, expected] of fixed) {
-  assert.equal(resolveApolloKeyword(label), expected, `${label} should now send "${expected}"`);
+  assert.equal(resolveApolloKeyword(DEFAULT_INDUSTRY_KEYWORD_GROUPS, label), expected, `${label} should now send "${expected}"`);
 }
 
 // The client asks for this section by name; a 2026-09-04 rename removed the
 // words "Blown Film" from the UI without removing any keyword, and nobody
 // noticed until they did.
 assert.ok(
-  INDUSTRY_KEYWORD_CATEGORIES.some((c) => /blown film/i.test(c.label)),
+  DEFAULT_INDUSTRY_KEYWORD_GROUPS.some((c) => /blown film/i.test(c.label)),
   'a category label must still contain "Blown Film" — the client looks for it by name',
 );
 

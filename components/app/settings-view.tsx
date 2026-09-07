@@ -7,7 +7,7 @@ import {
   User, Bot, LogOut, Plus,
   ChevronRight, PenLine, Bold, Italic, Underline,
   List, ListOrdered, Link2, Undo2, Redo2, Eraser, Type, Palette, Check, Sun, Moon,
-  Building2, Package, FileText, X, KeyRound, Gauge, Lock,
+  Building2, Package, FileText, X, KeyRound, Gauge, Lock, Tags, Pencil, Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,6 +16,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { AvailabilityToggle } from "@/components/ui/availability-toggle";
 import { LEAD_TEMPLATE_VARS } from "@/components/ui/template-var-textarea";
 import { InfoTooltip } from "@/components/ui/info-tooltip";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 // Aliased: this file also declares its own local RichTextEditor further down
 // (a plain-text-output contentEditable wrapper, correct for prompt fields fed
 // to an LLM). followup_fallback_body is genuinely HTML — campaign-fanout.ts's
@@ -28,10 +29,11 @@ import { fetchLogo, fetchSettings, patchSettings, fetchMySettings, patchMySettin
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 import { BRAND_LOGO_CHANGED, COLORS } from "@/lib/branding";
-import { MANDATORY_FORMATTING_RULES } from "@/lib/constants";
+import { MANDATORY_FORMATTING_RULES, parseIndustryKeywordGroups, type IndustryKeywordGroup } from "@/lib/constants";
 import { useTheme } from "@/lib/theme-context";
 import { useApp } from "@/lib/app-context";
 import dynamic from "next/dynamic";
+import { useSearchParams } from "next/navigation";
 
 const TeamView = dynamic(
   () => import("@/components/app/team-view").then((m) => m.TeamView),
@@ -55,7 +57,7 @@ const EmailSendingView = dynamic(
 
 type Section = "profile" | "ai" | "knowledge" | "appearance" | "account" | "team" | "email" | "keys";
 type AiSection = "my-writing" | "my-signature" | "template" | "default" | "followup" | "replies" | "footer";
-type KnowledgeSection = "company" | "products";
+type KnowledgeSection = "company" | "products" | "industry-segments";
 type KeysSection = "credentials" | "usage";
 type ProductOffering = { name: string; description: string };
 
@@ -110,6 +112,7 @@ const KEYS_NAV_ITEMS: { id: KeysSection; label: string; icon: React.ComponentTyp
 const KNOWLEDGE_NAV_ITEMS: { id: KnowledgeSection; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { id: "company",   label: "Company Details",   icon: Building2 },
   { id: "products",  label: "Product Offerings", icon: Package },
+  { id: "industry-segments", label: "Industry Segments", icon: Tags },
 ];
 
 type EditorCommand = "bold" | "italic" | "underline" | "insertUnorderedList" | "insertOrderedList" | "undo" | "redo" | "removeFormat";
@@ -366,6 +369,21 @@ export function SettingsView() {
   const [knowledgeSection, setKnowledgeSection] = useState<KnowledgeSection>("company");
   const [keysSection, setKeysSection] = useState<KeysSection>("credentials");
 
+  // Deep-link support, e.g. /settings?section=knowledge&knowledge=industry-segments
+  // (used by the "Manage groups in Settings" link in the Apollo import dropdown)
+  // so it lands directly on the tab it's pointing at rather than the default.
+  const searchParams = useSearchParams();
+  useEffect(() => {
+    const s = searchParams.get("section");
+    if (s === "knowledge" || s === "ai" || s === "appearance" || s === "account" || s === "team" || s === "email" || s === "keys" || s === "profile") {
+      setSection(s);
+    }
+    const k = searchParams.get("knowledge");
+    if (k === "company" || k === "products" || k === "industry-segments") {
+      setKnowledgeSection(k);
+    }
+  }, [searchParams]);
+
   // Company-wide settings (managers edit; everyone inherits)
   const [senderName,     setSenderName    ] = useState("");
   const [clientIndustry, setClientIndustry] = useState("");
@@ -381,6 +399,20 @@ export function SettingsView() {
   const [sigContact, setSigContact] = useState("");
 
   const [productOfferings, setProductOfferings] = useState<ProductOffering[]>([]);
+  const [industryKeywordGroups, setIndustryKeywordGroups] = useState<IndustryKeywordGroup[]>([]);
+  // Each group card renders as plain text by default; its single pencil icon
+  // opens the whole card (group name + every keyword + "Add keyword") into
+  // edit mode at once, rather than every field being a live text box always.
+  const [editingGroupIds, setEditingGroupIds] = useState<Set<string>>(new Set());
+  // Which group cards currently have an add/remove/rename request in flight —
+  // drives the small loading state on that card's pencil/checkmark button.
+  const [savingGroupIds, setSavingGroupIds] = useState<Set<string>>(new Set());
+  // Deleting a whole group (and every keyword in it) is a much bigger action
+  // than removing one keyword, and its "X" sits right next to the pencil in
+  // a small header — a real misclick took out a whole group with no warning
+  // during testing. Confirm before it actually happens.
+  const [groupPendingDelete, setGroupPendingDelete] = useState<{ idx: number; label: string } | null>(null);
+  const [deletingGroup, setDeletingGroup] = useState(false);
 
   const [replyDrafterPrompt,    setReplyDrafterPrompt   ] = useState("");
 
@@ -405,7 +437,10 @@ export function SettingsView() {
   const [error,   setError   ] = useState("");
 
   const activeAiNavItem        = aiNavItems.find((i) => i.id === aiSection);
-  const activeKnowledgeSection: KnowledgeSection = isManager ? knowledgeSection : "products";
+  // Employees can't see "company" (manager-only identity settings), but can
+  // freely switch between the other Knowledge Sources tabs — only fall back
+  // to "products" if they land on the one tab hidden from them.
+  const activeKnowledgeSection: KnowledgeSection = (!isManager && knowledgeSection === "company") ? "products" : knowledgeSection;
   const activeKnowledgeNavItem = KNOWLEDGE_NAV_ITEMS.find((i) => i.id === activeKnowledgeSection);
   const activeKeysNavItem      = KEYS_NAV_ITEMS.find((i) => i.id === keysSection);
 
@@ -456,6 +491,7 @@ export function SettingsView() {
           setSigContact(s.signature_contact ?? "");
           setReplyDrafterPrompt(s.reply_drafter_prompt ?? "");
           try { setProductOfferings(JSON.parse(s.product_offerings ?? "[]") as ProductOffering[]); } catch { setProductOfferings([]); }
+          setIndustryKeywordGroups(parseIndustryKeywordGroups(s.industry_keyword_groups));
         }
         setLoading(false);
 
@@ -583,6 +619,128 @@ export function SettingsView() {
     setProductOfferings((prev) => [...prev, { name: "", description: "" }]);
   }
 
+  // Every structural change (add/remove group, add/remove keyword, and a
+  // rename finished via the card's "done" checkmark) saves straight to
+  // Supabase on its own — it does NOT wait for the page's "Save" button.
+  // That button re-sending the whole locally-held list caused a real data-loss
+  // bug: an earlier accidental edit sitting unsaved in this section got baked
+  // in permanently the next time someone hit Save for something unrelated
+  // (e.g. Product Offerings). Saving each action immediately, against the
+  // current server value, closes that gap.
+  async function saveIndustryKeywordGroups(next: IndustryKeywordGroup[]) {
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token ?? "";
+    await patchSettings(token, { industry_keyword_groups: JSON.stringify(next) });
+  }
+
+  async function addGroup() {
+    const id = crypto.randomUUID();
+    const previous = industryKeywordGroups;
+    const next = [...previous, { id, label: "", emoji: "🏷️", keywords: [] }];
+    setIndustryKeywordGroups(next);
+    setEditingGroupIds((prev) => new Set(prev).add(id));
+    setSavingGroupIds((prev) => new Set(prev).add(id));
+    try {
+      await saveIndustryKeywordGroups(next);
+    } catch {
+      setIndustryKeywordGroups(previous);
+      setEditingGroupIds((prev) => { const s = new Set(prev); s.delete(id); return s; });
+      toast.error("Couldn't create the group — please try again.");
+    } finally {
+      setSavingGroupIds((prev) => { const s = new Set(prev); s.delete(id); return s; });
+    }
+  }
+
+  function updateGroup(groupIdx: number, label: string) {
+    setIndustryKeywordGroups((prev) => prev.map((g, i) => i === groupIdx ? { ...g, label } : g));
+  }
+
+  async function removeGroup(groupIdx: number) {
+    const previous = industryKeywordGroups;
+    const removedId = previous[groupIdx]?.id;
+    const next = previous.filter((_, i) => i !== groupIdx);
+    setIndustryKeywordGroups(next);
+    if (removedId) setSavingGroupIds((prev) => new Set(prev).add(removedId));
+    try {
+      await saveIndustryKeywordGroups(next);
+    } catch {
+      setIndustryKeywordGroups(previous);
+      toast.error("Couldn't delete the group — please try again.");
+    } finally {
+      if (removedId) setSavingGroupIds((prev) => { const s = new Set(prev); s.delete(removedId); return s; });
+    }
+  }
+
+  async function confirmRemoveGroup() {
+    if (!groupPendingDelete) return;
+    setDeletingGroup(true);
+    await removeGroup(groupPendingDelete.idx);
+    setDeletingGroup(false);
+    setGroupPendingDelete(null);
+  }
+
+  async function addKeyword(groupIdx: number) {
+    const previous = industryKeywordGroups;
+    const groupId = previous[groupIdx]?.id;
+    const next = previous.map((g, i) =>
+      i === groupIdx ? { ...g, keywords: [...g.keywords, { id: crypto.randomUUID(), label: "", query: "" }] } : g,
+    );
+    setIndustryKeywordGroups(next);
+    if (groupId) setSavingGroupIds((prev) => new Set(prev).add(groupId));
+    try {
+      await saveIndustryKeywordGroups(next);
+    } catch {
+      setIndustryKeywordGroups(previous);
+      toast.error("Couldn't add the keyword — please try again.");
+    } finally {
+      if (groupId) setSavingGroupIds((prev) => { const s = new Set(prev); s.delete(groupId); return s; });
+    }
+  }
+
+  // The card's single pencil doubles as "done": closing edit mode is the save
+  // point for whatever text was typed into the group name / keyword fields
+  // while it was open. On failure, edit mode stays open (with the typed text
+  // intact) so the user can just hit the checkmark again to retry.
+  async function toggleGroupEdit(id: string) {
+    if (!editingGroupIds.has(id)) {
+      setEditingGroupIds((prev) => new Set(prev).add(id));
+      return;
+    }
+    setSavingGroupIds((prev) => new Set(prev).add(id));
+    try {
+      await saveIndustryKeywordGroups(industryKeywordGroups);
+      setEditingGroupIds((prev) => { const s = new Set(prev); s.delete(id); return s; });
+    } catch {
+      toast.error("Couldn't save — please try again.");
+    } finally {
+      setSavingGroupIds((prev) => { const s = new Set(prev); s.delete(id); return s; });
+    }
+  }
+
+  function updateKeyword(groupIdx: number, kwIdx: number, field: "label" | "query", value: string) {
+    setIndustryKeywordGroups((prev) => prev.map((g, i) =>
+      i === groupIdx ? { ...g, keywords: g.keywords.map((k, ki) => ki === kwIdx ? { ...k, [field]: value } : k) } : g,
+    ));
+  }
+
+  async function removeKeyword(groupIdx: number, kwIdx: number) {
+    const previous = industryKeywordGroups;
+    const groupId = previous[groupIdx]?.id;
+    const next = previous.map((g, i) =>
+      i === groupIdx ? { ...g, keywords: g.keywords.filter((_, ki) => ki !== kwIdx) } : g,
+    );
+    setIndustryKeywordGroups(next);
+    if (groupId) setSavingGroupIds((prev) => new Set(prev).add(groupId));
+    try {
+      await saveIndustryKeywordGroups(next);
+    } catch {
+      setIndustryKeywordGroups(previous);
+      toast.error("Couldn't remove the keyword — please try again.");
+    } finally {
+      if (groupId) setSavingGroupIds((prev) => { const s = new Set(prev); s.delete(groupId); return s; });
+    }
+  }
+
   async function handleChangePassword(e: React.FormEvent) {
     e.preventDefault();
     if (!userEmail) return;
@@ -650,7 +808,9 @@ export function SettingsView() {
     </div>
   ) : null;
 
-  const showSaveBar = !loading && (section === "ai" || section === "knowledge");
+  // Industry Segments saves every action immediately (see saveIndustryKeywordGroups
+  // above) — no page-wide Save button needed while that sub-tab is active.
+  const showSaveBar = !loading && (section === "ai" || (section === "knowledge" && activeKnowledgeSection !== "industry-segments"));
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -1167,6 +1327,121 @@ export function SettingsView() {
                           </div>
                         ))}
                       </div>
+                    </div>
+                  )}
+
+                  {/* Industry Segments — the taxonomy behind the Apollo import dropdown */}
+                  {activeKnowledgeSection === "industry-segments" && (
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between border-b border-border pb-4">
+                        <div className="flex items-center gap-2">
+                          <Tags className="size-4 text-muted-foreground" />
+                          <div>
+                            <p className="eyebrow">Knowledge source</p>
+                            <h3 className="font-display text-base font-semibold mt-0.5">Industry Segments</h3>
+                          </div>
+                        </div>
+                        <Button type="button" size="sm" onClick={addGroup} disabled={savingGroupIds.size > 0} className="gap-1.5 shrink-0">
+                          {savingGroupIds.size > 0 ? <Loader2 className="size-3.5 animate-spin" /> : <Plus className="size-3.5" />} Add group
+                        </Button>
+                      </div>
+                      <p className="text-xs text-muted-foreground -mt-2">
+                        Groups and keywords shown in the Apollo import dropdown. Each keyword&apos;s &quot;Apollo search term&quot; is the actual text sent to Apollo — keep it short and plain, since Apollo matches it near-literally.
+                      </p>
+
+                      {industryKeywordGroups.length === 0 && (
+                        <div className="rounded-md border border-dashed border-border bg-secondary/10 p-10 text-center text-sm text-muted-foreground">
+                          No groups yet — click &quot;Add group&quot; to get started.
+                        </div>
+                      )}
+
+                      <div className="space-y-4">
+                        {industryKeywordGroups.map((group, groupIdx) => {
+                          const groupEditing = editingGroupIds.has(group.id);
+                          const groupSaving = savingGroupIds.has(group.id);
+                          return (
+                            <div key={group.id} className="swatch-bar rounded-lg border border-border bg-card shadow-sm overflow-hidden">
+                              {/* Header bar — the card's one pencil toggles the whole card between view and edit, and doubles as "save" on the way out */}
+                              <div className="flex items-center gap-2 border-b border-border bg-primary/10 px-4 py-3 pl-5">
+                                {groupEditing ? (
+                                  <Input
+                                    value={group.label}
+                                    onChange={(e) => updateGroup(groupIdx, e.target.value)}
+                                    placeholder="Group name"
+                                    className="h-9 text-sm font-semibold flex-1"
+                                    disabled={groupSaving}
+                                    autoFocus
+                                  />
+                                ) : (
+                                  <span className="text-sm font-semibold flex-1">{group.label || "Untitled group"}</span>
+                                )}
+                                <Button type="button" variant="ghost" size="icon-sm" onClick={() => toggleGroupEdit(group.id)}
+                                  disabled={groupSaving} className="shrink-0 text-muted-foreground hover:text-foreground">
+                                  {groupSaving ? <Loader2 className="size-3.5 animate-spin" /> : groupEditing ? <Check className="size-3.5" /> : <Pencil className="size-3.5" />}
+                                </Button>
+                                <Button type="button" variant="ghost" size="icon-sm" onClick={() => setGroupPendingDelete({ idx: groupIdx, label: group.label || "this group" })}
+                                  disabled={groupSaving} className="shrink-0 text-muted-foreground hover:bg-destructive/10 hover:text-destructive">
+                                  <X className="size-3.5" />
+                                </Button>
+                              </div>
+
+                              <div className="p-4 pl-5 space-y-3">
+                                <div className="space-y-2">
+                                  {group.keywords.map((kw, kwIdx) => (
+                                    <div key={kw.id} className="flex items-center gap-2">
+                                      {groupEditing ? (
+                                        <>
+                                          <div className="grid grid-cols-2 gap-2 flex-1">
+                                            <Input
+                                              value={kw.label}
+                                              onChange={(e) => updateKeyword(groupIdx, kwIdx, "label", e.target.value)}
+                                              placeholder="Label shown in the dropdown"
+                                              className="h-9 text-sm"
+                                              disabled={groupSaving}
+                                            />
+                                            <Input
+                                              value={kw.query}
+                                              onChange={(e) => updateKeyword(groupIdx, kwIdx, "query", e.target.value)}
+                                              placeholder="Apollo search term"
+                                              className="h-9 text-sm"
+                                              disabled={groupSaving}
+                                            />
+                                          </div>
+                                          <Button type="button" variant="ghost" size="icon-sm" onClick={() => removeKeyword(groupIdx, kwIdx)}
+                                            disabled={groupSaving} className="shrink-0 text-muted-foreground hover:bg-destructive/10 hover:text-destructive">
+                                            <X className="size-3.5" />
+                                          </Button>
+                                        </>
+                                      ) : (
+                                        <span className="text-sm flex-1">
+                                          {kw.label || "Untitled keyword"}
+                                          <span className="text-muted-foreground text-xs"> — searches &quot;{kw.query || kw.label}&quot;</span>
+                                        </span>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+
+                                {groupEditing && (
+                                  <Button type="button" variant="outline" size="sm" onClick={() => addKeyword(groupIdx)} disabled={groupSaving} className="gap-1.5">
+                                    <Plus className="size-3.5" /> Add keyword
+                                  </Button>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      <ConfirmDialog
+                        open={!!groupPendingDelete}
+                        title={`Delete "${groupPendingDelete?.label ?? ""}"?`}
+                        description="This removes the group and every keyword in it from the Apollo import dropdown for everyone. This can't be undone."
+                        confirmLabel="Delete group"
+                        loading={deletingGroup}
+                        onClose={() => setGroupPendingDelete(null)}
+                        onConfirm={() => void confirmRemoveGroup()}
+                      />
                     </div>
                   )}
 

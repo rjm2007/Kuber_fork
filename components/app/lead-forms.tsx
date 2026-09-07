@@ -18,12 +18,12 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
-import { LOCATION_MAP, APOLLO_TITLES, APOLLO_SENIORITIES, EMPLOYEE_RANGES, INDUSTRY_KEYWORD_CATEGORIES, BATCH_COLORS, getBatchColor, resolveApolloKeyword, type BatchColorName } from "@/lib/constants";
+import { LOCATION_MAP, APOLLO_TITLES, APOLLO_SENIORITIES, EMPLOYEE_RANGES, BATCH_COLORS, getBatchColor, resolveApolloKeyword, parseIndustryKeywordGroups, type BatchColorName, type IndustryKeywordGroup } from "@/lib/constants";
 import { LocationsPicker } from "@/components/ui/locations-picker";
 import { InfoTip } from "@/components/ui/info-tip";
 import { ApolloPeopleAdvanced, buildPeopleAdvanced } from "@/components/app/apollo-people-advanced";
 import { ApolloCostNote } from "@/components/app/apollo-cost-note";
-import { importExcelDirect, createLead, patchLead, patchOrg, fetchUsers, fetchUsage, type Profile, type PreviewLead, type DuplicateOwner } from "@/lib/api-client";
+import { importExcelDirect, createLead, patchLead, patchOrg, fetchUsers, fetchUsage, fetchSettings, patchSettings, type Profile, type PreviewLead, type DuplicateOwner } from "@/lib/api-client";
 import { ensureSplitNames } from "@/lib/utils/person-name";
 import { supabase } from "@/lib/supabase";
 import { BatchConfirmModal } from "@/components/app/batch-confirm-modal";
@@ -146,6 +146,21 @@ export function useAssignableEmployees(enabled: boolean) {
   }, [enabled]);
 
   return employees;
+}
+
+// The Industry Segments taxonomy (Settings > Industry Segments) is
+// per-company data now, not a compile-time constant — fetched once per form
+// so both the dropdown and the keyword-group-count summary below it agree.
+function useIndustryKeywordGroups() {
+  const [groups, setGroups] = useState<IndustryKeywordGroup[]>([]);
+
+  useEffect(() => {
+    getToken().then((token) => fetchSettings(token)).then((settings) => {
+      setGroups(parseIndustryKeywordGroups(settings.industry_keyword_groups));
+    }).catch(() => {});
+  }, []);
+
+  return [groups, setGroups] as const;
 }
 
 function AssignToField({
@@ -279,36 +294,44 @@ function notifyDuplicateOwners(duplicates: DuplicateOwner[] | undefined, employe
 
 // ─── IndustryKeywordsDropdown ─────────────────────────────────────────────────
 
-const ALL_INDUSTRY_KEYWORDS = INDUSTRY_KEYWORD_CATEGORIES.flatMap((c) => c.keywords.map((k) => k.label));
-
 function IndustryKeywordsDropdown({
   selected,
   onChange,
+  groups,
+  onGroupsChange,
 }: {
   selected: string[];
   onChange: (v: string[]) => void;
+  groups: IndustryKeywordGroup[];
+  onGroupsChange: (groups: IndustryKeywordGroup[]) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [customInput, setCustomInput] = useState("");
+  const [targetGroupId, setTargetGroupId] = useState("");
+  const [adding, setAdding] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const customInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     function handler(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      const target = e.target as HTMLElement;
+      // The group Select's popover is portaled to document.body (Radix), so it
+      // never appears inside `ref` — without this check, picking a group from
+      // it registered as an "outside" click and closed the whole panel.
+      if (target.closest("[data-radix-popper-content-wrapper]")) return;
+      if (ref.current && !ref.current.contains(target)) setOpen(false);
     }
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  const customKeywords = selected.filter((kw) => !ALL_INDUSTRY_KEYWORDS.includes(kw));
+  // Default the "add to which group" choice to the first group once the
+  // company's taxonomy has loaded.
+  useEffect(() => {
+    if (!targetGroupId && groups.length > 0) setTargetGroupId(groups[0].id);
+  }, [groups, targetGroupId]);
 
-  const displayCategories: Array<{ id: string; label: string; keywords: { label: string }[] }> = [
-    ...INDUSTRY_KEYWORD_CATEGORIES,
-    ...(customKeywords.length > 0
-      ? [{ id: "custom", label: "Custom Keywords", keywords: customKeywords.map((label) => ({ label })) }]
-      : []),
-  ];
+  const allKeywordLabels = groups.flatMap((g) => g.keywords.map((k) => k.label));
 
   function toggleKw(label: string) {
     onChange(selected.includes(label) ? selected.filter((s) => s !== label) : [...selected, label]);
@@ -323,12 +346,35 @@ function IndustryKeywordsDropdown({
     }
   }
 
-  function addCustomKeyword() {
-    const kw = customInput.trim();
-    if (!kw || selected.includes(kw)) return;
-    onChange([...selected, kw]);
-    setCustomInput("");
-    customInputRef.current?.focus();
+  // Attaches the typed label as a real keyword on an existing group and saves
+  // it to the company's settings immediately — it must survive this session
+  // and show up for every future import, not just live in local state like
+  // the old flat "custom keyword" bucket did. Creating a brand-new group is a
+  // Settings-only action (Settings > Industry Segments).
+  async function addKeywordToGroup() {
+    const label = customInput.trim();
+    const targetGroup = groups.find((g) => g.id === targetGroupId);
+    if (!label || !targetGroup) return;
+    if (targetGroup.keywords.some((k) => k.label.toLowerCase() === label.toLowerCase())) {
+      toast.error(`"${label}" is already in ${targetGroup.label}.`);
+      return;
+    }
+    const updatedGroups = groups.map((g) =>
+      g.id === targetGroupId ? { ...g, keywords: [...g.keywords, { id: crypto.randomUUID(), label, query: label }] } : g,
+    );
+    setAdding(true);
+    try {
+      const token = await getToken();
+      await patchSettings(token, { industry_keyword_groups: JSON.stringify(updatedGroups) });
+      onGroupsChange(updatedGroups);
+      onChange([...selected, label]);
+      setCustomInput("");
+      customInputRef.current?.focus();
+    } catch {
+      toast.error("Couldn't save the new keyword — please try again.");
+    } finally {
+      setAdding(false);
+    }
   }
 
   const selectedCount = selected.length;
@@ -382,62 +428,57 @@ function IndustryKeywordsDropdown({
             {/* Header */}
             <div className="flex items-center justify-between px-4 py-2.5 border-b border-border bg-secondary/40">
               <p className="eyebrow">
-                {selectedCount > 0 ? `${selectedCount} of ${ALL_INDUSTRY_KEYWORDS.length} selected` : "Select industry segments"}
+                {selectedCount > 0 ? `${selectedCount} of ${allKeywordLabels.length} selected` : "Select industry segments"}
               </p>
               <Button
                 type="button"
                 variant="link"
                 size="sm"
-                onClick={() => onChange([...ALL_INDUSTRY_KEYWORDS])}
+                onClick={() => onChange([...allKeywordLabels])}
                 className="h-auto p-0 text-[11px]"
               >
                 Select all
               </Button>
             </div>
 
-            {/* 3-column grid of categories */}
+            {/* 3-column grid of groups */}
             <div className="grid grid-cols-3 max-h-72 overflow-y-auto">
               {(() => {
-                type CatItem = { id: string; label: string; keywords: { label: string }[] };
-                const cols: CatItem[][] = [[], [], []];
-                displayCategories.forEach((cat, i) => cols[i % 3].push(cat));
+                const cols: IndustryKeywordGroup[][] = [[], [], []];
+                groups.forEach((g, i) => cols[i % 3].push(g));
                 return cols.map((col, ci) => (
                   <div key={ci} className={cn("flex flex-col", ci < 2 && "border-r border-border")}>
-                    {col.map((cat, catIdx) => {
-                      const catKws = cat.keywords.map((k) => k.label);
-                      const allCatSelected = catKws.every((k) => selected.includes(k));
-                      const someCatSelected = catKws.some((k) => selected.includes(k));
-                      const isCustom = cat.id === "custom";
+                    {col.map((group, groupIdx) => {
+                      const groupKws = group.keywords.map((k) => k.label);
+                      const allGroupSelected = groupKws.length > 0 && groupKws.every((k) => selected.includes(k));
+                      const someGroupSelected = groupKws.some((k) => selected.includes(k));
                       return (
-                        <div key={cat.id} className={cn("px-3 pt-3 pb-2", catIdx > 0 && "border-t border-border/60", isCustom && "bg-amber-500/5")}>
-                          {/* Category header — centered, bold */}
+                        <div key={group.id} className={cn("px-3 pt-3 pb-2", groupIdx > 0 && "border-t border-border/60")}>
+                          {/* Group header — centered, bold */}
                           <Button
                             type="button"
                             variant="ghost"
-                            onClick={() => toggleCategoryKws(catKws)}
+                            onClick={() => toggleCategoryKws(groupKws)}
                             className="w-full h-auto flex-col items-center gap-1.5 mb-2 rounded-none p-0 font-normal group hover:bg-transparent"
                           >
                             <div className="flex items-center gap-2">
                               <AppCheckbox
                                 size="sm"
-                                checked={allCatSelected ? true : someCatSelected ? "indeterminate" : false}
+                                checked={allGroupSelected ? true : someGroupSelected ? "indeterminate" : false}
                               />
-                              <span className={cn(
-                                "text-[11px] font-bold uppercase tracking-wide transition-colors text-center leading-tight",
-                                isCustom ? "text-amber-400 group-hover:text-amber-300" : "text-foreground group-hover:text-primary",
-                              )}>
-                                {cat.label}
+                              <span className="text-[11px] font-bold uppercase tracking-wide transition-colors text-center leading-tight text-foreground group-hover:text-primary">
+                                {group.label}
                               </span>
                             </div>
                             <div className="w-full h-px bg-border/60" />
                           </Button>
                           {/* Keywords */}
                           <div className="space-y-0.5">
-                            {cat.keywords.map((kw) => {
+                            {group.keywords.map((kw) => {
                               const checked = selected.includes(kw.label);
                               return (
                                 <div
-                                  key={kw.label}
+                                  key={kw.id}
                                   className={cn(
                                     "w-full flex items-center gap-2 px-2 py-1 rounded transition-colors",
                                     checked ? "bg-primary/10" : "hover:bg-secondary/60",
@@ -454,18 +495,6 @@ function IndustryKeywordsDropdown({
                                       {kw.label}
                                     </span>
                                   </Button>
-                                  {isCustom && (
-                                    <Button
-                                      type="button"
-                                      variant="ghost"
-                                      size="icon"
-                                      onClick={() => onChange(selected.filter((s) => s !== kw.label))}
-                                      className="size-5 shrink-0 rounded text-muted-foreground hover:bg-transparent hover:text-destructive"
-                                      title="Remove custom keyword"
-                                    >
-                                      <X className="size-3" />
-                                    </Button>
-                                  )}
                                 </div>
                               );
                             })}
@@ -478,9 +507,14 @@ function IndustryKeywordsDropdown({
               })()}
             </div>
 
-            {/* Manual keyword input */}
+            {/* Add a keyword to an existing group — saved to Settings immediately */}
             <div className="border-t border-border px-4 py-3 bg-secondary/20">
-              <p className="eyebrow mb-2">Add custom keyword</p>
+              <div className="flex items-center justify-between mb-2">
+                <p className="eyebrow">Add keyword to a group</p>
+                <a href="/settings?section=knowledge&knowledge=industry-segments" className="text-[11px] text-muted-foreground hover:text-foreground underline underline-offset-2">
+                  Manage groups in Settings
+                </a>
+              </div>
               <div className="flex items-center gap-2">
                 <Input
                   ref={customInputRef}
@@ -488,17 +522,27 @@ function IndustryKeywordsDropdown({
                   value={customInput}
                   onChange={(e) => setCustomInput(e.target.value)}
                   onKeyDown={(e) => {
-                    if (e.key === "Enter") { e.preventDefault(); addCustomKeyword(); }
+                    if (e.key === "Enter") { e.preventDefault(); addKeywordToGroup(); }
                     if (e.key === "Escape") setOpen(false);
                   }}
                   placeholder="e.g. masterbatch manufacturer…"
-                  className="h-auto flex-1 rounded-md bg-card px-3 py-1.5 text-xs"
+                  className="h-auto flex-1 rounded-md px-3 py-1.5 text-xs"
                 />
+                <Select value={targetGroupId} onValueChange={setTargetGroupId}>
+                  <SelectTrigger className="h-auto w-40 shrink-0 rounded-md px-3 py-1.5 text-xs">
+                    <SelectValue placeholder="Group…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {groups.map((g) => (
+                      <SelectItem key={g.id} value={g.id}>{g.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 <Button
                   type="button"
                   size="sm"
-                  onClick={addCustomKeyword}
-                  disabled={!customInput.trim() || selected.includes(customInput.trim())}
+                  onClick={addKeywordToGroup}
+                  disabled={!customInput.trim() || !targetGroupId || adding}
                   className="h-auto shrink-0 gap-1 px-3 py-1.5 text-xs [&_svg]:size-3"
                 >
                   <Plus /> Add
@@ -554,6 +598,7 @@ const LocationsDropdown = LocationsPicker;
 
 export function ApolloForm({ onImport }: { onImport: (n: number) => void }) {
   const [keywords,      setKeywords     ] = useState<string[]>([]);
+  const [industryKeywordGroups, setIndustryKeywordGroups] = useIndustryKeywordGroups();
   const [locations,     setLocations    ] = useState<string[]>([]);
   // The ONLY two knobs. Search depth is no longer a choice — the server pages
   // until these are met (apollo-search/route.ts). Every lead landed here
@@ -637,7 +682,7 @@ export function ApolloForm({ onImport }: { onImport: (n: number) => void }) {
   // group is paged until its own cap is met, so the ceiling is groups ×
   // per-keyword cap (bounded by the overall cap) — shown below so a big
   // multi-keyword selection doesn't surprise anyone at import time.
-  const keywordGroupCount = new Set(keywords.map(resolveApolloKeyword)).size;
+  const keywordGroupCount = new Set(keywords.map((label) => resolveApolloKeyword(industryKeywordGroups, label))).size;
   // The server splits the import evenly across keywords (apollo-search), so this
   // is what each one actually gets. The per-keyword cap only means anything when
   // it is SMALLER than this — 100 leads across 9 groups is ~12 each, and picking
@@ -768,7 +813,12 @@ export function ApolloForm({ onImport }: { onImport: (n: number) => void }) {
       <form onSubmit={handleFormSubmit} className="space-y-4">
         {step === 0 && (
           <div className="space-y-4">
-            <IndustryKeywordsDropdown selected={keywords} onChange={setKeywords} />
+            <IndustryKeywordsDropdown
+              selected={keywords}
+              onChange={setKeywords}
+              groups={industryKeywordGroups}
+              onGroupsChange={setIndustryKeywordGroups}
+            />
             <LocationsDropdown
               selected={locations}
               onChangeSelected={setLocations}
