@@ -5,6 +5,7 @@ import { ApolloSearchSchema } from "@/lib/validators/leads";
 import { searchPeople } from "@/lib/services/apollo";
 import { getServiceSecret } from "@/lib/services/service-keys";
 import { resolveApolloKeyword } from "@/lib/constants";
+import { orgKey, pickBestContact } from "@/lib/services/lead-ranking";
 // Only used here for counting/ids (the actual enrich pass re-queries its own
 // full target shape) — deliberately a narrower local type, not EnrichTarget.
 type NewLeadTarget = { id: string; apollo_id: string; first_name: string | null; organization_id: string | null; org_name: string | null };
@@ -30,7 +31,7 @@ const APOLLO_LEADS_PER_PAGE = 100;
  *
  * The three stop conditions that keep "keep paging" from meaning "page forever":
  *  1. Apollo's own total_entries (known after page 1) — never page past the end.
- *  2. MAX_PAGES_PER_KEYWORD — a wall-clock seatbelt. Each page is an Apollo
+ *  2. SEARCH_TIME_BUDGET_MS — a wall-clock seatbelt. Each page is an Apollo
  *     round trip plus two dedup queries plus an insert; on a 95%-duplicate
  *     niche an uncapped hunt would blow the 300s function limit and get killed
  *     mid-import, leaving a half-written batch.
@@ -41,7 +42,41 @@ const APOLLO_LEADS_PER_PAGE = 100;
  * were sitting on page 4 — the client asked for 25 and got 8 partly because of
  * it. Pages of pure duplicates are now simply skipped over.
  */
-const MAX_PAGES_PER_KEYWORD = 10;
+const MAX_PAGES_PER_KEYWORD = 50;
+
+/**
+ * How long the paging loop may run before it stops itself, in ms.
+ *
+ * WHY A CLOCK AND NOT A PAGE COUNT
+ * The ceiling used to be 10 pages per keyword. Measured against the live
+ * account on 2026-09-07 (scripts/measure-page-ceiling.ts), that was wrong in
+ * both directions at once:
+ *
+ *   TOO TIGHT — 16 of the 22 catalogue keywords hold more than 1,000 people,
+ *   so 10 pages cut them off mid-seam: "pipe" has 44,247 matches and we were
+ *   reading 2% of it. Worse, one-lead-per-company discards roughly half of
+ *   every page TODAY and discards more of it every time the database grows, so
+ *   a 500-lead request that just fits inside 10 pages this month quietly
+ *   returns 200 next quarter. A limit that silently tightens over time is the
+ *   "I asked for 500 and got 400" complaint on a timer.
+ *
+ *   TOO LOOSE — an Apollo page takes ~1.1s measured, plus this route's own DB
+ *   work. Ten keywords at ten pages is already ~200s against a 300s
+ *   maxDuration. Simply removing the cap, on a keyword like "pipe", means the
+ *   function is killed by the platform mid-write and the client is left with a
+ *   half-written batch — the exact failure that stranded 200 paid leads on
+ *   4 Sep 2026.
+ *
+ * Pages are not the cost; time is. So time is what is capped. 240s leaves a
+ * 60s tail for the import row update, the lead_events seed and the enrich
+ * kick — all of which must complete or the import is worse than useless.
+ *
+ * ELAPSED IS LOGGED on every import (SEARCH_TIME_BUDGET in enrichment_logs, and
+ * search_criteria.elapsed_ms) precisely because the 1.1s/page figure is
+ * measured but the DB share of a page is not. Tune this from that data, not
+ * from this comment.
+ */
+const SEARCH_TIME_BUDGET_MS = 240_000;
 
 export async function POST(req: NextRequest) {
   let user: Awaited<ReturnType<typeof requireManager>>;
@@ -163,6 +198,12 @@ export async function POST(req: NextRequest) {
   let inserted = 0;
   let skippedDuplicate = 0;
   let skippedUnenrichable = 0;
+  /** Companies skipped because we already hold a WORKING contact there. */
+  let skippedExistingOrg = 0;
+  /** Extra people at a company this same import already took one person from. */
+  let skippedSameOrg = 0;
+  const SKIPPED_ORG_SAMPLE_CAP = 50;
+  const skippedOrgSample: string[] = [];
   /** Previously deleted leads brought back rather than skipped — see the
    *  revive block below for why they cannot just be re-inserted. */
   let recoveredDeleted = 0;
@@ -189,10 +230,47 @@ export async function POST(req: NextRequest) {
   // max_total_leads and max_leads_per_keyword are the ONLY credit-spend
   // ceilings for this import (lib/validators/leads.ts ApolloSearchSchema), and
   // now also the thing that decides when to stop paging.
+  // ── One lead per company ─────────────────────────────────────────────────
+  // Loaded ONCE per import, not per page: 3,116 names on the live workspace
+  // today, and the keyword loop below can run hundreds of pages.
+  //
+  // Both sides go through orgKey() so "Acme Plastics Pvt. Ltd." matches "Acme
+  // Plastics Private Limited" — the free people-search returns no organization
+  // id and no domain (docs/apollo-research/search-person-fields.json), so the
+  // company NAME is the only thing there is to match on.
+  const blockedOrgKeys = new Set<string>();
+  {
+    const { data: blocked, error: blockedErr } = await db.rpc("blocked_org_names", { p_company: user.companyId });
+    if (blockedErr) {
+      // Fail the import rather than silently spend credits on duplicates —
+      // that is the exact outcome this feature exists to prevent.
+      return fail(500, "DB_ERROR", `Could not load the already-contacted company list: ${blockedErr.message}`);
+    }
+    // A single text[] on purpose — a set-returning version is silently capped
+    // at 1,000 rows by PostgREST, which would have let 2,116 already-covered
+    // companies through unnoticed. See the migration for the measurement.
+    for (const name of (blocked ?? []) as string[]) {
+      const k = orgKey(name);
+      if (k) blockedOrgKeys.add(k);
+    }
+  }
+  /** Companies THIS import has already taken its one person from. Session-level
+   *  on purpose: the cap is one lead per company across the whole import, not
+   *  one per page or one per keyword. */
+  const takenOrgKeys = new Set<string>();
+
   let overallCapHit = false;
+  /** Set when the paging loop stopped itself on the clock rather than because
+   *  it ran out of leads to find — the difference decides whether the client
+   *  should change the search or simply run it again. */
+  let timeBudgetHit = false;
+  let keywordsSearched = 0;
+  const searchStartedAt = Date.now();
+  const outOfTime = () => Date.now() - searchStartedAt > SEARCH_TIME_BUDGET_MS;
 
   for (const [keywordIndex, { query, label }] of resolvedKeywords.entries()) {
     if (overallCapHit) break;
+    if (outOfTime()) { timeBudgetHit = true; break; }
 
     // FAIR SHARE. Keywords used to run first-come-first-served against a single
     // shared cap, so the first one simply ate the import: asking for 50 leads
@@ -215,6 +293,7 @@ export async function POST(req: NextRequest) {
       ? Math.min(fairShare, max_leads_per_keyword)
       : fairShare;
 
+    keywordsSearched++;
     let keywordInserted = 0;
     // Tightened to Apollo's real result count once page 1 tells us what it is.
     let pageCeiling = MAX_PAGES_PER_KEYWORD;
@@ -223,6 +302,9 @@ export async function POST(req: NextRequest) {
 
     for (let page = 1; page <= pageCeiling; page++) {
       if (overallCapHit || keywordInserted >= keywordBudget) break;
+      // Checked BEFORE the request, never after: stopping once the clock has
+      // already run out still leaves the response to be written.
+      if (outOfTime()) { timeBudgetHit = true; break; }
       let result;
       try {
         result = await searchPeople({
@@ -297,7 +379,18 @@ export async function POST(req: NextRequest) {
       // that is what they are from the client's point of view. Ones that still
       // hold an email come back at zero credit cost; the rest re-enter the
       // normal reveal path.
-      const revivable = people.filter((p) => deletedRows.has(p.id));
+      // The one-lead-per-company rule applies here too. A revived lead occupies
+      // a company exactly like a fresh one, and this block runs BEFORE the
+      // selection step below, so without this filter a restored lead would be a
+      // free pass to a second contact at a company we already cover.
+      const revivable = people.filter((p) => {
+        if (!deletedRows.has(p.id)) return false;
+        const k = orgKey(p.organization?.name);
+        if (!k) return true;
+        if (blockedOrgKeys.has(k)) { skippedExistingOrg++; return false; }
+        if (takenOrgKeys.has(k)) { skippedSameOrg++; return false; }
+        return true;
+      });
       if (revivable.length > 0) {
         const roomForRevive = Math.min(keywordBudget - keywordInserted, maxTotalLeads - inserted);
         const toRevive = revivable.slice(0, Math.max(0, roomForRevive));
@@ -318,6 +411,8 @@ export async function POST(req: NextRequest) {
             if (inserted >= maxTotalLeads) overallCapHit = true;
             for (const r of revived ?? []) {
               const person = toRevive.find((p) => p.id === r.apollo_id);
+              const revivedKey = orgKey(person?.organization?.name);
+              if (revivedKey) takenOrgKeys.add(revivedKey);
               newLeadTargets.push({
                 id: r.id as string,
                 apollo_id: r.apollo_id as string,
@@ -343,6 +438,54 @@ export async function POST(req: NextRequest) {
           skippedUnenrichable += archivedIds.size;
           newPeople = newPeople.filter((p) => !archivedIds.has(p.id));
         }
+      }
+
+      if (newPeople.length === 0) continue;
+
+      // ── One lead per company ───────────────────────────────────────────
+      // MUST run before the cap trim below. Trimming first would cut the page
+      // to the remaining budget and only then collapse it per company, so an
+      // import asking for 50 would insert far fewer than 50 — the "I typed 500
+      // and got 400" complaint all over again.
+      {
+        const survivors = newPeople.filter((p) => {
+          const k = orgKey(p.organization?.name);
+          // No usable company name: keep the person. Dropping them would lose a
+          // real prospect over a blank field.
+          if (!k) return true;
+          if (blockedOrgKeys.has(k)) {
+            skippedExistingOrg++;
+            if (skippedOrgSample.length < SKIPPED_ORG_SAMPLE_CAP) {
+              skippedOrgSample.push(p.organization?.name ?? "Unknown");
+            }
+            return false;
+          }
+          return true;
+        });
+
+        // Group what is left by company and keep only the best contact at each.
+        // Everyone at a company this import already claimed is dropped here too,
+        // which is what makes the rule hold across pages and across keywords.
+        const byOrg = new Map<string, typeof survivors>();
+        const unnamed: typeof survivors = [];
+        for (const p of survivors) {
+          const k = orgKey(p.organization?.name);
+          if (!k) { unnamed.push(p); continue; }
+          if (takenOrgKeys.has(k)) { skippedSameOrg++; continue; }
+          const bucket = byOrg.get(k);
+          if (bucket) bucket.push(p); else byOrg.set(k, [p]);
+        }
+
+        const chosen: typeof survivors = [];
+        for (const [, candidates] of byOrg) {
+          const best = pickBestContact(candidates);
+          if (!best) continue;
+          // Everyone else at this company is a duplicate we are choosing not
+          // to pay a reveal credit for.
+          skippedSameOrg += candidates.length - 1;
+          chosen.push(best);
+        }
+        newPeople = [...chosen, ...unnamed];
       }
 
       if (newPeople.length === 0) continue;
@@ -444,6 +587,8 @@ export async function POST(req: NextRequest) {
 
       for (const newLead of insertedLeads ?? []) {
         const person = newPeople.find((p) => p.id === newLead.apollo_id);
+        const claimedKey = orgKey(person?.organization?.name);
+        if (claimedKey) takenOrgKeys.add(claimedKey);
         if (person?.has_email) {
           newLeadTargets.push({
             id: newLead.id,
@@ -469,13 +614,45 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  const elapsedMs = Date.now() - searchStartedAt;
+  if (timeBudgetHit) {
+    const unsearched = resolvedKeywords.length - keywordsSearched;
+    warnings.unshift(
+      `Stopped after ${Math.round(elapsedMs / 1000)}s to finish safely — this import found ${inserted.toLocaleString()} of the ${maxTotalLeads.toLocaleString()} requested`
+      + (unsearched > 0 ? `, and ${unsearched} keyword(s) were not searched at all` : "")
+      + `. Nothing was lost: run the same search again to carry on from here.`
+    );
+  }
+
+  // The single most confusing outcome of one-lead-per-company: the manager asks
+  // for 500, we skip 3,000 companies they already have, and 150 come back. That
+  // is correct and it must never look like a bug, so it is stated first and
+  // stored with the import rather than only flashed in the response.
+  if (skippedExistingOrg > 0) {
+    warnings.unshift(`Skipped ${skippedExistingOrg.toLocaleString()} contact(s) — you already have a working contact at their company. One lead per company is always on.`);
+  }
+  if (skippedSameOrg > 0) {
+    warnings.push(`Skipped ${skippedSameOrg.toLocaleString()} extra contact(s) at companies this import already took someone from — the best-placed contact was kept at each.`);
+  }
+
   if (importId) {
     // warnings explain exactly why a keyword stopped short. They were returned to
     // the browser and lost; now they outlive the request that produced them.
     await db.from("imports").update({
       lead_count: inserted,
       search_warnings: warnings.length > 0 ? warnings : null,
+      search_criteria: { ...searchCriteria, elapsed_ms: elapsedMs, pages_time_budget_hit: timeBudgetHit },
     }).eq("id", importId);
+    // Same numbers in the log stream, where the watchdog dashboards read from.
+    await db.from("enrichment_logs").insert({
+      source: "system",
+      event: "SEARCH_TIME_BUDGET",
+      payload: {
+        import_id: importId, elapsed_ms: elapsedMs, budget_ms: SEARCH_TIME_BUDGET_MS,
+        hit: timeBudgetHit, inserted, requested: maxTotalLeads,
+        keywords_total: resolvedKeywords.length, keywords_searched: keywordsSearched,
+      },
+    }).then(() => {}, () => {});
   }
 
   // Assignment is deferred to autoAssignEnrichedLeads (runs per-lead once each
@@ -521,6 +698,10 @@ export async function POST(req: NextRequest) {
     requested: maxTotalLeads,
     skipped: skippedDuplicate,
     skipped_unenrichable: skippedUnenrichable,
+    // One lead per company, split by reason so the UI can say which it was.
+    skipped_existing_org: skippedExistingOrg,
+    skipped_same_org: skippedSameOrg,
+    skipped_org_sample: skippedOrgSample,
     recovered_deleted: recoveredDeleted,
     orgs_created: orgsCreated,
     orgs_reused: orgsReused,
@@ -531,6 +712,8 @@ export async function POST(req: NextRequest) {
     // real balance was lower than the requested cap.
     apollo_credits_remaining: apolloCredits.remaining,
     effective_max_total_leads: maxTotalLeads,
+    elapsed_ms: elapsedMs,
+    time_budget_hit: timeBudgetHit,
     ...(warnings.length > 0 ? { warnings } : {}),
   });
 }
