@@ -1,0 +1,23 @@
+{
+  "id": "65491865edbaf20001009e1a",
+  "first_name": "Carl",
+  "last_name_obfuscated": "Ja***n",
+  "title": "CEO",
+  "last_refreshed_at": "2026-08-06T09:42:42.000+00:00",
+  "has_email": true,
+  "has_city": true,
+  "has_state": true,
+  "has_country": true,
+  "has_direct_phone": "Yes",
+  "organization": {
+    "name": "Octagon Blown Film Control",
+    "has_industry": true,
+    "has_phone": true,
+    "has_city": true,
+    "has_state": true,
+    "has_country": true,
+    "has_zip_code": true,
+    "has_revenue": false,
+    "has_employee_count": true
+  }
+}

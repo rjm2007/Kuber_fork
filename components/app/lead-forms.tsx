@@ -688,6 +688,8 @@ export function ApolloForm({ onImport }: { onImport: (n: number) => void }) {
       const skipped = json?.data?.skipped ?? 0;
       const skippedUnenrichable = json?.data?.skipped_unenrichable ?? 0;
       const recoveredDeleted = json?.data?.recovered_deleted ?? 0;
+      const skippedExistingOrg = json?.data?.skipped_existing_org ?? 0;
+      const skippedSameOrg = json?.data?.skipped_same_org ?? 0;
 
       // A short import is the normal case on a well-mined niche, and it used to
       // be reported as a bare lead count with no reason — which is exactly why
@@ -699,6 +701,11 @@ export function ApolloForm({ onImport }: { onImport: (n: number) => void }) {
         if (skipped > 0) parts.push(`${skipped} already in your list`);
         if (recoveredDeleted > 0) parts.push(`${recoveredDeleted} restored from deleted`);
         if (skippedUnenrichable > 0) parts.push(`${skippedUnenrichable} have no email in Apollo`);
+        // One lead per company is the single biggest reason an import now comes
+        // back short, so it has to be said in the same breath as the number —
+        // otherwise "I asked for 500 and got 150" reads as a bug.
+        if (skippedExistingOrg > 0) parts.push(`${skippedExistingOrg} at companies you already cover`);
+        if (skippedSameOrg > 0) parts.push(`${skippedSameOrg} were extra people at the same companies`);
         toast.warning(parts.join(" · "), {
           description: warnings.length > 0 ? warnings.slice(0, 3).join("  ") : undefined,
           duration: 12000,
@@ -707,9 +714,11 @@ export function ApolloForm({ onImport }: { onImport: (n: number) => void }) {
 
       if (inserted === 0) {
         // Nothing was saved — don't redirect into an empty batch, tell the user why.
-        const why = skipped > 0
-          ? `All ${skipped} matching people are already in your list.`
-          : "No leads matched this search. Try different keywords or locations.";
+        const why = skippedExistingOrg > 0
+          ? `Every company this search found is one you already have a contact at (${skippedExistingOrg} contact(s) skipped). Only one lead is taken per company. Try different keywords or a new region.`
+          : skipped > 0
+            ? `All ${skipped} matching people are already in your list.`
+            : "No leads matched this search. Try different keywords or locations.";
         setError(warnings.length > 0 ? `No leads were imported: ${warnings[0]}` : why);
         setImporting(false);
         return;
@@ -821,6 +830,18 @@ export function ApolloForm({ onImport }: { onImport: (n: number) => void }) {
                 ? "No per-keyword limit is set, so the full total is reachable."
                 : `The per-keyword limit of ${maxPerKeyword} applies on top, so this import can reach at most ${Math.min(maxTotalLeads, maxPerKeyword * keywordGroupCount).toLocaleString()}.`}{" "}
               Apollo is searched as deeply as needed, skipping anyone already in your list.
+            </p>
+            {/* Said BEFORE the search, not only after it. One lead per company
+                is the main reason an import lands short of the number typed
+                above, and a client who reads the reason afterwards has already
+                decided it is broken. */}
+            <p className="text-xs text-muted-foreground">
+              <span className="font-medium text-foreground">One lead per company.</span>{" "}
+              You get a single contact at each company — the person most likely to
+              buy, favouring purchasing and procurement roles over job titles that
+              simply sound senior. Companies where you already have a working
+              contact are skipped entirely, so no credit is spent twice on the same
+              business. This means a search can return fewer leads than requested.
             </p>
             <ApolloCostNote
               credits={maxTotalLeads}
