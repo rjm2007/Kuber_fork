@@ -223,16 +223,58 @@ export function parseIndustryKeywordGroups(raw: string | null | undefined): Indu
   if (!raw) return DEFAULT_INDUSTRY_KEYWORD_GROUPS;
   try {
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) && parsed.length > 0 ? parsed : DEFAULT_INDUSTRY_KEYWORD_GROUPS;
+    if (!Array.isArray(parsed) || parsed.length === 0) return DEFAULT_INDUSTRY_KEYWORD_GROUPS;
+    const clean = sanitizeKeywordGroups(parsed);
+    return clean.length > 0 ? clean : DEFAULT_INDUSTRY_KEYWORD_GROUPS;
   } catch {
     return DEFAULT_INDUSTRY_KEYWORD_GROUPS;
   }
 }
 
+/**
+ * Keep only what the import can actually use.
+ *
+ * This value is edited by hand from Settings > Industry Segments, so its shape
+ * is not guaranteed by anything at write time. Casting it straight to
+ * IndustryKeywordGroup[] was a live 500 waiting to happen: a group saved
+ * without a `keywords` array makes `group.keywords.find(...)` throw inside
+ * resolveApolloKeyword, and that runs before any Apollo call, so the whole
+ * import fails with no partial result and no useful message.
+ *
+ * Blank rows are dropped for a related reason. The Kuber Polyplast workspace
+ * already held {"id":"2f01df03-...","label":"","query":""} in its Recyclers
+ * group on 2026-09-07 - someone clicked "add keyword" and saved the empty row.
+ * It renders as an empty option and, if picked, sends an empty q_keywords to
+ * Apollo, which matches on everything else in the request rather than nothing.
+ */
+function sanitizeKeywordGroups(parsed: unknown[]): IndustryKeywordGroup[] {
+  const groups: IndustryKeywordGroup[] = [];
+  for (const raw of parsed) {
+    if (!raw || typeof raw !== "object") continue;
+    const g = raw as Partial<IndustryKeywordGroup>;
+    if (!Array.isArray(g.keywords)) continue;
+    const keywords = g.keywords.filter((k): k is IndustryKeyword =>
+      !!k && typeof k === "object"
+      && typeof k.label === "string" && k.label.trim() !== ""
+      && typeof k.query === "string" && k.query.trim() !== "");
+    if (keywords.length === 0) continue;
+    groups.push({
+      id: typeof g.id === "string" && g.id ? g.id : `group-${groups.length}`,
+      label: typeof g.label === "string" && g.label ? g.label : "Untitled",
+      emoji: typeof g.emoji === "string" ? g.emoji : "",
+      keywords,
+    });
+  }
+  return groups;
+}
+
 /** Resolve a UI keyword label (or a free-typed custom keyword) to the term actually sent to Apollo's q_keywords. */
 export function resolveApolloKeyword(groups: IndustryKeywordGroup[], label: string): string {
   for (const group of groups) {
-    const match = group.keywords.find((k) => k.label === label);
+    // Defensive even after sanitizeKeywordGroups: callers may pass a list they
+    // built themselves, and this function must never be the thing that 500s an
+    // import.
+    const match = group?.keywords?.find((k) => k?.label === label);
     if (match) return match.query;
   }
   return label;
