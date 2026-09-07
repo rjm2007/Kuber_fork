@@ -690,6 +690,16 @@ export function ApolloForm({ onImport }: { onImport: (n: number) => void }) {
       const recoveredDeleted = json?.data?.recovered_deleted ?? 0;
       const skippedExistingOrg = json?.data?.skipped_existing_org ?? 0;
       const skippedSameOrg = json?.data?.skipped_same_org ?? 0;
+      const rescued: Array<{ from: string; to: string; count: number }> = json?.data?.rescued_keywords ?? [];
+      if (rescued.length > 0) {
+        toast.info(
+          `${rescued.length} keyword(s) found nothing, so we searched a closer term instead`,
+          {
+            description: rescued.slice(0, 4).map((r) => `"${r.from}" → "${r.to}" (${r.count.toLocaleString()} found)`).join("  ·  "),
+            duration: 14000,
+          }
+        );
+      }
 
       // A short import is the normal case on a well-mined niche, and it used to
       // be reported as a bare lead count with no reason — which is exactly why
@@ -719,7 +729,16 @@ export function ApolloForm({ onImport }: { onImport: (n: number) => void }) {
           : skipped > 0
             ? `All ${skipped} matching people are already in your list.`
             : "No leads matched this search. Try different keywords or locations.";
-        setError(warnings.length > 0 ? `No leads were imported: ${warnings[0]}` : why);
+        // The old text read "No leads were imported: [X] no results — try
+        // removing location filter or changing keyword", which blamed the
+        // location filter for what is nearly always a keyword-phrasing problem,
+        // and left the client believing they had been charged. Say what
+        // actually happened, and say that it was free.
+        setError(
+          warnings.length > 0
+            ? `No leads were imported. ${warnings[0]} (No Apollo credits were used — searching is free.)`
+            : why
+        );
         setImporting(false);
         return;
       }

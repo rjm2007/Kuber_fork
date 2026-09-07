@@ -6,6 +6,7 @@ import { searchPeople } from "@/lib/services/apollo";
 import { getServiceSecret } from "@/lib/services/service-keys";
 import { resolveApolloKeyword } from "@/lib/constants";
 import { orgKey, pickBestContact } from "@/lib/services/lead-ranking";
+import { keywordVariants, pickBestVariant } from "@/lib/services/keyword-fallback";
 // Only used here for counting/ids (the actual enrich pass re-queries its own
 // full target shape) — deliberately a narrower local type, not EnrichTarget.
 type NewLeadTarget = { id: string; apollo_id: string; first_name: string | null; organization_id: string | null; org_name: string | null };
@@ -304,6 +305,9 @@ export async function POST(req: NextRequest) {
    *  should change the search or simply run it again. */
   let timeBudgetHit = false;
   let keywordsSearched = 0;
+  /** Substitutions made when a typed keyword matched nothing, reported back so
+   *  the client can see what actually ran. */
+  const rescuedKeywords: Array<{ from: string; to: string; count: number }> = [];
   const searchStartedAt = Date.now();
   const outOfTime = () => Date.now() - searchStartedAt > SEARCH_TIME_BUDGET_MS;
 
@@ -334,6 +338,10 @@ export async function POST(req: NextRequest) {
 
     keywordsSearched++;
     let keywordInserted = 0;
+    /** The term actually sent to Apollo. Starts as what the manager chose and
+     *  is only replaced if Apollo has literally nothing for it — see the
+     *  rescue below. */
+    let activeQuery = query;
     // Tightened to Apollo's real result count once page 1 tells us what it is.
     let pageCeiling = MAX_PAGES_PER_KEYWORD;
     let apolloTotalForKeyword = 0;
@@ -347,7 +355,7 @@ export async function POST(req: NextRequest) {
       let result;
       try {
         result = await searchPeople({
-          keyword: query, locations, page,
+          keyword: activeQuery, locations, page,
           titles: titles ?? undefined,
           seniorities: seniorities ?? undefined,
           advanced,
@@ -366,8 +374,50 @@ export async function POST(req: NextRequest) {
         totalEntries += result.total_entries;
         apolloTotalForKeyword = result.total_entries;
         if (result.total_entries === 0) {
-          warnings.push(`[${label}] no results — try removing location filter or changing keyword`);
-          break;
+          // ── Keyword rescue ────────────────────────────────────────────
+          // Apollo matches close to literally against how a company describes
+          // ITSELF. On 2026-09-07 a client typed eleven terms of the shape
+          // "Plastic Bag Manufacturer" and nine returned zero, so the import
+          // brought back nothing and they reported the product as broken.
+          // Nothing was broken and nothing was charged — people-search is free
+          // — but the old message blamed the location filter and gave them no
+          // way to discover that the word "Manufacturer" is what emptied the
+          // result set. Measured across those exact terms, this rescues 15 of
+          // 21 and reaches ~11,900 people that were otherwise invisible.
+          //
+          // Free, and never silent: the substitution is always reported so the
+          // client learns the rule instead of depending on us to guess forever.
+          const tried: Array<{ term: string; count: number }> = [];
+          for (const variant of keywordVariants(query)) {
+            if (outOfTime()) { timeBudgetHit = true; break; }
+            try {
+              const probe = await searchPeople({
+                keyword: variant, locations, page: 1, perPage: 1,
+                titles: titles ?? undefined,
+                seniorities: seniorities ?? undefined,
+                advanced,
+              });
+              tried.push({ term: variant, count: probe.total_entries ?? 0 });
+            } catch { /* a dud variant is not a reason to fail the keyword */ }
+          }
+          const rescue = pickBestVariant(tried);
+          if (!rescue) {
+            warnings.push(`[${label}] Apollo has nothing for "${query}" — it matches company descriptions almost literally, so shorter trade terms work best (try "plastic bags" rather than "Plastic Bag Manufacturer"). Nothing was charged.`);
+            break;
+          }
+          warnings.push(`[${label}] Apollo has nothing for "${query}", so we searched "${rescue.term}" instead and found ${rescue.count.toLocaleString()} people. Shorter trade terms match far better — avoid words like "Manufacturer".`);
+          activeQuery = rescue.term;
+          rescuedKeywords.push({ from: query, to: rescue.term, count: rescue.count });
+          // Restart this keyword on the substituted term.
+          result = await searchPeople({
+            keyword: activeQuery, locations, page: 1,
+            titles: titles ?? undefined,
+            seniorities: seniorities ?? undefined,
+            advanced,
+          });
+          totalEntries += result.total_entries;
+          apolloTotalForKeyword = result.total_entries;
+          if (result.total_entries === 0) break;
         }
         // Apollo cannot give us more than it has. Without this, a keyword with
         // 250 results and a 100-lead cap would keep requesting empty pages up
@@ -753,6 +803,7 @@ export async function POST(req: NextRequest) {
     effective_max_total_leads: maxTotalLeads,
     elapsed_ms: elapsedMs,
     time_budget_hit: timeBudgetHit,
+    rescued_keywords: rescuedKeywords,
     ...(warnings.length > 0 ? { warnings } : {}),
   });
 }
