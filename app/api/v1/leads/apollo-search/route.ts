@@ -107,28 +107,68 @@ export async function POST(req: NextRequest) {
   const apolloKey = await getServiceSecret("apollo", "any" /* one shared Apollo account */);
   if (!apolloKey) return fail(503, "UPSTREAM_APOLLO", "Apollo API key not configured — add one in Settings > Keys");
 
+  const db = dbForUser(user);
+
   // ── Preview mode ──────────────────────────────────────────────────────────
+  // Runs the SAME one-lead-per-company rule as the real import. It used to show
+  // the first five people on page 1 untouched, which meant the preview happily
+  // displayed two contacts at one company and companies the client already
+  // covers — i.e. it demonstrated the exact complaint this feature fixes, on
+  // the screen a client is most likely to judge it by. Preview is free
+  // (people-search costs no credits), so there is no reason for it to model a
+  // different search than the one that will actually run.
   if (preview) {
     let previewPeople: Array<{ firstName: string; lastName: string; email: string; company: string; jobTitle: string }> = [];
     try {
-      const result = await searchPeople({
-        keyword: resolveApolloKeyword(keywords[0]),
-        locations,
-        page: 1,
-        titles: titles ?? undefined,
-        seniorities: seniorities ?? undefined,
-        advanced,
-      });
-      previewPeople = (result.people ?? [])
-        .filter((p) => p.has_email)
-        .slice(0, 5)
-        .map((p) => ({
-          firstName: p.first_name ?? "",
-          lastName: "",
-          email: "••••@" + (p.organization?.name?.toLowerCase().replace(/\s+/g, "") ?? "company") + ".com",
-          company: p.organization?.name ?? "",
-          jobTitle: p.title ?? "",
-        }));
+      const blockedKeys = new Set<string>();
+      const { data: blocked } = await db.rpc("blocked_org_names", { p_company: user.companyId });
+      for (const name of (blocked ?? []) as string[]) {
+        const k = orgKey(name);
+        if (k) blockedKeys.add(k);
+      }
+
+      // Up to 3 pages, stopping as soon as five distinct companies are found.
+      // One page is not enough once the covered-company filter is applied: on a
+      // well-mined keyword page 1 can be almost entirely companies we already
+      // have, and an empty preview reads as a broken search rather than as a
+      // working filter.
+      const seen = new Set<string>();
+      const chosen: Array<{ first_name: string | null; title: string | null; org: string | null }> = [];
+      for (let page = 1; page <= 3 && chosen.length < 5; page++) {
+        const result = await searchPeople({
+          keyword: resolveApolloKeyword(keywords[0]),
+          locations,
+          page,
+          titles: titles ?? undefined,
+          seniorities: seniorities ?? undefined,
+          advanced,
+        });
+        const people = (result.people ?? []).filter((p) => p.has_email);
+        if (people.length === 0) break;
+
+        const byOrg = new Map<string, typeof people>();
+        for (const p of people) {
+          const k = orgKey(p.organization?.name);
+          if (!k || blockedKeys.has(k) || seen.has(k)) continue;
+          const bucket = byOrg.get(k);
+          if (bucket) bucket.push(p); else byOrg.set(k, [p]);
+        }
+        for (const [k, candidates] of byOrg) {
+          if (chosen.length >= 5) break;
+          const best = pickBestContact(candidates);
+          if (!best) continue;
+          seen.add(k);
+          chosen.push({ first_name: best.first_name, title: best.title, org: best.organization?.name ?? null });
+        }
+      }
+
+      previewPeople = chosen.map((p) => ({
+        firstName: p.first_name ?? "",
+        lastName: "",
+        email: "••••@" + (p.org?.toLowerCase().replace(/\s+/g, "") ?? "company") + ".com",
+        company: p.org ?? "",
+        jobTitle: p.title ?? "",
+      }));
     } catch {
       previewPeople = [];
     }
@@ -136,7 +176,6 @@ export async function POST(req: NextRequest) {
   }
 
   // ── Phase 1: Search all keywords/pages, batch-insert leads ───────────────
-  const db = dbForUser(user);
 
   // Never request more than Apollo can actually pay for — if only 40 credits
   // are left, this import gets clamped to 40, not attempted at 50 and left
