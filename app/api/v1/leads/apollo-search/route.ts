@@ -146,7 +146,7 @@ export async function POST(req: NextRequest) {
       // working filter.
       const seen = new Set<string>();
       const chosen: Array<{ first_name: string | null; title: string | null; org: string | null }> = [];
-      let previewQuery = resolveApolloKeyword(industryKeywordGroups, keywords[0]);
+      const previewQuery = resolveApolloKeyword(industryKeywordGroups, keywords[0]);
       for (let page = 1; page <= 3 && chosen.length < 5; page++) {
         const result = await searchPeople({
           keyword: previewQuery,
