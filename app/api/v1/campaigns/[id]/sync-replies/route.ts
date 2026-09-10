@@ -7,6 +7,7 @@ import { INTEREST_TO_TEMPERATURE } from "@/lib/constants";
 import { ok } from "@/lib/api-response";
 import { assertCampaignAccess } from "@/lib/auth/scope";
 import { dbForUser } from "@/lib/supabase/scoped";
+import { recountCampaignTemperature } from "@/lib/services/campaign-counters";
 
 function stripQuotedText(text: string | null | undefined): string | null {
   if (!text) return null;
@@ -267,5 +268,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }
   }
 
+  // Both passes above can set a temperature without counting it.
+  await recountCampaignTemperature(db, masterCampaignId);
   return ok({ found, backfilled });
 }

@@ -82,6 +82,21 @@ function minBodyCharsFor(stepNumber: number): number {
 }
 
 /**
+ * Drop a closing the model wrote itself ("Best," / "Regards" / "Thanks").
+ *
+ * An opening email gets the real signature appended after this, and a follow-up
+ * goes out with none on purpose, so a closing left here is either a second
+ * sign-off or one with nothing under it. "best" was missing from this list and
+ * 216 approved follow-ups ended on a bare "Best," (counted 10 Sep 2026).
+ */
+export function stripTrailingSignOff(body: string): string {
+  return body.replace(
+    /\n+\s*(best|best regards|kind regards|warm regards|regards|best wishes|all the best|sincerely|thanks|many thanks|thank you|cheers)[.,!]?\s*$/i,
+    "",
+  );
+}
+
+/**
  * Does this read as the model talking ABOUT the task instead of doing it?
  *
  * Two signals, both cheap:
@@ -362,7 +377,7 @@ function buildRevisionUserPrompt(
   attachmentName?: string | null,
   aiPromptContext?: string,
 ): string {
-  const parts = [`Email step: ${stepNumber} of 3`];
+  const parts = [`Email step: ${stepNumber}`];
   if (aiPromptContext?.trim()) parts.push(`Campaign context: ${aiPromptContext.trim()}`);
 
   parts.push(
@@ -505,7 +520,7 @@ function buildUserPrompt(
   const org = unwrapOrg(lead.organizations);
   const lines = [
     `Campaign: "${campaignName}"`,
-    `Email step: ${stepNumber} of 3${stepNumber > 1 ? " (a follow-up to a previous cold email the prospect did not reply to)" : ""}`,
+    `Email step: ${stepNumber}${stepNumber > 1 ? " (a follow-up to a previous cold email the prospect did not reply to)" : ""}`,
     `Name: ${[lead.first_name, lead.last_name].filter(Boolean).join(" ") || "Unknown"}`,
     `Title: ${lead.title ?? lead.headline ?? "Unknown"}`,
     `Seniority: ${lead.seniority ?? "Unknown"}`,
@@ -522,6 +537,49 @@ function buildUserPrompt(
     lines.push(`Additional instruction: ${customInstruction.trim()}`);
   }
   return lines.join("\n");
+}
+
+type EarlierEmail = { step: number; body: string };
+
+/** What this lead has already been given in this campaign, oldest first.
+ *  The live draft per earlier step: failed/rejected rows are not what was sent,
+ *  and the partial unique index guarantees at most one other row per step. */
+async function loadEarlierEmails(db: SupabaseClient, campaignId: string, leadId: string, stepNumber: number): Promise<EarlierEmail[]> {
+  const { data } = await db
+    .from("email_drafts")
+    .select("step_number, body")
+    .eq("campaign_id", campaignId)
+    .eq("lead_id", leadId)
+    .lt("step_number", stepNumber)
+    .not("status", "in", "(failed,rejected)")
+    .order("step_number", { ascending: true });
+  return (data ?? [])
+    .map((d) => ({ step: d.step_number as number, body: htmlToPlainText((d.body as string | null) ?? "").trim() }))
+    .filter((d) => d.body && !/^\{\{custom(?:Subject|Body)\d*\}\}$/.test(d.body));
+}
+
+/**
+ * The earlier emails, handed to the model writing a follow-up.
+ *
+ * It used to be told only "Email step: N", so it could not avoid what it could
+ * not see: on 10 Sep 2026 one lead's follow-ups 1 and 2 were 73% identical and
+ * opened with the same sentence. FOLLOWUP_CONTRACT carries the rule; this is
+ * the data it is applied to. Each capped so a long opening pitch cannot crowd
+ * out the prompt.
+ */
+export function earlierEmailsBlock(earlier: EarlierEmail[]): string {
+  if (earlier.length === 0) return "";
+  return [
+    "",
+    "",
+    "[EMAILS ALREADY SENT TO THEM] - oldest first. Yours comes next.",
+    ...earlier.map((e) => `--- ${e.step === 1 ? "Opening email" : `Follow-up ${e.step - 1}`} ---\n${e.body.slice(0, 2000)}`),
+    "",
+    // Restated here, right before the model writes: with the rule only in the
+    // system prompt, a test follow-up still reused an earlier first sentence word
+    // for word (Dev, 10 Sep 2026).
+    "Yours must not reuse any sentence from these, the first one included: open with different words, describe their business from a different angle, and ask a different question.",
+  ].join("\n");
 }
 
 // Bug fix (found while testing the enrichment pipeline): fetchDraftTargets'
@@ -856,7 +914,8 @@ export async function generateOneDraft(
           effectiveAttachmentName,
           aiPromptContext ?? campaign?.ai_prompt_context ?? undefined,
         )
-      : buildUserPrompt(lead, campaignName, customInstruction, aiPromptContext, stepNumber, effectiveAttachmentName);
+      : buildUserPrompt(lead, campaignName, customInstruction, aiPromptContext, stepNumber, effectiveAttachmentName)
+        + (stepNumber > 1 ? earlierEmailsBlock(await loadEarlierEmails(db, campaignId, lead.id, stepNumber)) : "");
 
     const { json } = await complete<DraftLLMOutput | RevisionDraftLLMOutput>({
       system: systemPrompt,
@@ -986,12 +1045,7 @@ export async function generateOneDraft(
       .replace(/\[Your (Title|Position)\]/gi, "")
       .replace(/\[Your Contact Information\]/gi, "")
       .replace(/\[Your Company\]/gi, "");
-    if (!isRevision) {
-      aiBody = aiBody.replace(
-        /\n+\s*(best regards|regards|sincerely|warm regards|thanks|thank you|cheers)[.,]?\s*$/i,
-        "",
-      );
-    } else {
+    if (isRevision) {
       // A pasted example email usually ends with its own sign-off block, and the
       // model tends to keep it in `body` even though the signature is appended
       // below. That put "Ashish Sharma" twice into 99 of 100 emails in one
@@ -999,6 +1053,9 @@ export async function generateOneDraft(
       // previous body is normalised with, so it only cuts a real repeat.
       aiBody = stripTrailingSignature(aiBody, effectiveSignature);
     }
+    // A follow-up never carries a closing, revision or not (its signature is
+    // dropped above); a revised opening keeps whatever sign-off it was given.
+    if (!isRevision || stepNumber > 1) aiBody = stripTrailingSignOff(aiBody);
     aiBody = aiBody
       .replace(/\s*[—–]\s*/g, ", ")
       .replace(/\n{3,}/g, "\n\n")
