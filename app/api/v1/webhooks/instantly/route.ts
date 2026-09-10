@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isOpeningSignal } from "@/lib/services/followup-signals";
+import { recountCampaignTemperature } from "@/lib/services/campaign-counters";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createScopedClient } from "@/lib/supabase/scoped";
 import { createHash } from "crypto";
@@ -190,20 +191,16 @@ export async function POST(req: NextRequest) {
   // 6) Update campaign_leads state (with lead_temperature for interest events)
   let interestApplied = false;
   if (campaignLeadId) {
-    // Fetch current state BEFORE patching — needed for three guards below:
+    // Fetch current state BEFORE patching — needed for the guards below:
     // (1) only count a lead's FIRST reply toward replied_count (a lead replying twice
-    //     must not push the reply rate above 100%),
-    // (2) only increment hot_count/cold_count when Instantly's classification actually
-    //     CHANGES for this lead — not on every duplicate/retried webhook delivery of the
-    //     same event, which would otherwise double-count, and
-    // (3) the cross-campaign echo check below.
+    //     must not push the reply rate above 100%), and
+    // (2) the cross-campaign echo check below.
     const { data: beforeState } = await cdb
       .from("campaign_leads")
       .select("crm_status, interest_status, last_reply_at, first_sent_at")
       .eq("id", campaignLeadId)
       .maybeSingle();
     const wasAlreadyReplied = beforeState?.crm_status === "replied";
-    const previousInterest  = beforeState?.interest_status ?? null;
 
     const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
     if (CRM_BY_EVENT[p.event_type])                    patch.crm_status = CRM_BY_EVENT[p.event_type];
@@ -299,19 +296,13 @@ export async function POST(req: NextRequest) {
       } catch { /* non-fatal — stat is cosmetic */ }
     }
 
-    // Increment hot_count / cold_count based on Instantly's own classification,
-    // guarded so a lead's classification only counts once per actual CHANGE in
-    // interest value — not once per duplicate delivery of the same webhook event,
-    // and only when it was actually applied (not suppressed as a cross-campaign echo).
-    if (interestApplied && masterId && interest !== previousInterest) {
-      const temp = INTEREST_TO_TEMPERATURE[interest as number];
-      try {
-        if (temp === "hot") {
-          await cdb.rpc("increment_campaign_counter", { p_campaign_id: masterId, p_column: "hot_count" });
-        } else if (temp === "cold") {
-          await cdb.rpc("increment_campaign_counter", { p_campaign_id: masterId, p_column: "cold_count" });
-        }
-      } catch { /* non-fatal */ }
+    // hot_count / cold_count are recounted, not incremented. Only this path used
+    // to count, so a lead the inbox sync had already marked hot (7 minutes before
+    // this webhook, on 10 Sep 2026) was never counted: Hot 0 with two hot leads.
+    // A recount is right whichever path sets the temperature first, and on any
+    // number of duplicate deliveries.
+    if (masterId && patch.lead_temperature !== undefined) {
+      await recountCampaignTemperature(cdb, masterId);
     }
   }
 

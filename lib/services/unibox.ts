@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { openingSendToRecord } from "@/lib/services/followup-signals";
+import { recountCampaignTemperature } from "@/lib/services/campaign-counters";
 import { createScopedClient } from "@/lib/supabase/scoped";
 import sanitizeHtml from "sanitize-html";
 import { INTEREST_TO_TEMPERATURE } from "@/lib/constants";
@@ -196,7 +197,7 @@ async function backfillInterestFromEmail(
 
   const { data: cl } = await db
     .from("campaign_leads")
-    .select("interest_status")
+    .select("interest_status, campaign_id")
     .eq("id", campaignLeadId)
     .maybeSingle();
   if (!cl || cl.interest_status !== null) return;
@@ -206,6 +207,7 @@ async function backfillInterestFromEmail(
     lead_temperature: INTEREST_TO_TEMPERATURE[aiInterestValue] ?? null,
     updated_at: new Date().toISOString(),
   }).eq("id", campaignLeadId);
+  await recountCampaignTemperature(db, cl.campaign_id as string);
 }
 
 /**
@@ -421,19 +423,24 @@ export async function setLeadInterestStatus(
     updated_at: new Date().toISOString(),
   };
 
+  let touched: { campaign_id: string }[] = [];
   if (opts.campaignLeadId) {
     // Scoped to the exact campaign this thread belongs to. A lead can be enrolled
     // in several campaigns at once (each with its own campaign_leads row) — setting
     // status from one thread must not bleed into the others.
-    await db.from("campaign_leads").update(patch).eq("id", opts.campaignLeadId);
+    const { data } = await db.from("campaign_leads").update(patch).eq("id", opts.campaignLeadId).select("campaign_id");
+    touched = data ?? [];
   } else {
     // Fallback for the rare case where this thread's campaign_lead couldn't be
     // resolved at all — only reachable when ingest never linked a campaign_lead_id.
     const { data: leads } = await db.from("leads").select("id").eq("email", opts.leadEmail);
     const leadIds = (leads ?? []).map((l) => l.id);
     if (leadIds.length === 0) return;
-    await db.from("campaign_leads").update(patch).in("lead_id", leadIds);
+    const { data } = await db.from("campaign_leads").update(patch).in("lead_id", leadIds).select("campaign_id");
+    touched = data ?? [];
   }
+  // A manual change can also move a lead OUT of hot, which an increment never undid.
+  for (const id of new Set(touched.map((r) => r.campaign_id))) await recountCampaignTemperature(db, id);
 
   if (opts.actorId) {
     await db.from("audit_log").insert({

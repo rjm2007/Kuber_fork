@@ -116,6 +116,7 @@ import {
   type DeliveryLeadLike,
 } from "@/lib/campaign-status";
 import { cumulativeDays, dayLabel } from "@/lib/followup-schedule-preview";
+import { delayInDays, writeByAt } from "@/lib/services/followup-schedule";
 import { extractFollowupWaitsFromSteps, rebuildStepsWithFollowupWaits } from "@/lib/constants";
 
 /**
@@ -2858,11 +2859,6 @@ export function CampaignDetail({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- signature stands in for the array
   }, [seqStepSignature]);
 
-  /** How far ahead of its due date a follow-up is written. Mirrors
-   *  FOLLOWUP_LEAD_TIME_DAYS in lib/services/followup-schedule.ts — the writer
-   *  is the authority, this only reports what it will do. */
-  const FOLLOWUP_LEAD_TIME_DAYS = 1;
-
   const seqLeadTimeline = (() => {
     const cl = seqActiveLeadRow?.cl;
     if (!cl) return [];
@@ -2872,17 +2868,19 @@ export function CampaignDetail({
         const draft = (cl.all_drafts ?? []).find((d) => d.step_number === st.step_order) ?? null;
         const sent = hasReceivedFollowupStep(cl, st.step_order);
         // Cumulative, because a step's delay is the wait AFTER it — the same
-        // arithmetic the writer and Instantly both use.
+        // arithmetic the writer and Instantly both use. Each delay in its own
+        // unit: summing the raw numbers showed a 15-minute step as "day 15".
         const daysFromOpening = campaignSteps
           .filter((p) => p.step_order < st.step_order)
-          .reduce((sum, p) => sum + (p.delay ?? 0), 0);
+          .reduce((sum, p) => sum + delayInDays(p), 0);
         const dueAt = cl.first_sent_at
           ? new Date(new Date(cl.first_sent_at).getTime() + daysFromOpening * 864e5)
           : null;
-        // When the writer will reach this one. Due date minus the lead time it
-        // already works to — shown as a real date because "you can still change
-        // this" is only useful if it says until when.
-        const writesAt = dueAt ? new Date(dueAt.getTime() - FOLLOWUP_LEAD_TIME_DAYS * 864e5) : null;
+        // When the writer will reach this one - the writer's own writeByAt, so a
+        // Monday follow-up shows Friday here exactly as it is written. Shown as a
+        // real date because "you can still change this" is only useful if it
+        // says until when.
+        const writesAt = dueAt ? writeByAt(dueAt) : null;
         return {
           step: st, draft, sent, dueAt, writesAt, daysFromOpening,
           written: !!draft?.body && !isInstantlyPlaceholder(draft.body),
@@ -4874,11 +4872,11 @@ export function CampaignDetail({
                               goes out — showing the total is what stops that
                               being misread. */}
                           <span className="font-mono text-[10px] tabular-nums text-muted-foreground">
-                            day {row.daysFromOpening}
+                            {dayLabel(row.daysFromOpening)}
                           </span>
                           {row.dueAt && (
                             <span className="font-mono text-[10px] tabular-nums text-muted-foreground">
-                              {row.sent ? "sent" : "due"} {format(row.dueAt, "MMM d")}
+                              {row.sent ? "sent" : "due"} {format(row.dueAt, Number.isInteger(row.daysFromOpening) ? "MMM d" : "MMM d, h:mm a")}
                             </span>
                           )}
                           {row.sent && (
