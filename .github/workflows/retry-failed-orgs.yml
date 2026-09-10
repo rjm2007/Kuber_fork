@@ -3,10 +3,14 @@ name: Retry failed orgs
 # Opportunistic: gives orgs that failed enrichment a while ago (a site that was
 # down/slow) another shot. Deliberately infrequent — there's no urgency, and the
 # route itself only re-queues failures older than 3h, so a late tick is harmless.
+# The schedule lives in Supabase pg_cron (job "auto-retry-failed-orgs", every
+# 6h) like the watchdog and unibox-sync jobs. This one was missed when those two
+# moved on 2026-07-23, so it kept firing from GitHub too - and in every fork
+# without APP_URL/INTERNAL_SECRET set (neuriqai/Kuber-Polyplast,
+# NeuriqAI-Projects/Kuber_fork) it failed every 3 hours and emailed the owner.
+# Kept as a manual button only.
 on:
-  schedule:
-    - cron: "0 */3 * * *"   # every 3 hours, on the hour (UTC)
-  workflow_dispatch:          # adds a manual "Run workflow" button in the Actions tab
+  workflow_dispatch:
 
 concurrency:
   group: retry-failed-orgs

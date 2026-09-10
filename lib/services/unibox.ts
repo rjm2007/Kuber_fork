@@ -1065,6 +1065,22 @@ async function resolveCompanyIdForEmail(db: Db, instantlyCampaignId: string | nu
   return (data?.company_id as string | undefined) ?? null;
 }
 
+/** How long one sync run may walk the mailbox before it stops and saves.
+ *
+ *  The cron route has maxDuration = 55s, and a function Vercel kills at that
+ *  limit never reaches the `finally` below - so a run that could not finish in
+ *  55s saved NOTHING, and the next run re-walked the same emails from the same
+ *  cursor, forever. Measured 2026-09-10: ingest costs ~2.5s per email, an
+ *  outage left a 98-email backlog, every 15-minute run returned 504
+ *  FUNCTION_INVOCATION_TIMEOUT, and the cursor sat frozen for ~20 hours with
+ *  Unibox and the Outbox threads missing every new send for both companies.
+ *  Stopping well inside the limit lets `finally` run, so each run moves the
+ *  cursor forward and a backlog drains over a few runs instead of never. */
+const SYNC_TIME_BUDGET_MS = 40_000;
+/** Also checkpoint every N ingested emails, so even a hard kill keeps most of
+ *  a run's progress. */
+const SYNC_CHECKPOINT_EVERY = 10;
+
 export async function runUniboxSync(db: Db, maxPages = 8): Promise<{ ingested: number; pages: number; failed: number; skippedUnmapped: number }> {
   const state = await getSyncState(db);
   const cursor = state.last_timestamp_created;
@@ -1078,6 +1094,10 @@ export async function runUniboxSync(db: Db, maxPages = 8): Promise<{ ingested: n
   // past it, so the next run retries it (and everything after it) instead of
   // silently leaving a hole in the mirror.
   let earliestFailedTs: string | null = null;
+  const startedAt = Date.now();
+  let outOfTime = false;
+  let sinceCheckpoint = 0;
+  const nextCursor = () => earliestFailedTs ?? maxTs;
 
   // Whatever happens below, persist the progress we did make. Without this the
   // cursor only ever moved on a fully clean run, so one unluckily-shaped email
@@ -1095,6 +1115,7 @@ export async function runUniboxSync(db: Db, maxPages = 8): Promise<{ ingested: n
       });
       pages++;
       for (const email of result.items) {
+        if (Date.now() - startedAt > SYNC_TIME_BUDGET_MS) { outOfTime = true; break; }
         try {
           // Both tenants share one Instantly workspace, so a page of results can
           // mix companies. The sub-campaign identifies the owner; ingest through
@@ -1118,13 +1139,22 @@ export async function runUniboxSync(db: Db, maxPages = 8): Promise<{ ingested: n
         if (email.timestamp_created && (!maxTs || email.timestamp_created > maxTs)) {
           maxTs = email.timestamp_created;
         }
+        if (++sinceCheckpoint >= SYNC_CHECKPOINT_EVERY) {
+          sinceCheckpoint = 0;
+          await saveSyncState(db, { last_timestamp_created: nextCursor(), last_full_sync_at: state.last_full_sync_at });
+        }
       }
-      if (!result.next_starting_after || result.items.length === 0) break;
+      if (outOfTime || !result.next_starting_after || result.items.length === 0) break;
       startingAfter = result.next_starting_after;
     }
   } finally {
+    // A message that failed at the very head of the window has now failed on
+    // its retry too. Pinning the cursor to it again would replay the same slice
+    // every run and never get past it - the exact freeze this function had -
+    // so it is skipped (its failure is already logged above).
+    const pinnedAgain = earliestFailedTs !== null && earliestFailedTs === cursor;
     await saveSyncState(db, {
-      last_timestamp_created: earliestFailedTs ?? maxTs,
+      last_timestamp_created: pinnedAgain ? maxTs : nextCursor(),
       last_full_sync_at: new Date().toISOString(),
     });
   }
