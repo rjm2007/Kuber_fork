@@ -173,9 +173,26 @@ function unwrapOrg(raw: OrgData | OrgData[] | null | undefined): OrgData | null 
   return Array.isArray(raw) ? (raw[0] ?? null) : raw;
 }
 
+/**
+ * "heena" -> "Heena", "RAJESH KUMAR" -> "Rajesh Kumar".
+ *
+ * Names reached the email exactly as Apollo stored them, so a lowercase one went
+ * out as "Dear heena Mehta," (Dev E2E, 10 Sep 2026), and 408 of the client's
+ * 7,614 leads are stored in capitals. Only a name typed in ONE case is touched:
+ * mixed case ("McDonald", "LI Shi") is somebody's deliberate spelling.
+ */
+export function tidyName(name: string | null): string | null {
+  const t = name?.trim();
+  if (!t || (t !== t.toLowerCase() && t !== t.toUpperCase())) return name;
+  return t.toLowerCase().replace(/(^|[\s'-])([^\s'-])/g, (_m, sep: string, ch: string) => sep + ch.toUpperCase());
+}
+
+/** The one place a draft gets its lead, so the tidied name reaches the prompt,
+ *  the greeting fallback and the template alike. */
 function unwrapLead(raw: LeadRow | LeadRow[] | null | undefined): LeadRow | null {
   if (!raw) return null;
-  return Array.isArray(raw) ? (raw[0] ?? null) : raw;
+  const lead = Array.isArray(raw) ? (raw[0] ?? null) : raw;
+  return lead && { ...lead, first_name: tidyName(lead.first_name), last_name: tidyName(lead.last_name) };
 }
 
 // Both moved to provider-errors.ts so provider-keys.ts can share the same
@@ -522,6 +539,7 @@ function buildUserPrompt(
     `Campaign: "${campaignName}"`,
     `Email step: ${stepNumber}${stepNumber > 1 ? " (a follow-up to a previous cold email the prospect did not reply to)" : ""}`,
     `Name: ${[lead.first_name, lead.last_name].filter(Boolean).join(" ") || "Unknown"}`,
+    `First name: ${lead.first_name?.trim() || "Unknown"}`,
     `Title: ${lead.title ?? lead.headline ?? "Unknown"}`,
     `Seniority: ${lead.seniority ?? "Unknown"}`,
     `Country: ${lead.country ?? "Unknown"}`,

@@ -1,7 +1,17 @@
 // npx tsx --test lib/services/generate-drafts.test.mts
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { stripTrailingSignOff, earlierEmailsBlock } from "./generate-drafts.ts";
+import { stripTrailingSignOff, earlierEmailsBlock, tidyName } from "./generate-drafts.ts";
+
+test("tidies a name typed in one case, leaves deliberate spelling (issue 13)", () => {
+  assert.equal(tidyName("heena"), "Heena");
+  assert.equal(tidyName("RAJESH KUMAR"), "Rajesh Kumar");
+  assert.equal(tidyName("o'brien"), "O'Brien");
+  assert.equal(tidyName("jean-luc"), "Jean-Luc");
+  assert.equal(tidyName("McDonald"), "McDonald");
+  assert.equal(tidyName("LI Shi"), "LI Shi");
+  assert.equal(tidyName(null), null);
+});
 
 test("drops a closing the model wrote itself (issue 9)", () => {
   const q = "Dear Mayank,\n\nWould it be worth a quick chat?";
