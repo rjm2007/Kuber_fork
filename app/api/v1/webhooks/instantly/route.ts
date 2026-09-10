@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { isOpeningSignal } from "@/lib/services/followup-signals";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createScopedClient } from "@/lib/supabase/scoped";
 import { createHash } from "crypto";
@@ -250,7 +251,11 @@ export async function POST(req: NextRequest) {
     // 'sent' days earlier when Instantly merely accepted the lead, so this is
     // the only signal that separates "queued in the drip" from "delivered".
     // isFirstDelivery keeps a re-delivered webhook from moving the timestamp.
-    if (p.event_type === "email_sent" && isFirstDelivery && !beforeState?.first_sent_at) {
+    // Only the OPENING email's signal starts the clock. If that signal was lost,
+    // a follow-up's used to set first_sent_at instead - 18 minutes late for one
+    // lead on 2026-09-10 - so every later due date was wrong. The inbox sync
+    // now fills the real opening time from Instantly's own copy of the mail.
+    if (p.event_type === "email_sent" && isFirstDelivery && !beforeState?.first_sent_at && isOpeningSignal(p.step)) {
       patch.first_sent_at = receivedAt;
     }
     if (Object.keys(patch).length > 1) {
@@ -261,7 +266,7 @@ export async function POST(req: NextRequest) {
     // and it now means DELIVERED — so it moves here, on the webhook, not at
     // hand-off time. Guarded the same way replied_count is: only the first
     // delivery for this lead counts.
-    if (p.event_type === "email_sent" && masterId && isFirstDelivery && !beforeState?.first_sent_at) {
+    if (p.event_type === "email_sent" && masterId && isFirstDelivery && !beforeState?.first_sent_at && isOpeningSignal(p.step)) {
       try {
         await cdb.rpc("increment_campaign_counter", {
           p_campaign_id: masterId,

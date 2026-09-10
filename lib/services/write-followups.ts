@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { stepOrderFromInstantly } from "@/lib/services/followup-signals";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createScopedClient } from "@/lib/supabase/scoped";
 import { findFollowupsToWrite, MAX_TOTAL_ATTEMPTS, type FollowupTarget } from "@/lib/services/followup-schedule";
@@ -365,6 +366,19 @@ export async function upgradeTemplateFollowups(
     if (Number.isFinite(ix)) sentSteps.add(`${row.instantly_lead_id}:${ix + 1}`);
   }
 
+  // Same two-source check as findFollowupsToWrite: the mirror can lag, the
+  // webhook's email_sent events are the other record of what already went out.
+  const { data: sentEvents } = await db
+    .from("reply_events")
+    .select("campaign_lead_id, step")
+    .eq("event_type", "email_sent")
+    .in("campaign_lead_id", (cls ?? []).map((c) => c.id as string));
+  const sentByLead = new Set<string>();
+  for (const e of sentEvents ?? []) {
+    const n = stepOrderFromInstantly(e.step as string | number | null);
+    if (n) sentByLead.add(`${e.campaign_lead_id}:${n}`);
+  }
+
   const campaignById = new Map(liveCampaigns.map((c) => [c.id as string, c]));
   const result = { found: 0, upgraded: 0, failed: 0 };
 
@@ -374,6 +388,7 @@ export async function upgradeTemplateFollowups(
     const cl = clByKey.get(`${t.campaign_id}:${t.lead_id}`);
     if (!cl) continue;
     if (sentSteps.has(`${cl.instantly_lead_id}:${t.step_number}`)) continue; // already delivered — leave it
+    if (sentByLead.has(`${cl.id}:${t.step_number}`)) continue;
 
     const campaign = campaignById.get(t.campaign_id as string);
     if (!campaign) continue;

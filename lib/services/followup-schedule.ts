@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { stepOrderFromInstantly } from "@/lib/services/followup-signals";
 
 /**
  * WHEN a follow-up is written, and for whom.
@@ -351,6 +352,29 @@ export async function findFollowupsToWrite(
     if (Number.isFinite(index)) sentSteps.add(`${row.instantly_lead_id}:${index + 1}`);
   }
 
+  // The webhook's own record of what Instantly sent. The mirror above lags
+  // whenever the inbox sync does (it froze for ~20 hours on 2026-09-10), and a
+  // step missing from it looked unsent: that day a personalised follow-up 1
+  // was written 28 seconds AFTER the generic one had gone out, so the app
+  // showed an email the lead never received. Either source is enough to skip.
+  // Chunked so the id list stays well under URL limits on large campaigns.
+  const sentByLead = new Set<string>();
+  const clIds = leads.map((l) => l.id as string);
+  for (let i = 0; i < clIds.length; i += 200) {
+    const chunk = clIds.slice(i, i + 200);
+    const events = await readAll<{ campaign_lead_id: string; step: string | number | null }>(
+      (from, to) => db
+      .from("reply_events")
+      .select("campaign_lead_id, step")
+      .eq("event_type", "email_sent")
+      .in("campaign_lead_id", chunk)
+      .range(from, to));
+    for (const e of events) {
+      const n = stepOrderFromInstantly(e.step);
+      if (n) sentByLead.add(`${e.campaign_lead_id}:${n}`);
+    }
+  }
+
   const targets: FollowupTarget[] = [];
   for (const cl of leads) {
     const steps = stepsByCampaign.get(cl.campaign_id as string) ?? [];
@@ -370,6 +394,7 @@ export async function findFollowupsToWrite(
       // Already delivered — too late to personalise, and the next step is what
       // matters now, so keep scanning rather than breaking out.
       if (sentSteps.has(`${cl.instantly_lead_id}:${step.step_order}`)) continue;
+      if (sentByLead.has(`${cl.id}:${step.step_order}`)) continue;
 
       const dueAt = followupDueAt(cl.first_sent_at as string, steps, step.step_order);
       if (!isDueForWriting(dueAt, now)) continue;
