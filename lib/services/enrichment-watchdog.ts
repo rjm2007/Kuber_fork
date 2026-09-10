@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { after } from "next/server";
 import { MAX_ENRICH_ATTEMPTS } from "@/lib/services/enrich-leads";
 import { countPendingDrafts, logLlmUnavailable } from "@/lib/services/generate-drafts";
 import { hasUsableLlmKey, hasUsableServiceKey } from "@/lib/services/provider-keys";
@@ -350,19 +351,25 @@ export async function triggerDraftGenerationWatchdog(baseUrl: string, db: Db) {
  * received boilerplate. Calling it from the 10-minute watchdog closes that gap.
  *
  * Cheap to repeat: the sweep skips any (lead, step) that already has a draft, so
- * all but one of the ~144 daily calls find nothing and return immediately. Fire
- * and forget, like triggerScrapeWatchdog — the watchdog must not be held open by
- * work that can take 40 seconds.
+ * all but one of the ~144 daily calls find nothing and return immediately.
+ *
+ * Inside after(), not a bare `void fetch`. The watchdog must not be held open by
+ * work that can take 40 seconds, but a bare void was still in flight when the
+ * route responded, and a serverless instance is frozen the moment it does - the
+ * Apollo-reveal kick above died exactly that way. after() keeps the instance
+ * alive until the request has gone, as the writer's own self-chain does.
  */
 function triggerFollowupWriter(baseUrl: string) {
-  void fetch(`${baseUrl}/api/internal/write-followups`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-internal-secret": process.env.INTERNAL_SECRET ?? "",
-    },
-    body: JSON.stringify({ limit: 25 }),
-  }).catch(() => {});
+  after(() =>
+    fetch(`${baseUrl}/api/internal/write-followups`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-internal-secret": process.env.INTERNAL_SECRET ?? "",
+      },
+      body: JSON.stringify({ limit: 25 }),
+    }).then(() => {}, () => {}),
+  );
 }
 
 /**
