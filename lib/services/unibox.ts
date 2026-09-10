@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { openingSendToRecord } from "@/lib/services/followup-signals";
 import { createScopedClient } from "@/lib/supabase/scoped";
 import sanitizeHtml from "sanitize-html";
 import { INTEREST_TO_TEMPERATURE } from "@/lib/constants";
@@ -207,6 +208,39 @@ async function backfillInterestFromEmail(
   }).eq("id", campaignLeadId);
 }
 
+/**
+ * Recover a lead's opening send time from Instantly's own copy of the mail.
+ *
+ * Until 2026-09-10 the email_sent webhook was the only thing that set
+ * first_sent_at, and nothing ever went back for a signal that was lost - so a
+ * lead whose opening went out while the webhook was down (or during a network
+ * blip, or a site outage) never got a follow-up clock, and every follow-up went
+ * out as the generic fallback. The synced copy is proof the email left; use it.
+ * Fills a missing time only (see openingSendToRecord for why it never
+ * overwrites), and counts the lead as sent since nothing counted it before.
+ */
+async function backfillFirstSentFromEmail(
+  db: Db,
+  campaignLeadId: string | null,
+  direction: string,
+  step: string | null,
+  sentAt: string | null,
+): Promise<void> {
+  if (!campaignLeadId || direction !== "sent_campaign") return;
+  const { data: cl } = await db
+    .from("campaign_leads")
+    .select("first_sent_at, campaign_id")
+    .eq("id", campaignLeadId)
+    .maybeSingle();
+  if (!cl) return;
+  const next = openingSendToRecord(direction, step, sentAt, cl.first_sent_at as string | null);
+  if (!next) return;
+  await db.from("campaign_leads").update({ first_sent_at: next, updated_at: new Date().toISOString() }).eq("id", campaignLeadId);
+  try {
+    await db.rpc("increment_campaign_counter", { p_campaign_id: cl.campaign_id, p_column: "sent_count" });
+  } catch { /* non-fatal - reconcile-counters recomputes sent_count nightly */ }
+}
+
 export async function ingestInstantlyEmail(
   db: Db,
   email: InstantlyEmail,
@@ -257,6 +291,7 @@ export async function ingestInstantlyEmail(
   }
 
   await backfillInterestFromEmail(db, campaignLeadId, row.direction, email.ai_interest_value ?? null);
+  await backfillFirstSentFromEmail(db, campaignLeadId, row.direction, row.step, row.timestamp_email);
 }
 
 export async function sendThreadReply(
