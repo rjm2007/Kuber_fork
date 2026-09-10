@@ -3,6 +3,7 @@ import { MAX_ENRICH_ATTEMPTS } from "@/lib/services/enrich-leads";
 import { countPendingDrafts, logLlmUnavailable } from "@/lib/services/generate-drafts";
 import { hasUsableLlmKey, hasUsableServiceKey } from "@/lib/services/provider-keys";
 import { checkInstantlyCredits } from "@/lib/services/provider-credits";
+import { listInstantlyWebhooks, resumeInstantlyWebhook } from "@/lib/services/instantly";
 
 type Db = SupabaseClient;
 
@@ -445,6 +446,44 @@ async function refreshInstantlyHealth(db: Db) {
   try {
     await checkInstantlyCredits(db, "any");
   } catch { /* a health probe must never break the watchdog */ }
+  await ensureInstantlyWebhook(db);
+}
+
+/**
+ * Keep the Instantly -> app webhook switched on.
+ *
+ * Instantly disables a webhook (status -1) after repeated delivery failures and
+ * never re-enables it on its own, even once the URL answers again. On
+ * 2026-09-10 the live webhook went to -1 about 7 hours into a Vercel outage and
+ * stayed dead after the site came back: no sent, reply or bounce events reached
+ * the app for EITHER company (they share one Instantly workspace), so follow-up
+ * clocks never started and replies never updated a lead. It was only noticed
+ * because an end-to-end test stalled. Checked every 10 minutes from here, a
+ * disabled webhook is resumed within one tick of the site recovering.
+ */
+async function ensureInstantlyWebhook(db: Db) {
+  const raw = process.env.NEXT_PUBLIC_APP_URL ?? "";
+  const appUrl = raw.endsWith("/") ? raw.slice(0, -1) : raw;
+  if (!appUrl.startsWith("https://")) return; // local/dev tunnels manage their own webhooks
+  const target = `${appUrl}/api/v1/webhooks/instantly`;
+  try {
+    const ours = (await listInstantlyWebhooks()).filter((w) => w.target_hook_url === target);
+    if (ours.length === 0) {
+      await db.from("enrichment_logs").insert({ source: "system", event: "INSTANTLY_WEBHOOK_MISSING", payload: { target } });
+      return;
+    }
+    for (const w of ours) {
+      if (w.status === 1) continue;
+      await resumeInstantlyWebhook(w.id);
+      await db.from("enrichment_logs").insert({
+        source: "system",
+        event: "INSTANTLY_WEBHOOK_RESUMED",
+        payload: { id: w.id, status_before: w.status, disabled_at: w.timestamp_error ?? null },
+      });
+    }
+  } catch (e) {
+    console.error("[watchdog] Instantly webhook check failed:", (e as Error).message);
+  }
 }
 
 export async function runEnrichmentWatchdog(baseUrl: string, db: Db) {

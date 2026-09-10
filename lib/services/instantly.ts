@@ -450,6 +450,29 @@ export async function createInstantlyWebhook(opts: {
   return data.id;
 }
 
+export interface InstantlyWebhook {
+  id: string;
+  target_hook_url: string;
+  event_type: string;
+  /** 1 = delivering, -1 = disabled by Instantly after repeated failures. */
+  status: number;
+  timestamp_error?: string | null;
+}
+
+export async function listInstantlyWebhooks(): Promise<InstantlyWebhook[]> {
+  const res = await fetch(`${BASE}/webhooks?limit=50`, { headers: await authOnly() });
+  const data = await iJson<{ items?: InstantlyWebhook[] }>(res);
+  return data.items ?? [];
+}
+
+/** Re-enable a webhook Instantly disabled. Verified 2026-09-10: returns 200,
+ *  status goes back to 1 and the error clears, same id. Re-POSTing /webhooks
+ *  with the same URL does NOT do this - it returns the existing dead webhook. */
+export async function resumeInstantlyWebhook(id: string): Promise<void> {
+  const res = await fetch(`${BASE}/webhooks/${id}/resume`, { method: "POST", headers: await h(), body: "{}" });
+  await iJson(res);
+}
+
 // ─── Reading inbound emails / threads (Unibox) ────────────────────────────────
 // GET /emails list is rate-limited to 20 req/min. Use sparingly.
 
