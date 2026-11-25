@@ -130,7 +130,7 @@ export function AddLeadsDrawer({
                 {section === "apollo" && <ApolloForm onImport={handleImport} />}
                 {section === "scored" && <ProspectFinderForm onDone={onClose} />}
                 {section === "company" && <CompanyLookupForm onImport={handleImport} />}
-                {section === "excel" && <ExcelForm onImport={handleImport} />}
+                {section === "excel" && <ExcelForm onImported={onImport} onDone={onClose} />}
                 {section === "manual" && <ManualForm onImport={handleImport} />}
               </>
             )}

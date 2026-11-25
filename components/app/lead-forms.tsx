@@ -1,13 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useEscClose } from "@/components/ui/use-esc-close";
 import { toast } from "sonner";
-import { AlertCircle, Check, CheckCircle2, FileText, Loader2, Plus, Search, Upload, X } from "lucide-react";
+import { AlertCircle, Check, FileText, Loader2, Plus, Search, Upload, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ChoiceCard } from "@/components/ui/choice-card";
 import { badgeVariants } from "@/components/ui/badge";
-import { StatTile } from "@/components/ui/stat-tile";
 import { AppCheckbox } from "@/components/ui/app-checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -32,6 +31,9 @@ import { supabase } from "@/lib/supabase";
 import { BatchConfirmModal } from "@/components/app/batch-confirm-modal";
 import { Stepper } from "@/components/ui/stepper";
 import { Pill } from "@/components/ui/pill";
+import { ImportReport, ImportReviewStep, defaultChoices, ignoredSheetsText, needsReview } from "@/components/app/import-review";
+import { classifyImport } from "@/lib/import-classify";
+import { IMPORT_LIMITS, type IgnoredSheet, type ImportChoices, type ImportPlan, type ImportResult } from "@/lib/import-review-types";
 
 // Exported so the Company Lookup wizard reuses these verbatim rather than
 // growing a second copy of the batch/assignment controls that then drifts.
@@ -1182,20 +1184,11 @@ const PLATFORM_FIELDS = [
   { key: "title",               label: "Job title",       required: false, note: "" },
 ];
 
-type ParseResult = {
-  inserted: number;
-  skipped_blank_email: number;
-  skipped_invalid_email: number;
-  skipped_duplicate_in_file: number;
-  skipped_duplicate_in_db: number;
-  duplicate_owner_counts?: Array<{ assigned_to: string | null; count: number }>;
-};
-
 const EXCEL_STEPS = ["Upload file", "Map columns", "Batch", "Assign", "Review & import"];
 
-export function ExcelForm({ onImport }: { onImport: (n: number) => void }) {
+export function ExcelForm({ onImported, onDone }: { onImported: (n: number) => void; onDone: () => void }) {
   const fileRef = useRef<HTMLInputElement>(null);
-  type Stage = "upload" | "map" | "batch" | "assign" | "result";
+  type Stage = "upload" | "map" | "batch" | "assign" | "review" | "result";
   const [stage,       setStage      ] = useState<Stage>("upload");
   const [fileName,    setFileName   ] = useState("");
   const [headers,     setHeaders    ] = useState<string[]>([]);
@@ -1207,7 +1200,12 @@ export function ExcelForm({ onImport }: { onImport: (n: number) => void }) {
   const [importing,   setImporting  ] = useState(false);
   const [showConfirm,     setShowConfirm    ] = useState(false);
   const [showRawPreview,  setShowRawPreview ] = useState(false);
-  const [result,          setResult         ] = useState<ParseResult | null>(null);
+  const [result,          setResult         ] = useState<ImportResult | null>(null);
+  const [sheetName,       setSheetName      ] = useState("");
+  const [ignoredSheets,   setIgnoredSheets  ] = useState<IgnoredSheet[]>([]);
+  // Plan from the pure classifier, computed once when the user starts the import (not on every mapping change).
+  const [basePlan,        setBasePlan       ] = useState<ImportPlan | null>(null);
+  const [choices,         setChoices        ] = useState<ImportChoices>({});
   const [fileError,       setFileError      ] = useState("");
   const [assignTo,        setAssignTo       ] = useState("");
   const [assignMode,      setAssignMode     ] = useState<ImportAssignMode>("manual");
@@ -1271,19 +1269,32 @@ export function ExcelForm({ onImport }: { onImport: (n: number) => void }) {
         const XLSX = await import("xlsx");
         const data = new Uint8Array(e.target?.result as ArrayBuffer);
         const wb   = XLSX.read(data, { type: "array" });
-        const ws   = wb.Sheets[wb.SheetNames[0]];
+        // First sheet that holds any data; other sheets with data are reported as ignored, never silently dropped.
+        const sheetRows = (n: string) => XLSX.utils.sheet_to_json<string[]>(wb.Sheets[n], { header: 1, defval: "" })
+          .filter((row) => row.some((cell) => String(cell ?? "").trim() !== ""));
+        const withData = wb.SheetNames.map((n) => ({ n, rows: sheetRows(n).length })).filter((x) => x.rows > 0);
+        if (withData.length === 0) { setFileError("The file appears to be empty."); return; }
+        const first = withData[0].n;
+        const ws   = wb.Sheets[first];
         // Parse as raw arrays first to find the actual header row (first non-empty row)
         const raw  = XLSX.utils.sheet_to_json<string[]>(ws, { header: 1, defval: "" });
         const headerRowIdx = raw.findIndex((row) => row.some((cell) => String(cell ?? "").trim() !== ""));
         if (headerRowIdx === -1) { setFileError("The file appears to be empty."); return; }
         // Re-parse starting from the detected header row
         const range = XLSX.utils.decode_range(ws["!ref"] ?? "A1");
-        range.s.r = headerRowIdx;
+        range.s.r += headerRowIdx;
         ws["!ref"] = XLSX.utils.encode_range(range);
         const json = XLSX.utils.sheet_to_json<Record<string, string>>(ws, { defval: "" });
         if (json.length === 0) { setFileError("The file appears to be empty."); return; }
+        if (json.length > IMPORT_LIMITS.maxRows) {
+          setFileError(`This file has ${json.length.toLocaleString()} rows. One import takes up to ${IMPORT_LIMITS.maxRows.toLocaleString()} rows, please split the file.`);
+          return;
+        }
         const cols = Object.keys(json[0]);
-        setHeaders(cols); setRows(json); setMapping(tryAutoMap(cols)); setFileName(file.name); setStage("map");
+        setHeaders(cols); setRows(json); setMapping(tryAutoMap(cols)); setFileName(file.name);
+        setSheetName(first);
+        setIgnoredSheets(withData.slice(1).map((x) => ({ name: x.n, rows: x.rows - 1 })).filter((x) => x.rows > 0));
+        setStage("map");
       } catch {
         setFileError("Could not read file. Make sure it is a valid .xlsx or .csv.");
       }
@@ -1294,19 +1305,17 @@ export function ExcelForm({ onImport }: { onImport: (n: number) => void }) {
   async function handleConfirm() {
     setImporting(true);
     try {
+      if (JSON.stringify(slimRows).length > 4_000_000) throw new Error("File too big, split it");
       const token = await getToken();
-      const res = await importExcelDirect(token, rows, mapping, batchName, color, canAssign ? buildImportAssignment(assignMode, assignTo) : {});
+      const res = await importExcelDirect(token, slimRows, mapping, batchName, color, canAssign ? buildImportAssignment(assignMode, assignTo) : {}, choices);
       setShowConfirm(false);
       setResult(res);
       setStage("result");
-      // 0 saved: keep the drawer open on the result screen so the "already in
-      // Kuber" message is seen. onImport closes the drawer, which used to make
-      // an all-duplicates import look like nothing happened (17 Nov).
-      if (res.inserted === 0) return;
-      notifyDuplicateOwners(res.duplicate_owners, employees);
-      const dupes = res.skipped_duplicate_in_db + res.skipped_duplicate_in_file;
-      toast.success(`${res.inserted} lead${res.inserted === 1 ? "" : "s"} imported${dupes ? ` · ${dupes} already in Kuber, skipped` : ""}`);
-      onImport(res.inserted);
+      // The report stays on screen until the user closes it; lists behind it refresh now.
+      if (res.inserted > 0) {
+        toast.success(`${res.inserted} lead${res.inserted === 1 ? "" : "s"} imported`);
+        onImported(res.inserted);
+      }
     } catch (e) {
       setShowConfirm(false);
       setFileError((e as Error).message);
@@ -1319,9 +1328,34 @@ export function ExcelForm({ onImport }: { onImport: (n: number) => void }) {
     setStage("upload"); setFileName(""); setHeaders([]); setRows([]); setMapping({});
     setBatchName(""); setColor("violet"); setBatchNameError(false);
     setResult(null); setFileError(""); setAssignTo(""); setAssignMode("manual");
+    setSheetName(""); setIgnoredSheets([]); setBasePlan(null); setChoices({});
   }
 
-  const previewLeads: PreviewLead[] = rows.map((row) => {
+  // Only the mapped columns, cells cut to the server cap. Row order is kept: choices point at row indexes.
+  // A row with data only in unmapped columns gets '-' as its email so the server counts it as "no email"
+  // instead of ignoring it as an empty row. The preview and the POST both use this, so the totals match.
+  const slimRows = useMemo(() => {
+    const cols = [...new Set(Object.values(mapping))];
+    return rows.map((r) => {
+      const o: Record<string, string> = {};
+      let anyMapped = false;
+      for (const c of cols) {
+        o[c] = String(r[c] ?? "").slice(0, IMPORT_LIMITS.maxCellChars);
+        if (o[c].trim() !== "") anyMapped = true;
+      }
+      if (!anyMapped && mapping.email && Object.values(r).some((v) => String(v ?? "").trim() !== "")) o[mapping.email] = "-";
+      return o;
+    });
+  }, [rows, mapping]);
+
+  // Final plan with the user's choices: what the confirm dialog shows and what the server will be asked to import.
+  const finalPlan = useMemo(
+    () => (showConfirm && basePlan ? classifyImport(slimRows, mapping, choices) : null),
+    [showConfirm, basePlan, slimRows, mapping, choices],
+  );
+  const importCount = finalPlan?.importRows.length ?? 0;
+  const previewLeads: PreviewLead[] = (finalPlan?.importRows ?? []).slice(0, 500).map(({ rowIndex, email }) => {
+    const row = rows[rowIndex];
     const { firstName, lastName } = ensureSplitNames(
       mapping.first_name ? String(row[mapping.first_name] ?? "") : "",
       mapping.last_name  ? String(row[mapping.last_name]  ?? "") : "",
@@ -1329,64 +1363,23 @@ export function ExcelForm({ onImport }: { onImport: (n: number) => void }) {
     return {
       firstName,
       lastName,
-      email:     mapping.email                ? String(row[mapping.email]                ?? "") : "",
+      email,
       company:   mapping.organization_name    ? String(row[mapping.organization_name]    ?? "") : "",
       domain:    mapping.organization_domain  ? String(row[mapping.organization_domain]  ?? "") : "",
       jobTitle:  mapping.title                ? String(row[mapping.title]                ?? "") : "",
     };
   });
 
-  if (stage === "result" && result?.inserted === 0) {
-    // Nothing saved: say why in plain words. The server keeps no empty batch.
-    const dupes = result.skipped_duplicate_in_db;
-    const owners = [...(result.duplicate_owner_counts ?? [])]
-      .sort((a, b) => b.count - a.count)
-      .map((o) => `${o.count} assigned to ${ownerName(o.assigned_to, employees)}`)
-      .join(", ");
+  if (stage === "result" && result) {
     return (
-      <div className="space-y-4">
-        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 flex items-start gap-3 dark:border-amber-500/25 dark:bg-amber-500/10">
-          <AlertCircle className="size-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
-          <div className="space-y-1">
-            <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">No new leads in <span>{fileName}</span></p>
-            {dupes > 0 ? (
-              <p className="text-xs text-muted-foreground">
-                All <span className="tabular-nums">{dupes}</span> leads in this file are already in Kuber{owners ? ` (${owners})` : ""}.
-                No batch was created. If they are assigned to someone else, please contact your manager to get them assigned to you.
-              </p>
-            ) : (
-              <p className="text-xs text-muted-foreground">
-                No row had a usable email. Check that the Email column is mapped to the right column. No batch was created.
-              </p>
-            )}
-          </div>
-        </div>
-        <Button variant="outline" onClick={reset}>Upload another file</Button>
-      </div>
-    );
-  }
-
-  if (stage === "result") {
-    return (
-      <div className="space-y-4">
-        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 flex items-center gap-3 dark:border-emerald-500/25 dark:bg-emerald-500/10">
-          <CheckCircle2 className="size-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
-          <div>
-            <p className="text-sm font-semibold text-emerald-800 dark:text-emerald-300"><span className="tabular-nums">{result?.inserted}</span> leads imported</p>
-            <p className="text-xs text-muted-foreground mt-0.5">from <span>{fileName}</span></p>
-          </div>
-        </div>
-        <div className="grid grid-cols-3 gap-3">
-          {[
-            { label: "Duplicates removed",   value: (result?.skipped_duplicate_in_file ?? 0) + (result?.skipped_duplicate_in_db ?? 0), tone: "amber" as const },
-            { label: "Blank emails skipped", value: result?.skipped_blank_email,   tone: "zinc" as const },
-            { label: "Invalid format",       value: result?.skipped_invalid_email, tone: "red" as const },
-          ].map(({ label, value, tone }) => (
-            <StatTile key={label} label={label} value={value ?? 0} tone={tone} />
-          ))}
-        </div>
-        <Button variant="outline" onClick={reset}>Upload another file</Button>
-      </div>
+      <ImportReport
+        result={result}
+        fileName={fileName}
+        importedSheet={sheetName}
+        ignoredSheets={ignoredSheets}
+        onDone={onDone}
+        onReset={reset}
+      />
     );
   }
 
@@ -1394,7 +1387,7 @@ export function ExcelForm({ onImport }: { onImport: (n: number) => void }) {
   const nameMapped   = !!mapping.first_name;
   const domainMapped = !!mapping.organization_domain;
   const currentStepIndex = steps.indexOf(
-    showConfirm ? "Review & import"
+    showConfirm || stage === "review" ? "Review & import"
     : stage === "upload" ? "Upload file"
     : stage === "map" ? "Map columns"
     : stage === "batch" ? "Batch"
@@ -1414,12 +1407,37 @@ export function ExcelForm({ onImport }: { onImport: (n: number) => void }) {
       if (canAssign) { setStage("assign"); return; }
     }
     if (importing) return;
+    // Run the classifier once: rows that need a decision go to the review step first.
+    const plan = classifyImport(slimRows, mapping);
+    setBasePlan(plan);
+    if (needsReview(plan.review)) {
+      setChoices(defaultChoices(plan.review));
+      setFileError("");
+      setStage("review");
+      return;
+    }
+    setChoices({});
     setShowConfirm(true);
   }
+
+  const ignoredNote = ignoredSheetsText(sheetName, ignoredSheets);
 
   return (
     <div className="space-y-4">
       <Stepper steps={steps} current={currentStepIndex} className="pb-4 mb-5 border-b border-border" />
+
+      {stage === "review" && basePlan && (
+        <ImportReviewStep
+          rows={rows}
+          mapping={mapping}
+          review={basePlan.review}
+          choices={choices}
+          onChoices={setChoices}
+          onBack={() => { setBasePlan(null); setChoices({}); setStage(canAssign ? "assign" : "batch"); }}
+          onContinue={() => setShowConfirm(true)}
+          error={fileError}
+        />
+      )}
 
       {stage === "upload" && (
         <div className="space-y-4">
@@ -1501,6 +1519,7 @@ export function ExcelForm({ onImport }: { onImport: (n: number) => void }) {
               </div>
 
               <div className="space-y-1.5">
+                {ignoredNote && <p className="text-xs text-muted-foreground rounded-lg border border-border bg-secondary px-3 py-2.5">{ignoredNote}</p>}
                 {!emailMapped && <div className="flex items-center gap-2 text-xs text-destructive rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2"><AlertCircle className="size-3.5 shrink-0" />Email column must be mapped before importing</div>}
                 {emailMapped && !nameMapped && <div className="flex items-center gap-2 text-xs text-destructive rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2"><AlertCircle className="size-3.5 shrink-0" />Name column must be mapped before importing</div>}
                 {emailMapped && nameMapped && !domainMapped && <div className="flex items-center gap-2 text-xs text-destructive rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2"><AlertCircle className="size-3.5 shrink-0" />Company domain must be mapped before importing</div>}
@@ -1579,7 +1598,7 @@ export function ExcelForm({ onImport }: { onImport: (n: number) => void }) {
         <BatchConfirmModal
           source="excel"
           leads={previewLeads}
-          totalCount={rows.length}
+          totalCount={importCount}
           confirming={importing}
           onConfirm={() => { void handleConfirm(); }}
           onCancel={() => setShowConfirm(false)}

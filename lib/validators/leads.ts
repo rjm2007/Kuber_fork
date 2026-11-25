@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { dbId } from "./id";
 import { domainField } from "@/lib/validators/organizations";
+import { IMPORT_LIMITS } from "@/lib/import-review-types";
 import { COMPANY_LOOKUP_MAX_CONTACTS, COMPANY_LOOKUP_MAX_PAGES } from "@/lib/constants";
 
 export const CreateLeadSchema = z.object({
@@ -262,6 +263,12 @@ export const CompanyImportSchema = z.object({
   assignment_strategy: ImportAssignmentStrategy,
 });
 
+const RowChoiceSchema = z.discriminatedUnion("action", [
+  z.object({ action: z.literal("use_email"), email: z.string().max(320) }),
+  z.object({ action: z.literal("skip") }),
+  z.object({ action: z.literal("keep") }),
+]);
+
 export const ExcelImportSchema = z.discriminatedUnion("mode", [
   z.object({ mode: z.literal("headers"), storage_path: z.string().min(1) }),
   z.object({
@@ -275,7 +282,11 @@ export const ExcelImportSchema = z.discriminatedUnion("mode", [
   }),
   z.object({
     mode: z.literal("direct"),
-    rows: z.array(z.record(z.string(), z.unknown())),
+    rows: z.array(z.record(z.string(), z.unknown())).max(IMPORT_LIMITS.maxRows),
+    choices: z.record(z.string(), RowChoiceSchema).optional().refine(
+      (c) => !c || (Object.keys(c).length <= IMPORT_LIMITS.maxChoices && Object.keys(c).every((k) => /^\d{1,9}$/.test(k))),
+      "Invalid choices",
+    ),
     mapping: z.record(z.string(), z.string()),
     batch_name: z.string().min(1),
     color: z.string().default("violet"),

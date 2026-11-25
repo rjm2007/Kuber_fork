@@ -9,6 +9,7 @@ import { campaignOutcomes } from "@/lib/campaign-status";
 import { mapDbCampaign as mapDbCampaignFull } from "@/lib/mappers";
 import { queryCache } from "@/lib/query-cache";
 import { everyWhileVisible } from "@/lib/utils";
+import type { ImportChoices, ImportResult } from "@/lib/import-review-types";
 
 // ─── Token helper ─────────────────────────────────────────────────────────────
 
@@ -919,15 +920,11 @@ export async function importExcelDirect(
   batch_name: string,
   color = "violet",
   assignment: ImportAssignment = {},
-): Promise<{
-  inserted: number; skipped_blank_email: number; skipped_invalid_email: number;
-  skipped_duplicate_in_file: number; skipped_duplicate_in_db: number;
-  assignment_skipped?: number; duplicate_owners?: DuplicateOwner[];
-  duplicate_owner_counts?: Array<{ assigned_to: string | null; count: number }>;
-}> {
+  choices?: ImportChoices,
+): Promise<ImportResult> {
   return apiFetch("/api/v1/leads/import-excel", {
     method: "POST",
-    body: JSON.stringify({ mode: "direct", rows, mapping, batch_name, color, ...assignment }),
+    body: JSON.stringify({ mode: "direct", rows, mapping, batch_name, color, ...assignment, ...(choices && Object.keys(choices).length ? { choices } : {}) }),
   }, token);
 }
 

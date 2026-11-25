@@ -9,7 +9,9 @@ import { internalAppBaseUrl } from "@/lib/internal-url";
 import { normalizeDomain } from "@/lib/utils/domain";
 import { ensureSplitNames } from "@/lib/utils/person-name";
 import { dbForUser } from "@/lib/supabase/scoped";
-import { hideOwners, type OwnerCount } from "@/lib/import-duplicates";
+import { hideOwners, withOwnerNames, type OwnerCount } from "@/lib/import-duplicates";
+import { classifyImport, cellString } from "@/lib/import-classify";
+import { IMPORT_LIMITS, type ImportChoices, type ImportResult } from "@/lib/import-review-types";
 
 export const maxDuration = 300;
 
@@ -38,6 +40,10 @@ function sanitizeCountry(raw: string | undefined): string | undefined {
   return trimmed;
 }
 
+type Db = ReturnType<typeof import("@/lib/supabase/admin").createAdminClient>;
+/** Thrown before anything is written, so the empty import batch can be removed. */
+class PreInsertError extends Error {}
+
 function emailHash(email: string): string {
   return crypto.createHash("sha1").update(email.toLowerCase()).digest("hex");
 }
@@ -65,90 +71,87 @@ async function processRows(
    *  deferred assignment only happens once enrichment succeeds, and a lead whose
    *  site can't be read would otherwise stay unowned and invisible to them. */
   assignNow = false,
-) {
-  const emailCol = mapping["email"];
-  const firstNameCol = mapping["first_name"];
-  const lastNameCol = mapping["last_name"];
+  /** The user's review decisions. Untrusted: classifyImport re-validates every entry. */
+  choices?: ImportChoices,
+): Promise<{ result: ImportResult; ownerCounts: OwnerCount[] }> {
   const orgNameCol = mapping["organization_name"];
   const orgDomainCol = mapping["organization_domain"];
   const titleCol = mapping["title"];
   const countryCol = mapping["country"];
+  const cell = (row: Record<string, unknown>, col: string | undefined) =>
+    col ? cellString(row[col]).slice(0, IMPORT_LIMITS.maxCellChars).trim() : "";
 
-  let insertedCount = 0;
-  let skippedBlankEmail = 0;
-  let skippedInvalidEmail = 0;
-  let skippedDuplicateInFile = 0;
-  let skippedDuplicateInDb = 0;
-
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  const seenEmails = new Set<string>();
-  const validRows: Array<{
-    email: string; first_name?: string; last_name?: string;
-    org_name: string; org_domain?: string; title?: string; country?: string;
-  }> = [];
-
-  for (const row of rows) {
-    const rawEmail = String(row[emailCol] ?? "").trim();
-    if (!rawEmail) { skippedBlankEmail++; continue; }
-    if (!emailRegex.test(rawEmail)) { skippedInvalidEmail++; continue; }
-    const email = rawEmail.toLowerCase();
-    if (seenEmails.has(email)) { skippedDuplicateInFile++; continue; }
-    seenEmails.add(email);
+  // Authoritative classification: the same pure function the review step uses.
+  const plan = classifyImport(rows, mapping, choices);
+  const validRows = plan.importRows.map(({ rowIndex, email }) => {
+    const row = rows[rowIndex]!;
     // Single "Name" columns are often mapped to first_name only — split when
     // last_name is blank so "Lionel Pernaud" does not land entirely in first_name.
-    const { firstName, lastName } = ensureSplitNames(
-      firstNameCol ? String(row[firstNameCol] ?? "").trim() : "",
-      lastNameCol ? String(row[lastNameCol] ?? "").trim() : "",
-    );
-    validRows.push({
+    const { firstName, lastName } = ensureSplitNames(cell(row, mapping["first_name"]), cell(row, mapping["last_name"]));
+    return {
       email,
       first_name: firstName || undefined,
       last_name: lastName || undefined,
-      org_name: orgNameCol ? String(row[orgNameCol] ?? "").trim() || "Unknown" : "Unknown",
-      org_domain: orgDomainCol ? String(row[orgDomainCol] ?? "").trim() || undefined : undefined,
-      title: titleCol ? String(row[titleCol] ?? "").trim() || undefined : undefined,
-      country: sanitizeCountry(countryCol ? String(row[countryCol] ?? "").trim() || undefined : undefined),
+      org_name: cell(row, orgNameCol) || "Unknown",
+      org_domain: cell(row, orgDomainCol) || undefined,
+      title: cell(row, titleCol) || undefined,
+      country: sanitizeCountry(cell(row, countryCol) || undefined),
+    };
+  });
+
+  let insertedCount = 0;
+  let skippedDuplicateInDb = 0;
+
+  const CHUNK = 500; // lead insert only (body, not URL)
+  const LOOKUP_CHUNK = 150; // .in() goes in the URL: 500 long emails overran the 8KB limit
+
+  // ── 1. Dedupe against existing LIVE emails (batched, chunks in parallel) ──
+  // Soft-deleted leads don't block re-import: the email index
+  // (leads_company_lower_email_active_uidx) only covers live rows. They DO still hold
+  // their apollo_id (uq_leads_company_apollo is not partial), so a re-imported email
+  // gets a fresh suffix below. One query serves both: no is_deleted filter, split here.
+  const existingOwners = new Map<string, string | null>();
+  const softDeleted = new Set<string>();
+  const chunks: string[][] = [];
+  for (let i = 0; i < validRows.length; i += LOOKUP_CHUNK) chunks.push(validRows.slice(i, i + LOOKUP_CHUNK).map((r) => r.email));
+  const lookups = await Promise.all(chunks.map((chunk) =>
+    db.from("leads").select("email, assigned_to, is_deleted").in("email", chunk)));
+  for (const { data, error } of lookups) {
+    // A failed look-up must not fall through to insert: a 23505 would drop a whole chunk silently.
+    if (error) throw new PreInsertError(`Duplicate check failed: ${error.message}`);
+    (data ?? []).forEach((r) => {
+      if (r.is_deleted) softDeleted.add(r.email);
+      else existingOwners.set(r.email, r.assigned_to as string | null);
     });
   }
 
-  const CHUNK = 500;
-
-  // ── 1. Dedupe against existing LIVE emails (batched) ─────────────────────
-  // Soft-deleted leads don't block re-import (planning.md Phase 5 / Q7).
-  // Track WHO already owns each duplicate — previously a second importer was
-  // just told "skipped" with no idea the lead belongs to someone else
-  // (review §3.3), capped to a reasonable sample for the response.
-  const existingOwners = new Map<string, string | null>();
-  for (let i = 0; i < validRows.length; i += CHUNK) {
-    const chunk = validRows.slice(i, i + CHUNK).map((r) => r.email);
-    const { data: existing } = await db.from("leads").select("email, assigned_to").in("email", chunk).eq("is_deleted", false);
-    (existing ?? []).forEach((r) => existingOwners.set(r.email, r.assigned_to as string | null));
-  }
-
-  const DUPLICATE_SAMPLE_CAP = 50;
-  const duplicateOwners: Array<{ email: string; assigned_to: string | null }> = [];
-  // Uncapped "who owns how many" so the result screen can say "22 owned by Ankit".
+  // Uncapped "who owns how many". Names / hiding happen in the POST handler.
   const ownerCounts = new Map<string | null, number>();
   const toInsert = validRows.filter((r) => {
-    if (existingOwners.has(r.email)) {
-      skippedDuplicateInDb++;
-      const owner = existingOwners.get(r.email) ?? null;
-      ownerCounts.set(owner, (ownerCounts.get(owner) ?? 0) + 1);
-      if (duplicateOwners.length < DUPLICATE_SAMPLE_CAP) {
-        duplicateOwners.push({ email: r.email, assigned_to: existingOwners.get(r.email) ?? null });
-      }
-      return false;
-    }
-    return true;
+    if (!existingOwners.has(r.email)) return true;
+    skippedDuplicateInDb++;
+    const owner = existingOwners.get(r.email) ?? null;
+    ownerCounts.set(owner, (ownerCounts.get(owner) ?? 0) + 1);
+    return false;
   });
-  const duplicateOwnerCounts = [...ownerCounts].map(([assigned_to, count]) => ({ assigned_to, count }));
-  if (toInsert.length === 0) {
-    return {
-      inserted: 0, skipped_blank_email: skippedBlankEmail, skipped_invalid_email: skippedInvalidEmail,
-      skipped_duplicate_in_file: skippedDuplicateInFile, skipped_duplicate_in_db: skippedDuplicateInDb,
-      duplicate_owners: duplicateOwners, duplicate_owner_counts: duplicateOwnerCounts,
-    };
-  }
+  const duplicateOwnerCounts: OwnerCount[] = [...ownerCounts].map(([assigned_to, count]) => ({ assigned_to, count }));
+  const finish = () => ({
+    ownerCounts: duplicateOwnerCounts,
+    result: {
+      total_rows: plan.totalRows,
+      inserted: insertedCount,
+      skipped_no_email: plan.noEmail,
+      skipped_duplicate_in_file: plan.duplicateInFile,
+      skipped_ambiguous: plan.skippedAmbiguous,
+      skipped_by_choice: plan.skippedByChoice,
+      skipped_duplicate_in_db: skippedDuplicateInDb,
+      // Passed every rule but not saved (no org, insert error, lost race): shown, never silent.
+      not_saved: plan.importRows.length - skippedDuplicateInDb - insertedCount,
+      emails_corrected: plan.emailsCorrected,
+      duplicate_owner_counts: [],
+    } satisfies ImportResult,
+  });
+  if (toInsert.length === 0) return finish();
 
   // ── 2. Resolve orgs in bulk ───────────────────────────────────────────────
   // Compute safe domain per row upfront
@@ -163,24 +166,18 @@ async function processRows(
 
   // Fetch existing orgs by domain
   const domainToOrgId = new Map<string, string>();
-  if (uniqueDomains.length > 0) {
-    for (let i = 0; i < uniqueDomains.length; i += CHUNK) {
-      const { data } = await db.from("organizations").select("id, domain").in("domain", uniqueDomains.slice(i, i + CHUNK));
-      (data ?? []).forEach((o) => { if (o.domain) domainToOrgId.set(o.domain, o.id); });
-    }
-  }
+  const domainChunks: string[][] = [];
+  for (let i = 0; i < uniqueDomains.length; i += LOOKUP_CHUNK) domainChunks.push(uniqueDomains.slice(i, i + LOOKUP_CHUNK));
+  const domainLookups = Promise.all(domainChunks.map((c) => db.from("organizations").select("id, domain").in("domain", c)));
 
-  // Fetch existing orgs by name (for domain-less rows)
+  // Fetch existing orgs by name (for domain-less rows). Chunks of 50 keep the URL short;
+  // all org look-ups run in parallel.
   const nameToOrgId = new Map<string, string>();
-  if (uniqueNames.length > 0) {
-    // ilike OR filter not supported for bulk — use .in with lower() via rpc fallback; use sequential batches
-    const nameChunks = [];
-    for (let i = 0; i < uniqueNames.length; i += 50) nameChunks.push(uniqueNames.slice(i, i + 50));
-    for (const chunk of nameChunks) {
-      const { data } = await db.from("organizations").select("id, name").in("name", chunk);
-      (data ?? []).forEach((o) => { if (o.name) nameToOrgId.set(o.name.toLowerCase(), o.id); });
-    }
-  }
+  const nameChunks: string[][] = [];
+  for (let i = 0; i < uniqueNames.length; i += 50) nameChunks.push(uniqueNames.slice(i, i + 50));
+  const nameLookups = Promise.all(nameChunks.map((c) => db.from("organizations").select("id, name").in("name", c)));
+  for (const { data } of await domainLookups) (data ?? []).forEach((o) => { if (o.domain) domainToOrgId.set(o.domain, o.id); });
+  for (const { data } of await nameLookups) (data ?? []).forEach((o) => { if (o.name) nameToOrgId.set(o.name.toLowerCase(), o.id); });
 
   // Create missing orgs in bulk
   const missingDomainOrgs = uniqueDomains
@@ -212,14 +209,29 @@ async function processRows(
       };
     });
 
-  if (missingDomainOrgs.length > 0) {
-    const { data } = await db.from("organizations").insert(missingDomainOrgs).select("id, domain");
-    (data ?? []).forEach((o) => { if (o.domain) domainToOrgId.set(o.domain, o.id); });
-  }
-  if (missingNameOrgs.length > 0) {
-    const { data } = await db.from("organizations").insert(missingNameOrgs).select("id, name");
-    (data ?? []).forEach((o) => { if (o.name) nameToOrgId.set(o.name.toLowerCase(), o.id); });
-  }
+  // Bulk insert; if it errors (one bad row, e.g. NUL byte, fails the whole
+  // statement) retry one by one so good orgs still land. A failed org stays out
+  // of the map, so only its own lead rows end up in not_saved.
+  const insertOrgs = async (
+    list: Record<string, unknown>[],
+    key: "domain" | "name",
+    map: Map<string, string>,
+  ) => {
+    if (list.length === 0) return;
+    const put = (data: { id: string; domain?: string | null; name?: string | null }[] | null) =>
+      (data ?? []).forEach((o) => {
+        const k = o[key];
+        if (k) map.set(key === "name" ? k.toLowerCase() : k, o.id);
+      });
+    const { data, error } = await db.from("organizations").insert(list).select("id, domain, name");
+    if (!error) return put(data);
+    for (let j = 0; j < list.length; j += 25) {
+      const res = await Promise.all(list.slice(j, j + 25).map((o) => db.from("organizations").insert(o).select("id, domain, name")));
+      for (const { data: d, error: e } of res) if (!e) put(d);
+    }
+  };
+  await insertOrgs(missingDomainOrgs, "domain", domainToOrgId);
+  await insertOrgs(missingNameOrgs, "name", nameToOrgId);
 
   // ── 3. Build lead rows and bulk insert ────────────────────────────────────
   const leadRows = rowsWithDomain.map((row) => {
@@ -232,7 +244,7 @@ async function processRows(
       title: row.title ?? null,
       country: row.country ?? null,
       organization_id: orgId,
-      apollo_id: `excel_${emailHash(row.email)}`,
+      apollo_id: `excel_${emailHash(row.email)}${softDeleted.has(row.email) ? `_${crypto.randomUUID().slice(0, 8)}` : ""}`,
       lead_source: "excel",
       created_by: userId,
       import_id: importId ?? null,
@@ -247,11 +259,23 @@ async function processRows(
 
   const insertedIds: string[] = [];
   for (let i = 0; i < leadRows.length; i += CHUNK) {
-    const { data, error } = await db.from("leads").insert(leadRows.slice(i, i + CHUNK)).select("id");
+    const chunk = leadRows.slice(i, i + CHUNK);
+    const { data, error } = await db.from("leads").insert(chunk).select("id");
     if (!error) {
       insertedCount += (data ?? []).length;
       insertedIds.push(...(data ?? []).map((r) => r.id as string));
-    } else if (error.code === "23505") skippedDuplicateInDb += leadRows.slice(i, i + CHUNK).length;
+      continue;
+    }
+    // One bad row (NUL byte, lone surrogate, race-lost 23505) fails the whole chunk insert:
+    // retry row by row so good rows still land. A row failing alone stays in not_saved.
+    for (let j = 0; j < chunk.length; j += 25) {
+      const res = await Promise.all(chunk.slice(j, j + 25).map((r) => db.from("leads").insert(r).select("id")));
+      for (const { data: d, error: e } of res) {
+        if (e) continue;
+        insertedCount += (d ?? []).length;
+        insertedIds.push(...(d ?? []).map((x) => x.id as string));
+      }
+    }
   }
 
   // Assignment is deferred to autoAssignEnrichedLeads (post-enrichment).
@@ -264,11 +288,44 @@ async function processRows(
     })));
   }
 
-  return {
-    inserted: insertedCount, skipped_blank_email: skippedBlankEmail, skipped_invalid_email: skippedInvalidEmail,
-    skipped_duplicate_in_file: skippedDuplicateInFile, skipped_duplicate_in_db: skippedDuplicateInDb,
-    assignment_skipped: 0, duplicate_owners: duplicateOwners, duplicate_owner_counts: duplicateOwnerCounts,
-  };
+  return finish();
+}
+
+/** Who owns an "already in Kuber" lead is other people's data. leads:all members get real ids
+ *  + names (one profiles query, only when an owner exists); everyone else gets self/other/null,
+ *  no id, no name. Enforced here, never in the UI. */
+async function ownersFor(
+  user: { id: string; member: Parameters<typeof canSeeAll>[0] },
+  db: Db,
+  counts: OwnerCount[],
+): Promise<OwnerCount[]> {
+  if (!canSeeAll(user.member, "leads")) return hideOwners(counts, user.id);
+  const ids = counts.map((c) => c.assigned_to).filter((x): x is string => !!x);
+  if (ids.length === 0) return counts;
+  const { data } = await db.from("profiles").select("id, full_name, email").in("id", ids);
+  return withOwnerNames(counts, new Map((data ?? []).map((p) => [p.id as string, p])));
+}
+
+async function runImport(
+  req: NextRequest, user: Awaited<ReturnType<typeof requireScope>>, db: ReturnType<typeof dbForUser>,
+  rows: Record<string, unknown>[], mapping: Record<string, string>, batch_name: string, color: string | undefined,
+  assigned_to: string | null | undefined, assignment_strategy: "manual" | "round_robin" | "territory" | null | undefined,
+  ownImport: boolean, choices?: ImportChoices,
+) {
+  if (!mapping["email"]) return fail(400, "VALIDATION_ERROR", "Mapping must include an 'email' column");
+  const { data: importRow } = await db.from("imports")
+    .insert({ label: batch_name, source: "excel", created_by: user.id, lead_count: 0, color: color ?? "violet", ...importAssignmentFields(assigned_to, assignment_strategy) })
+    .select("id").single();
+  const importId = importRow?.id ?? null;
+  try {
+    const { result, ownerCounts } = await processRows(rows, mapping, user.id, db, importId, assigned_to, assignment_strategy ?? undefined, ownImport, choices);
+    await finishImport(db, importId, result.inserted);
+    if (result.inserted > 0) triggerScrape(req);
+    return ok({ ...result, duplicate_owner_counts: await ownersFor(user, db, ownerCounts) });
+  } catch (e) {
+    if (e instanceof PreInsertError) await finishImport(db, importId, 0); // nothing saved: no empty batch left behind
+    return fail(500, "IMPORT_FAILED", (e as Error).message);
+  }
 }
 
 /** Keep the batch only when it got leads. A file of all duplicates used to
@@ -318,13 +375,6 @@ export async function POST(req: NextRequest) {
     Object.assign(parsed.data, { assigned_to: a.assigned_to ?? undefined, assignment_strategy: a.assignment_strategy ?? undefined });
     ownImport = a.self;
   }
-  // Who owns a duplicate is other people's data: only with leads:all. Without
-  // it the counts stay, but owners collapse to "self" / "other" / unassigned,
-  // so the importer still learns "already assigned to another team member".
-  const shown = <T extends { duplicate_owners?: unknown[]; duplicate_owner_counts?: OwnerCount[] }>(r: T): T =>
-    canSeeAll(user.member, "leads") ? r
-      : { ...r, duplicate_owners: [], duplicate_owner_counts: hideOwners(r.duplicate_owner_counts ?? [], user.id) };
-
   if (parsed.data.mode !== "headers" && parsed.data.assigned_to) {
     const { data: employee } = await db.from("profiles").select("id, is_active").eq("id", parsed.data.assigned_to).maybeSingle();
     if (!employee || !employee.is_active) return fail(400, "INVALID_ASSIGNEE", "Employee not found or inactive");
@@ -332,16 +382,8 @@ export async function POST(req: NextRequest) {
 
   // Direct mode — rows provided in the request body, no storage needed
   if (parsed.data.mode === "direct") {
-    const { rows, mapping, batch_name, color, assigned_to, assignment_strategy } = parsed.data;
-    if (!mapping["email"]) return fail(400, "VALIDATION_ERROR", "Mapping must include an 'email' column");
-    const { data: importRow } = await db.from("imports")
-      .insert({ label: batch_name, source: "excel", created_by: user.id, lead_count: 0, color: color ?? "violet", ...importAssignmentFields(assigned_to, assignment_strategy) })
-      .select("id").single();
-    const importId = importRow?.id ?? null;
-    const result = await processRows(rows, mapping, user.id, db, importId, assigned_to, assignment_strategy, ownImport);
-    await finishImport(db, importId, result.inserted);
-    if (result.inserted > 0) triggerScrape(req);
-    return ok(shown(result));
+    const { rows, mapping, batch_name, color, assigned_to, assignment_strategy, choices } = parsed.data;
+    return runImport(req, user, db, rows, mapping, batch_name, color, assigned_to, assignment_strategy, ownImport, choices as ImportChoices | undefined);
   }
 
   // Storage modes — download file first
@@ -365,13 +407,7 @@ export async function POST(req: NextRequest) {
   // mode === "import"
   const { mapping, batch_name: importBatchName, color: importColor, assigned_to: importAssignedTo, assignment_strategy: importStrategy } =
     parsed.data as { mapping: Record<string, string>; batch_name: string; color: string; assigned_to?: string | null; assignment_strategy?: "round_robin" | "territory" };
-  if (!mapping["email"]) return fail(400, "VALIDATION_ERROR", "Mapping must include an 'email' column");
-  const { data: importRow2 } = await db.from("imports")
-    .insert({ label: importBatchName, source: "excel", created_by: user.id, lead_count: 0, color: importColor ?? "violet", ...importAssignmentFields(importAssignedTo, importStrategy) })
-    .select("id").single();
-  const importId2 = importRow2?.id ?? null;
-  const result = await processRows(parsed_excel.rows, mapping, user.id, db, importId2, importAssignedTo, importStrategy, ownImport);
-  await finishImport(db, importId2, result.inserted);
-  if (result.inserted > 0) triggerScrape(req);
-  return ok(shown(result));
+  if (parsed_excel.rows.length > IMPORT_LIMITS.maxRows) return fail(422, "VALIDATION_ERROR", `Too many rows (max ${IMPORT_LIMITS.maxRows}), split the file`);
+  // No choices here: multi-email / ambiguous rows are not imported (safe default).
+  return runImport(req, user, db, parsed_excel.rows, mapping, importBatchName, importColor, importAssignedTo, importStrategy, ownImport);
 }
