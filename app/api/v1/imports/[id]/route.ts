@@ -11,7 +11,7 @@ const Body = z.object({ label: z.string().trim().min(1, "Name cannot be empty").
 /** Rename a batch. Allowed for a manager (leads:all) or the person who created it. */
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   let user: Awaited<ReturnType<typeof requireScope>>;
-  try { user = await requireScope(req, "leads:read"); } catch (r) { return r as Response; }
+  try { user = await requireScope(req, "leads:write"); } catch (r) { return r as Response; }
 
   const { id } = await params;
   if (!dbId.safeParse(id).success) return fail(400, "VALIDATION_ERROR", "Invalid batch id");
